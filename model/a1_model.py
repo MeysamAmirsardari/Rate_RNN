@@ -123,9 +123,16 @@ class A1Config:
     # ---- Spike-frequency / firing-rate adaptation (per E unit) ----
     # Models a Ca-activated K conductance (mAHP) — universal in cortical
     # pyramidal cells (Madison & Nicoll 1984 ; Storm 1990).  The adaptation
-    # current accumulates with the cell's *own* firing rate and subtracts
-    # from the net drive (Latham et al. 2000).  In A1 the measured kinetics
-    # are 100-500 ms (Lu et al. 2008 ; Abolafia et al. 2011).
+    # variable ``a`` accumulates with the cell's *own* firing rate
+    # (Latham et al. 2000).  In A1 the measured kinetics are 100-500 ms
+    # (Lu et al. 2008 ; Abolafia et al. 2011).
+    #
+    # **Divisive form** (Heeger 1992 ; Carandini & Heeger 2012):
+    #     E_ss = relu(net) / (1 + g_a * a)
+    # The shunting f-I gain divides whatever drive the neuron receives,
+    # so it suppresses *both* the TC drive and any recurrent prediction
+    # boost.  Subtractive adaptation cannot suppress the prediction-driven
+    # boost (the boost lives in the numerator) — divisive can.
     #
     # This is the postsynaptic "memory" that lets predictive pre-activation
     # depress the subsequent driven response (Mill et al. 2011), i.e. the
@@ -133,7 +140,7 @@ class A1Config:
     #   "predictive pre-activation -> suppression via depression"
     # narrative for Model 1 (no iSTDP, blanket inhibition).
     tau_a: float = 0.05            # 50 ms — mAHP, matched to tone duration
-    g_a:   float = 4.0             # subtractive gain on net_E
+    g_a:   float = 4.0             # divisive gain on relu(net_E)
 
     # ---- initial conditions ----
     W_init_scale: float = 0.0      # >0 to seed random initial E->E
@@ -229,15 +236,18 @@ def simulate(
         rec_E  = W @ E                          # plastic E->E
         glob_I = cfg.W_IE * Iv                  # broadcast global inhibition
 
-        # Subtractive adaptation current — enters BEFORE the ReLU, as a
-        # K-like outward current would.  ``a`` is driven by the cell's
-        # actual firing E (postsynaptic), so any source of activity
-        # (TC drive *or* recurrent pre-activation) accumulates adaptation.
-        net_E  = tm_in + rec_E - glob_I - cfg.g_a * a
+        # Divisive (shunting) adaptation — ``a`` reduces the postsynaptic
+        # f-I gain rather than subtracting a fixed current.  Because the
+        # divisor acts on *everything* the neuron receives, the same
+        # recurrent prediction boost that loaded ``a`` is now itself
+        # suppressed (Carandini & Heeger 2012).  ``a`` is still driven by
+        # the cell's actual firing E (postsynaptic), so any source of
+        # activity accumulates adaptation.
+        net_E  = tm_in + rec_E - glob_I
         net_I  = cfg.W_EI * E.sum()             # all E drive the single I pool
 
         # --- derivatives ---
-        dE  = (-E  + _relu(net_E)) / cfg.tau_E
+        dE  = (-E  + _relu(net_E) / (1.0 + cfg.g_a * a)) / cfg.tau_E
         dIv = (-Iv + _relu(net_I)) / cfg.tau_I
         # Tsodyks-Markram on each TC synapse
         du  = (cfg.U - u) / cfg.tau_F + cfg.U * (1.0 - u) * s
