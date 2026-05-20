@@ -116,7 +116,14 @@ class A1Config:
     # Self-recurrent (diagonal) cap.  The inhibition-stabilised regime
     # requires W_self < 1 + W_IE*W_EI; we sit comfortably below that bound.
     W_max_self:  float = 0.5
-    W_norm:      float = 15.0      # rate scale that normalises the rule
+    # W_norm calibrates the rate units in the Hebbian product
+    # (E/W_norm)·(tr/W_norm).  With divisive adaptation the operating
+    # firing rates are roughly 1/3 of the subtractive-form regime, so
+    # W_norm is scaled down accordingly to keep the dimensionless
+    # learning product in the same range.  At this value W[B<-A]
+    # saturates in ~400 AB trials and the pre-activation of channel B
+    # during tone A becomes mechanistically meaningful (E[B] ~ 1).
+    W_norm:      float = 5.0       # rate scale that normalises the rule
 
     plastic_self: bool = True      # allow plastic self-recurrent E->E
 
