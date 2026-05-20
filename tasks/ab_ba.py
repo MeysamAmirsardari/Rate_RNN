@@ -37,10 +37,18 @@ Outputs:  PNG figures saved alongside this script.
 
 from __future__ import annotations
 
+import sys
+from pathlib import Path
 from typing import List, Optional, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
+
+# Allow `python tasks/ab_ba.py` from the project root in addition to
+# `python -m tasks.ab_ba`.
+_PROJECT_ROOT = Path(__file__).resolve().parent.parent
+if str(_PROJECT_ROOT) not in sys.path:
+    sys.path.insert(0, str(_PROJECT_ROOT))
 
 from model import A1Config, simulate
 

@@ -31,7 +31,7 @@ Public API
     out['E']          (N, T)         excitatory rates
     out['I']          (T,)           global inhibitory rate
     out['u'], ['x']   (N, T)         TM utilisation / available resources
-    out['a']          (N, T)         spike-frequency adaptation current
+    out['a']          (N, T)         spike-frequency adaptation variable
     out['tm_in']      (N, T)         TM-gated TC drive
     out['rec_E']      (N, T)         recurrent E->E current
     out['glob_I']     (T,)           inhibition seen by every E unit
@@ -212,7 +212,7 @@ def simulate(
     u   = cfg.U * np.ones(N)
     x   = np.ones(N)
     tr  = np.zeros(N)               # post-synaptic eligibility trace
-    a   = np.zeros(N)               # spike-frequency adaptation current
+    a   = np.zeros(N)               # spike-frequency adaptation variable
 
     # ---- histories ----
     E_h     = np.zeros((N, T))
