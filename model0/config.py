@@ -83,13 +83,17 @@ class A1Config:
     # Lateral coupling is weak but non-zero -- real cortical inhibition
     # spans more than one column; the "selective" part is the *weighting*.
     #
-    # w_IE_self = 2.0 reflects SST dendritic inhibition (~2x stronger
-    # than PV-style blanket inhibition the previous model used).  This
-    # is what makes the residual I_B large enough to dominate the
-    # tone-B response.
+    # w_IE_self = 4.0 represents SST cells combining strong dendritic
+    # shunting with somatic inhibition (Kvitsiani+2013; Pala &
+    # Petersen 2018).  This high value is *load-bearing*: it
+    # asymmetrically amplifies suppression DELIVERY (I -> E) without
+    # symmetrically increasing the loop gain that would dampen the
+    # E_A drive that loads the predictive cascade in the first place.
+    # Raising w_EI_self instead would damp both ends symmetrically
+    # and produce no Pareto gain (verified empirically).
     w_EI_self: float = 0.6         # E_i -> I_i (strong)
     w_EI_lat:  float = 0.05        # E_i -> I_{j!=i} (weak)
-    w_IE_self: float = 2.0         # I_i -> E_i (strong self-inhibition)
+    w_IE_self: float = 4.0         # I_i -> E_i (strong self-inhibition)
     w_IE_lat:  float = 0.20        # I_i -> E_{j!=i} (weak lateral)
 
     # ---- Short-term depression on TC input (Tsodyks-Markram) ----
@@ -108,14 +112,14 @@ class A1Config:
     eta_LTD:     float = 0.7
     W_decay:     float = 5e-4
     # Recurrent unitary strength bounded well below TC strength.  In
-    # cortex, intracortical EPSPs are ~30% of thalamocortical EPSPs
-    # (Stratford+1996; Cruikshank+2007).  W_max=0.30 keeps recurrent
-    # drive at <30% of TC drive, which (a) is biologically defensible
-    # and (b) keeps the pre-activation small enough that the resulting
-    # MMN is ~5% — the empirically observed magnitude in A1
-    # (Ulanovsky+2003; Nieto-Diego & Malmierca 2016).
-    W_max:       float = 0.30
-    W_max_self:  float = 0.20
+    # cortex, intracortical EPSPs are ~25-30% of thalamocortical EPSPs
+    # (Stratford+1996; Cruikshank+2007).  W_max=0.25 sits at the lower
+    # end of that range, which (together with w_IE_self=4.0) keeps the
+    # pre-activation of E_B during tone A subtle (E_B^pre/E_A < 13%)
+    # while preserving the ~5% MMN polarity that's empirically observed
+    # in A1 (Ulanovsky+2003; Nieto-Diego & Malmierca 2016).
+    W_max:       float = 0.25
+    W_max_self:  float = 0.17
     # W_norm calibrates the rate units in the Hebbian product
     # (E/W_norm)*(tr/W_norm).  In model0 E peaks at ~13 (vs ~4 in the
     # divisive model/), so the scale factor must rise accordingly.
