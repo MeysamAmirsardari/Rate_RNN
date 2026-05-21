@@ -59,7 +59,7 @@ def build_stim(
     intra_gap: float = 30e-3,         # NEW DEFAULT: 30 ms — see module docstring
     inter_gap: float = 500e-3,
     tone_amp: float = 1.0,
-    tuning_sigma: float = 0.6,
+    tuning_sigma: float = 0.0,        # delta tuning — no tonotopic overlap
 ) -> Tuple[np.ndarray, np.ndarray, int]:
     dt = cfg.dt
     n_tone  = int(round(tone_dur  / dt))
@@ -104,11 +104,11 @@ def run_experiment(
     n_trials: int = 400,
     seed: int = 0,
     cfg: Optional[A1Config] = None,
-    ch_A: int = 2,
-    ch_B: int = 5,
+    ch_A: int = 0,
+    ch_B: int = 1,
 ) -> dict:
     if cfg is None:
-        cfg = A1Config(N=8)
+        cfg = A1Config()
 
     rng = np.random.default_rng(seed)
     codes = shuffled_codes(n_trials, p_AB, rng)
@@ -464,12 +464,12 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
 #  Main
 # =====================================================================
 def main():
-    cfg = A1Config(N=8)
+    cfg = A1Config()
 
     print("[ Run 1 ]  90% AB / 10% BA")
-    res1 = run_experiment(p_AB=0.90, n_trials=400, seed=1, cfg=cfg, ch_A=2, ch_B=5)
+    res1 = run_experiment(p_AB=0.90, n_trials=400, seed=1, cfg=cfg, ch_A=0, ch_B=1)
     print("[ Run 2 ]  10% AB / 90% BA")
-    res2 = run_experiment(p_AB=0.10, n_trials=400, seed=2, cfg=cfg, ch_A=2, ch_B=5)
+    res2 = run_experiment(p_AB=0.10, n_trials=400, seed=2, cfg=cfg, ch_A=0, ch_B=1)
 
     print("[ Plotting ]")
     plot_run(res1, "Run 1 — 90% AB (standard) / 10% BA (deviant) — selective-inhibition model",

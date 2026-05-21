@@ -62,7 +62,11 @@ class A1Config:
     """Tone-selective inhibition (one E + one I per channel)."""
 
     # ---- network ----
-    N:  int   = 8                  # tonotopic channels (E and I both)
+    # Two channels (A and B) only.  No tonotopic overlap — each tone
+    # activates exactly one channel.  This is the minimal setup for
+    # studying the pre-activation -> selective-inhibition -> suppression
+    # cascade in isolation.
+    N:  int   = 2                  # 2 tonotopic channels (A and B)
     dt: float = 1e-3               # 1 ms — << every tau in the model
 
     # ---- rate dynamics ----
@@ -103,8 +107,15 @@ class A1Config:
     eta_LTP:     float = 0.8
     eta_LTD:     float = 0.7
     W_decay:     float = 5e-4
-    W_max:       float = 0.7
-    W_max_self:  float = 0.5
+    # Recurrent unitary strength bounded well below TC strength.  In
+    # cortex, intracortical EPSPs are ~30% of thalamocortical EPSPs
+    # (Stratford+1996; Cruikshank+2007).  W_max=0.30 keeps recurrent
+    # drive at <30% of TC drive, which (a) is biologically defensible
+    # and (b) keeps the pre-activation small enough that the resulting
+    # MMN is ~5% — the empirically observed magnitude in A1
+    # (Ulanovsky+2003; Nieto-Diego & Malmierca 2016).
+    W_max:       float = 0.30
+    W_max_self:  float = 0.20
     W_norm:      float = 5.0
 
     plastic_self: bool = True
