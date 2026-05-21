@@ -116,7 +116,13 @@ class A1Config:
     # (Ulanovsky+2003; Nieto-Diego & Malmierca 2016).
     W_max:       float = 0.30
     W_max_self:  float = 0.20
-    W_norm:      float = 5.0
+    # W_norm calibrates the rate units in the Hebbian product
+    # (E/W_norm)*(tr/W_norm).  In model0 E peaks at ~13 (vs ~4 in the
+    # divisive model/), so the scale factor must rise accordingly.
+    # W_norm=20 makes per-trial dW ~16x smaller than model/'s setting,
+    # so W saturates gradually over ~130 trials rather than ~10 -- in
+    # line with cortical plasticity timescales.
+    W_norm:      float = 20.0
 
     plastic_self: bool = True
 

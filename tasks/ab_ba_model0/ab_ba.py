@@ -286,13 +286,10 @@ def plot_run(res: dict, suptitle: str, fname: str):
     ax = fig.add_subplot(gs[4, 1])
     im = ax.imshow(W_f, cmap="viridis", aspect="equal", origin="upper",
                    vmin=0, vmax=max(W_f.max(), 1e-3))
-    ax.scatter([ch_A], [ch_B], facecolors="none", edgecolors="lime",    s=120, lw=2,
-               label=r"$W_{B\leftarrow A}$")
-    ax.scatter([ch_B], [ch_A], facecolors="none", edgecolors="magenta", s=120, lw=2,
-               label=r"$W_{A\leftarrow B}$")
+    ax.set_xticks([ch_A, ch_B]); ax.set_xticklabels(["A", "B"])
+    ax.set_yticks([ch_A, ch_B]); ax.set_yticklabels(["A", "B"])
     ax.set_xlabel("pre", fontsize=10); ax.set_ylabel("post", fontsize=10)
-    ax.set_title("Final W (row=post, col=pre)", fontsize=11, fontweight="bold")
-    ax.legend(fontsize=8, frameon=False, loc="upper right")
+    ax.set_title("Final W", fontsize=11, fontweight="bold")
     fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
 
     fig.savefig(fname, dpi=150)
