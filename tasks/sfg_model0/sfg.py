@@ -304,16 +304,16 @@ def plot_sfg_marginals(res: dict, fname: str):
     ax.plot(range(N), tm, color="0.20", lw=1.5, marker="o", ms=3)
     ax.axhline(tm.mean(), color="0.65", ls=":", lw=1.0)
     ax.set_ylim(0, tm.max() * 1.4)
-    _setup_axes(ax, title=f"time marginal (per channel), CV "
-                          f"{tm.std()/tm.mean()*100:.1f}%",
+    _setup_axes(ax, title=f"time marginal (per channel)",
+                          # f"{tm.std()/tm.mean()*100:.1f}%",
                 xlabel="channel", ylabel="mean activity")
 
     ax = axes[1]
     ax.plot(bc, fm, color="0.20", lw=1.5)
     ax.axhline(fm.mean(), color="0.65", ls=":", lw=1.0)
     ax.set_ylim(0, fm.max() * 1.4)
-    _setup_axes(ax, title=f"freq marginal (per 250 ms bin), CV "
-                          f"{fm.std()/fm.mean()*100:.1f}%",
+    _setup_axes(ax, title=f"freq marginal (per 250 ms bin)",
+                          # f"{fm.std()/fm.mean()*100:.1f}%",
                 xlabel="time (s)", ylabel="mean activity")
 
     fig.savefig(fname, dpi=150)
@@ -337,14 +337,14 @@ def plot_sfg_run(res: dict, fname: str):
 
     fig = plt.figure(figsize=(13, 10), constrained_layout=True)
     gs = fig.add_gridspec(3, 1, height_ratios=[2.4, 1.1, 1.6])
-    fig.suptitle(f"Stochastic Figure-Ground (model0), "
+    fig.suptitle(f"SFG, "
                  f"{res['n_trials']} presentations",
                  fontsize=13, fontweight="bold")
 
     ax = fig.add_subplot(gs[0])
     _draw_raster(ax, res, 0, hi)
     _setup_axes(ax, title="Stimulus raster (first 2 presentations), "
-                          "coherent figure green, random pulses blue",
+                          "",
                 xlabel="time (s)", ylabel="channel")
 
     ax = fig.add_subplot(gs[1])
@@ -353,7 +353,7 @@ def plot_sfg_run(res: dict, fname: str):
     ax.plot(t[:hi], E[fig_idx][:, :hi].mean(0), color=COL_FIG, lw=1.3,
             label="Figure")
     ax.legend(fontsize=9, frameon=False, loc="upper right")
-    _setup_axes(ax, title="Mean excitatory rate (first 2 presentations)",
+    _setup_axes(ax, title="Mean excitatory rate",
                 xlabel="time (s)", ylabel=r"$\langle E\rangle$")
 
     ax = fig.add_subplot(gs[2])
@@ -366,7 +366,7 @@ def plot_sfg_run(res: dict, fname: str):
         ax.plot(W_t, FG, color="0.45", lw=1.6, ls="--",
                 label=r"$W_{F\leftrightarrow G}$")
         ax.legend(fontsize=9, frameon=False, loc="upper left")
-    _setup_axes(ax, title="Recurrent E to E weight evolution over the session",
+    _setup_axes(ax, title="E to E weight evolution over the session",
                 xlabel="time (s)", ylabel="mean W")
 
     fig.savefig(fname, dpi=150)
@@ -407,6 +407,68 @@ def plot_sfg_W(res: dict, fname: str):
     return fig
 
 
+def _smooth(x: np.ndarray, win: int) -> np.ndarray:
+    """Centred moving average of width ``win`` samples."""
+    if win <= 1:
+        return x
+    k = np.ones(win) / win
+    return np.convolve(x, k, mode="same")
+
+
+def plot_sfg_drive(res: dict, fname: str,
+                   smooth_ms: float = 1000.0, ds: int = 50):
+    """Synaptic drive over the whole session: the inhibition, the
+    excitation, and the net drive received by the figure vs the ground
+    channels.  Companion to the MATLAB SFG 'synaptic inputs' figure.
+
+    Traces are smoothed with a ``smooth_ms`` moving average: at full
+    session length (tens of trials) the per-pulse detail is not
+    resolvable, so the smoothed envelope is what conveys the overall
+    behaviour -- the figure-vs-ground levels and how they drift as the
+    figure connection is learned.  ``ds`` downsamples for display only.
+    """
+    cfg = res["cfg"]; dt = cfg.dt
+    fig_idx, gnd_idx = res["fig_idx"], res["gnd_idx"]
+    win = max(1, int(round(smooth_ms * 1e-3 / dt)))
+
+    inh = res["inh_to_E"]
+    exc = res["tm_in"] + res["rec_E"]
+    net = exc - inh
+    t = res["t"][::ds]
+
+    def env(arr, idx):
+        return _smooth(arr[idx].mean(0), win)[::ds]
+
+    fig, axes = plt.subplots(3, 1, figsize=(15, 9), constrained_layout=True,
+                             sharex=True)
+    fig.suptitle(f"SFG synaptic drive over the session "
+                 f"({smooth_ms:.0f} ms moving average)",
+                 fontsize=12, fontweight="bold")
+
+    panels = [
+        (axes[0], inh, "Inhibition received", "inhibitory current", False),
+        (axes[1], exc, "Excitation received", "excitatory current", False),
+        (axes[2], net, "Net synaptic drive", "net drive", True),
+    ]
+    for ax, arr, title, ylab, zero in panels:
+        if zero:
+            ax.axhline(0, color="0.6", lw=0.7)
+        eg = env(arr, gnd_idx)
+        ef = env(arr, fig_idx)
+        # shade the figure-vs-ground gap so it is visible even where the
+        # two envelopes nearly coincide
+        ax.fill_between(t, eg, ef, color="0.55", alpha=0.30, lw=0)
+        ax.plot(t, eg, color=COL_GND, lw=1.3, label="Ground")
+        ax.plot(t, ef, color=COL_FIG, lw=1.3, label="Figure")
+        ax.legend(fontsize=9, frameon=False, loc="upper right")
+        _setup_axes(ax, title=title, ylabel=ylab)
+    axes[2].set_xlabel("time (s)", fontsize=10)
+
+    fig.savefig(fname, dpi=150)
+    print(f"  saved {fname}")
+    return fig
+
+
 # =====================================================================
 #  Main
 # =====================================================================
@@ -426,6 +488,7 @@ def main():
     plot_sfg_marginals(res, "sfg_m0_marginals.png")
     plot_sfg_run(res,       "sfg_m0_run.png")
     plot_sfg_W(res,         "sfg_m0_W.png")
+    plot_sfg_drive(res,     "sfg_m0_drive.png")
 
     W = res["W_final"]
     W_FF, W_GG, W_FG = compute_W_groups(W, fig_idx, res["gnd_idx"])
