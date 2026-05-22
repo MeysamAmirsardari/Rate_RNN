@@ -170,12 +170,15 @@ def plot_run(res: dict, suptitle: str, fname: str):
     ----
     1. Stimulus raster (first 6 trials).
     2. Activity   — trial-averaged firing rate E of channels A and B.
-    3. Input      — trial-averaged inhibitory current onto E (M_IE @ I).
+    3. Input      — trial-averaged synaptic input onto E: recurrent
+                    excitation W @ E (which carries the learned A->B /
+                    B->A prediction, plotted positive) and inhibition
+                    M_IE @ I (plotted negative).
     4. Recurrent E->E weight evolution and final W.
 
     Rows 2-3 are averaged separately over the post-learning (2nd-half)
-    AB trials (green) and BA trials (purple) — i.e. the stimulus-locked
-    trial average, aligned to sequence onset.
+    AB trials (green / solid) and BA trials (purple / dashed) — i.e. the
+    stimulus-locked trial average, aligned to sequence onset.
     """
     cfg = res["cfg"]; dt = cfg.dt
     E   = res["E"]
@@ -187,12 +190,14 @@ def plot_run(res: dict, suptitle: str, fname: str):
     n_show = 6
     show_T = n_show * n_seq
 
-    ev_E   = evoked_per_trial(E,   res["seq_starts"], n_seq)
-    ev_inh = evoked_per_trial(inh, res["seq_starts"], n_seq)
+    ev_E   = evoked_per_trial(E,            res["seq_starts"], n_seq)
+    ev_rec = evoked_per_trial(res["rec_E"], res["seq_starts"], n_seq)
+    ev_inh = evoked_per_trial(inh,          res["seq_starts"], n_seq)
     codes = res["codes"]
     is_AB = codes == "AB"
     half = len(codes) // 2
     AB_E,   BA_E   = ev_E[half:][is_AB[half:]],   ev_E[half:][~is_AB[half:]]
+    AB_rec, BA_rec = ev_rec[half:][is_AB[half:]], ev_rec[half:][~is_AB[half:]]
     AB_inh, BA_inh = ev_inh[half:][is_AB[half:]], ev_inh[half:][~is_AB[half:]]
     ts = np.arange(n_seq) * dt
 
@@ -232,20 +237,32 @@ def plot_run(res: dict, suptitle: str, fname: str):
         _setup_axes(ax, title=f"Activity — firing rate, channel {name}",
                     xlabel="time in sequence (s)", ylabel=f"$E_{name}$")
 
-    # ---- row 3: INPUT — inhibitory current onto E, channel A and B ----
+    # ---- row 3: INPUT — recurrent excitation & inhibition onto E ----
+    # Recurrent excitation W @ E carries the learned A->B / B->A
+    # prediction (plotted positive); inhibition M_IE @ I is what can
+    # mask it (plotted negative).  This row shows the A->B input is
+    # *present* even when it produces no firing (see channel B, BA
+    # trial, 2nd tone: green dashed > 0 but the red dashed swamps it).
     for col, ch, name in [(0, ch_A, "A"), (1, ch_B, "B")]:
         ax = fig.add_subplot(gs[2, col])
         _shade_tones(ax, n_seq, dt)
+        ax.axhline(0, color="0.6", lw=0.7)
+        if len(AB_rec):
+            ax.plot(ts, AB_rec.mean(0)[ch], color="tab:green", lw=2,
+                    label="recurrent exc. — AB")
+        if len(BA_rec):
+            ax.plot(ts, BA_rec.mean(0)[ch], color="tab:green", lw=2, ls="--",
+                    label="recurrent exc. — BA")
         if len(AB_inh):
-            ax.plot(ts, AB_inh.mean(0)[ch], color="tab:green", lw=2,
-                    label=f"AB trial (n={len(AB_inh)})")
+            ax.plot(ts, -AB_inh.mean(0)[ch], color="tab:red", lw=2,
+                    label="− inhibition — AB")
         if len(BA_inh):
-            ax.plot(ts, BA_inh.mean(0)[ch], color="tab:purple", ls="--", lw=2,
-                    label=f"BA trial (n={len(BA_inh)})")
-        ax.legend(fontsize=8, frameon=False)
-        _setup_axes(ax, title=f"Input — inhibition onto channel {name}",
-                    xlabel="time in sequence (s)",
-                    ylabel=f"inh $\\rightarrow E_{name}$")
+            ax.plot(ts, -BA_inh.mean(0)[ch], color="tab:red", lw=2, ls="--",
+                    label="− inhibition — BA")
+        ax.legend(fontsize=7.5, frameon=False)
+        _setup_axes(ax,
+                    title=f"Input — recurrent excitation & inhibition, channel {name}",
+                    xlabel="time in sequence (s)", ylabel="current")
 
     # ---- row 4: weight evolution + final W ----
     ax = fig.add_subplot(gs[3, 0])
