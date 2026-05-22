@@ -457,6 +457,182 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
     return fig
 
 
+def plot_recurrent_masking(res: dict, fname: str):
+    """Diagnostic: the learned A->B recurrent input is delivered to channel
+    B in *both* the AB and the BA trial — but it produces firing only in AB.
+
+    Mechanism.  ``rec_E[B] = W[B<-A] * E_A`` is the same in both trials
+    (same learned weight, same tone-A drive).  What differs is B's own
+    tone-selective interneuron ``I_B``:
+
+      - AB trial:  tone A is FIRST, so B has not fired yet -> I_B ~ 0 ->
+        the A->B current passes the relu and pre-activates B.
+      - BA trial:  tone A is SECOND; B fired as the first tone and loaded
+        I_B (tau_I = 80 ms), so I_B is still high when tone A arrives ->
+        the SAME A->B current is shunted below threshold -> E_B ~ 0.
+
+    This is the selective-inhibition mechanism (the same one that gives the
+    MMN) and the rate-model firing-vs-current distinction, in one figure.
+
+    Uses the post-learning (2nd-half) AB and BA epochs of Run 1.
+    """
+    cfg = res["cfg"]; dt = cfg.dt
+    ch_A, ch_B = res["ch_A"], res["ch_B"]
+    n_seq = res["n_seq"]
+    ts = np.arange(n_seq) * dt
+    n_tone  = int(round(50e-3 / dt))
+    n_intra = int(round(30e-3 / dt))
+
+    def mean_by_code(key, code):
+        ev = evoked_per_trial(res[key], res["seq_starts"], n_seq)
+        half = len(res["codes"]) // 2
+        sel = ev[half:][res["codes"][half:] == code]
+        return sel.mean(0)
+
+    keys = ["E", "I", "rec_E", "inh_to_E", "tm_in"]
+    AB = {k: mean_by_code(k, "AB") for k in keys}
+    BA = {k: mean_by_code(k, "BA") for k in keys}
+    AB["net"] = AB["tm_in"] + AB["rec_E"] - AB["inh_to_E"]
+    BA["net"] = BA["tm_in"] + BA["rec_E"] - BA["inh_to_E"]
+
+    # tone-A window per trial type (A is 1st tone in AB, 2nd in BA)
+    wA = {"AB": slice(0, n_tone),
+          "BA": slice(n_tone + n_intra, 2 * n_tone + n_intra)}
+    xmax  = (2 * n_tone + n_intra) * dt + 0.05
+    W_ba  = res["W_final"][ch_B, ch_A]
+
+    def shade(ax, code):
+        t1 = (0, n_tone)
+        t2 = (n_tone + n_intra, 2 * n_tone + n_intra)
+        c1 = "tab:red"  if code == "AB" else "tab:blue"
+        c2 = "tab:blue" if code == "AB" else "tab:red"
+        ax.axvspan(t1[0] * dt, t1[1] * dt, color=c1, alpha=0.09)
+        ax.axvspan(t2[0] * dt, t2[1] * dt, color=c2, alpha=0.09)
+        ax.axvline(wA[code].start * dt, color="tab:red", lw=1.0, ls=":")
+
+    fig = plt.figure(figsize=(13, 16), constrained_layout=True)
+    gs = fig.add_gridspec(6, 2)
+    fig.suptitle(
+        "The learned A→B input reaches channel B in BOTH trials — "
+        "but is masked in BA by B's own interneuron\n"
+        f"Run 1 (90% AB), post-learning,  W[B←A] = {W_ba:.2f}    "
+        "(red band = tone A, blue band = tone B, dotted = tone-A onset)",
+        fontsize=11.5, fontweight="bold")
+
+    for col, (code, D, head) in enumerate([
+            ("AB", AB, "AB trial (standard) — tone A 1st, B is fresh"),
+            ("BA", BA, "BA trial (deviant) — tone A 2nd, B just fired")]):
+        wAc = wA[code]
+        tA0 = wAc.start * dt
+
+        # --- row 1: E rates ---
+        ax = fig.add_subplot(gs[0, col])
+        shade(ax, code)
+        ax.plot(ts, D["E"][ch_A], color="tab:red",  lw=1.8, label="$E_A$")
+        ax.plot(ts, D["E"][ch_B], color="tab:blue", lw=1.8, label="$E_B$")
+        ax.set_xlim(0, xmax)
+        ax.legend(fontsize=8, frameon=False, loc="upper right")
+        _setup_axes(ax, title=head, ylabel="rate")
+
+        # --- row 2: rec_E[B] — the A->B recurrent current ---
+        ax = fig.add_subplot(gs[1, col])
+        shade(ax, code)
+        ax.plot(ts, D["rec_E"][ch_B], color="tab:green", lw=2.3)
+        ax.set_xlim(0, xmax)
+        pk = D["rec_E"][ch_B, wAc].max()
+        ax.annotate(f"peak = {pk:.2f}",
+                    xy=(tA0 + n_tone * dt * 0.5, pk),
+                    xytext=(0, 9), textcoords="offset points",
+                    ha="center", fontsize=9.5, color="tab:green",
+                    fontweight="bold")
+        _setup_axes(ax, title=r"A→B recurrent current   "
+                              r"$rec_E[B]=W[B{\leftarrow}A]\cdot E_A$",
+                    ylabel="current")
+
+        # --- row 3: I_B — B's interneuron ---
+        ax = fig.add_subplot(gs[2, col])
+        shade(ax, code)
+        ax.plot(ts, D["I"][ch_B], color="tab:purple", lw=2.3)
+        ax.set_xlim(0, xmax)
+        i_at = D["I"][ch_B, wAc.start]
+        ax.annotate(f"$I_B$ = {i_at:.2f}\nat tone-A onset",
+                    xy=(tA0, i_at), xytext=(12, 4),
+                    textcoords="offset points", fontsize=9.5,
+                    color="tab:purple", fontweight="bold")
+        _setup_axes(ax, title=r"B's tone-selective interneuron   $I_B$",
+                    ylabel="I rate")
+
+        # --- row 4: inh_to_E[B] vs rec_E[B] ---
+        ax = fig.add_subplot(gs[3, col])
+        shade(ax, code)
+        ax.plot(ts, D["inh_to_E"][ch_B], color="tab:red", lw=2.3,
+                label=r"inh$\rightarrow E_B$")
+        ax.plot(ts, D["rec_E"][ch_B], color="tab:green", lw=1.5, ls="--",
+                label="rec_E[B] (same scale)")
+        ax.set_xlim(0, xmax)
+        inh_at = D["inh_to_E"][ch_B, wAc.start]
+        ax.annotate(f"inh = {inh_at:.1f}\nat tone-A onset",
+                    xy=(tA0, inh_at), xytext=(12, 2),
+                    textcoords="offset points", fontsize=9.5,
+                    color="tab:red", fontweight="bold")
+        ax.legend(fontsize=8, frameon=False, loc="upper right")
+        _setup_axes(ax, title=r"Inhibitory current onto $E_B$   "
+                              r"$inh=M_{IE}\cdot I$",
+                    ylabel="current")
+
+        # --- row 5: net current balance ---
+        ax = fig.add_subplot(gs[4, col])
+        shade(ax, code)
+        ax.axhline(0, color="0.3", lw=0.8)
+        exc = D["tm_in"][ch_B] + D["rec_E"][ch_B]
+        ax.fill_between(ts, 0, exc, color="tab:green", alpha=0.35,
+                        label="excitation (TC + rec)")
+        ax.fill_between(ts, 0, -D["inh_to_E"][ch_B], color="tab:red",
+                        alpha=0.30, label="− inhibition")
+        ax.plot(ts, D["net"][ch_B], color="black", lw=2.0, label="net drive")
+        ax.plot(ts, D["E"][ch_B], color="tab:blue", lw=2.3,
+                label="$E_B$ (firing)")
+        ax.set_xlim(0, xmax)
+        ax.legend(fontsize=7.5, frameon=False, loc="upper right")
+        _setup_axes(ax, title=r"Current balance at $E_B$:  "
+                              r"net $=$ TC $+$ rec $-$ inh",
+                    xlabel="time in sequence (s)", ylabel="current / rate")
+
+    # --- row 6: snapshot summary bar chart (spans both columns) ---
+    ax = fig.add_subplot(gs[5, :])
+    mid = {c: (wA[c].start + wA[c].stop) // 2 for c in ("AB", "BA")}
+    labels = [r"$rec_E[B]$"     "\n(A→B drive)",
+              r"$inh\rightarrow E_B$" "\n(inhibition)",
+              r"net$_E[B]$"      "\n(TC+rec−inh)",
+              r"$E_B$"          "\n(firing rate)"]
+    vals_AB = [AB["rec_E"][ch_B, mid["AB"]], AB["inh_to_E"][ch_B, mid["AB"]],
+               AB["net"][ch_B, mid["AB"]],   AB["E"][ch_B, mid["AB"]]]
+    vals_BA = [BA["rec_E"][ch_B, mid["BA"]], BA["inh_to_E"][ch_B, mid["BA"]],
+               BA["net"][ch_B, mid["BA"]],   BA["E"][ch_B, mid["BA"]]]
+    x = np.arange(len(labels)); w = 0.36
+    b1 = ax.bar(x - w / 2, vals_AB, w, color="tab:green",  label="AB trial")
+    b2 = ax.bar(x + w / 2, vals_BA, w, color="tab:purple", label="BA trial")
+    ax.axhline(0, color="0.3", lw=0.8)
+    for bars in (b1, b2):
+        for b in bars:
+            v = b.get_height()
+            ax.annotate(f"{v:.2f}",
+                        xy=(b.get_x() + b.get_width() / 2, v),
+                        xytext=(0, 3 if v >= 0 else -12),
+                        textcoords="offset points", ha="center",
+                        fontsize=9, fontweight="bold")
+    ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=9.5)
+    ax.legend(fontsize=9, frameon=False, loc="upper right")
+    _setup_axes(ax, title="Snapshot at mid-tone-A: identical A→B drive, "
+                          "opposite outcome — inhibition is the only thing "
+                          "that changed",
+                ylabel="current / rate")
+
+    fig.savefig(fname, dpi=150)
+    print(f"  saved {fname}")
+    return fig
+
+
 # =====================================================================
 #  Main
 # =====================================================================
@@ -475,6 +651,7 @@ def main():
              "m0_ab_ba_run2.png")
     plot_surprise(res1, res2, "m0_ab_ba_surprise.png")
     plot_inhibition_timing(res1, res2, "m0_ab_ba_inhibition.png")
+    plot_recurrent_masking(res1, "m0_ab_ba_recurrent_masking.png")
 
     # ---- text summary ----
     ch_A, ch_B = res1["ch_A"], res1["ch_B"]
