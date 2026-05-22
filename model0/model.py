@@ -15,8 +15,17 @@ State variables (per integration step)
 
 Dynamics
 --------
-    tau_E dE/dt = -E + relu(tm_in + W @ E - M_IE @ I)
+    tau_E dE/dt = -E + (tm_in + W @ E - M_IE @ I);   E := relu(E)
     tau_I dI/dt = -I + relu(M_EI @ E)
+
+The rectifying nonlinearity is applied to the *rate* E (a post-step
+clamp), not to the net input.  Inhibition therefore acts directly on
+the firing rate: a cell driven net-negative is pushed toward zero at a
+speed set by the inhibition magnitude, rather than merely left to decay
+at the leak rate 1/tau_E.  Steady states are unchanged (E_ss = relu of
+the net input); only the suppression transients are sharper.  (The I
+equation keeps relu on the input, but this is a no-op: M_EI has only
+non-negative entries and E >= 0, so M_EI @ E is never negative.)
 
 where M_EI and M_IE are FIXED structured matrices (diag = self-strong,
 off-diag = lateral-weak).
@@ -111,7 +120,9 @@ def simulate(
         net_E = tm_in + rec_E - inh_to_E
         net_I = M_EI @ E                 # each I_i driven mostly by E_i
 
-        dE  = (-E  + _relu(net_E)) / cfg.tau_E
+        # relu is applied to the *rate* E (post-step clamp below), not to
+        # net_E -- so inhibition acts directly on the firing rate.
+        dE  = (-E  + net_E) / cfg.tau_E
         dI  = (-Iv + _relu(net_I)) / cfg.tau_I
         du  = (cfg.U - u) / cfg.tau_F + cfg.U * (1.0 - u) * s
         dx  = (1.0 - x) / cfg.tau_D            - u * x * s
@@ -141,6 +152,7 @@ def simulate(
 
         np.clip(u, 0.0, 1.0, out=u)
         np.clip(x, 0.0, 1.0, out=x)
+        np.clip(E, 0.0, None, out=E)     # relu on the rate: E >= 0
 
         E_h[:,  t]  = E
         I_h[:,  t]  = Iv
