@@ -21,22 +21,26 @@ design goals:
 
 Stimulus construction
 ---------------------
-Time is a grid of ``slot_dur`` slots; each slot carries up to one pulse
-per channel (``pulse_dur`` wide).  Every slot has exactly ``K`` active
-channels -> the freq-marginal is flat by construction.
+Time is a grid of 250 ms count-windows ("slots").  Every window has
+exactly ``K`` active channels -> the freq-marginal is flat by
+construction.
 
-  - Coherent slots (every ``coherent_every``-th slot): the N_fig figure
-    channels fire together (aligned to the slot onset -> a coherent
-    figure).  The remaining K - N_fig slots are random ground.
-  - Non-coherent slots: K channels drawn at random from *all* N channels
-    (figure channels included -> figure presents ground).
+  - Coherent windows (every ``coherent_every``-th): the N_fig figure
+    channels fire together, *aligned to the window onset* -> a coherent
+    figure.  The remaining K - N_fig channels are random.
+  - Non-coherent windows: K channels drawn at random from *all* N
+    channels (figure channels included -> figure presents ground).
 
-Per-channel totals are equalised by quota-weighted sampling: a channel
-that still owes pulses is proportionally more likely to be picked, so
-every channel ends near the same total -> the time-marginal is flat.
+Per-channel totals are equalised by quota-weighted sampling -> the
+time-marginal is flat.
 
-Non-coherent pulses are jittered within their slot; coherent figure
-pulses stay aligned so the figure remains temporally coherent.
+Onset timing: coherent figure pulses are aligned to the window onset
+(so the figure stays temporally coherent); every other pulse is given a
+fully random onset across the whole 225 ms of its window -> the
+non-figure onsets are well jittered, not grid-locked.
+
+Default run: one 5 s SFG presentation.  (Increase T for the learning
+experiment -- 5 s is too short to drive much E->E plasticity.)
 
 Model: model0 with the AB/BA-task config, N overridden to 18.
 """
@@ -61,10 +65,12 @@ from model0 import A1Config, simulate
 N_CHANNELS    = 18
 FIG_IDX       = np.array([1, 4, 7, 10, 13, 16])   # 6 figure channels, spaced
 PULSE_DUR     = 25e-3
-SLOT_DUR      = 75e-3
-K_PER_SLOT    = 8                                  # active channels per slot
-COHERENT_EVERY = 4                                 # figure coheres every 4 slots
-T_DEFAULT     = 60.0
+SLOT_DUR      = 250e-3                             # count window (250 ms);
+                                                   # random pulses are jittered
+                                                   # across its full 225 ms
+K_PER_SLOT    = 12                                 # active channels per window
+COHERENT_EVERY = 3                                 # figure coheres every 3 windows
+T_DEFAULT     = 5.0                                # one SFG presentation
 
 
 # =====================================================================
@@ -244,69 +250,44 @@ def _setup_axes(ax, title=None, xlabel=None, ylabel=None):
         ax.spines[sp].set_visible(False)
 
 
-def plot_sfg_stimulus(res: dict, fname: str, t_show: float = 8.0):
-    """Stimulus raster with its two 1-D marginals -- the design check.
+def plot_sfg_marginals(res: dict, fname: str):
+    """Simple two-panel check of the stimulus marginals.
 
-    The freq-marginal (bottom) and time-marginal (right) should both be
-    near-uniform: that is the explicit design goal.
+    Averaging the channels x time stimulus over *time* gives the
+    per-channel activity (left panel); averaging over *channels* gives
+    the per-window activity (right panel).  Both should be ~uniform.
     """
-    cfg = res["cfg"]; dt = cfg.dt
+    cfg = res["cfg"]
     stim = res["stim"]
     fig_idx = res["fig_idx"]
-    n_pulse = res["n_pulse_steps"]
     N = cfg.N
+    fig_set = {int(c) for c in fig_idx}
 
-    time_marg, freq_marg = stim_marginals(stim, res)
-    n_show = int(round(t_show / dt))
-    n_show = min(n_show, stim.shape[1])
+    tm, fm = stim_marginals(stim, res)
 
-    fig = plt.figure(figsize=(13, 8), constrained_layout=True)
-    gs = fig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[4, 1])
-    fig.suptitle(
-        "SFG stimulus — flat marginals, figure channels also carry ground",
-        fontsize=12, fontweight="bold")
+    fig, axes = plt.subplots(1, 2, figsize=(13, 4.2), constrained_layout=True)
+    fig.suptitle("SFG stimulus marginals — both should be ~flat",
+                 fontsize=12, fontweight="bold")
 
-    # ---- raster ----
-    ax_r = fig.add_subplot(gs[0, 0])
-    _draw_raster(ax_r, res, n_show)
-    _setup_axes(ax_r, title=f"Stimulus raster (first {t_show:.0f} s) — "
-                            f"coherent figure pulses green, random pulses blue",
-                ylabel="channel")
+    # time-marginal: per channel
+    ax = axes[0]
+    colors = [COL_FIG if c in fig_set else COL_GND for c in range(N)]
+    ax.bar(range(N), tm, color=colors, edgecolor="none")
+    ax.axhline(tm.mean(), color="0.3", ls="--", lw=1.0)
+    ax.set_ylim(0, tm.max() * 1.35)
+    _setup_axes(ax, title=f"Time-marginal — per channel "
+                          f"(CV {tm.std()/tm.mean()*100:.1f}%)   "
+                          f"figure green, ground blue",
+                xlabel="channel", ylabel="mean activity")
 
-    # ---- time-marginal (right): per-channel mean activity ----
-    ax_t = fig.add_subplot(gs[0, 1], sharey=ax_r)
-    colors = [COL_FIG if ch in fig_idx else COL_GND for ch in range(N)]
-    ax_t.barh(range(N), time_marg, height=0.72, color=colors, edgecolor="none")
-    ax_t.axvline(time_marg.mean(), color="0.3", lw=1.0, ls="--")
-    ax_t.set_ylim(N - 0.5, -0.5)
-    _setup_axes(ax_t, title="time-marginal\n(mean over time)",
-                xlabel="mean activity")
-    ax_t.tick_params(labelleft=False)
-
-    # ---- freq-marginal (bottom): per-slot mean activity ----
-    ax_f = fig.add_subplot(gs[1, 0], sharex=ax_r)
-    slot_dur = res["slot_dur"]
-    n_slot_show = int(round(t_show / slot_dur))
-    slot_t = (np.arange(n_slot_show) + 0.5) * slot_dur
-    ax_f.bar(slot_t, freq_marg[:n_slot_show], width=slot_dur * 0.9,
-             color="0.55", edgecolor="none")
-    ax_f.axhline(freq_marg.mean(), color="0.2", lw=1.0, ls="--")
-    ax_f.set_xlim(0, n_show * dt)
-    _setup_axes(ax_f, title="freq-marginal (mean over channels, per slot)",
-                xlabel="time (s)", ylabel="mean activity")
-
-    # ---- corner: stats ----
-    ax_s = fig.add_subplot(gs[1, 1]); ax_s.axis("off")
-    tm, fm = time_marg, freq_marg
-    txt = (f"time-marginal\n"
-           f"  mean {tm.mean():.4f}\n"
-           f"  spread {tm.min():.4f}–{tm.max():.4f}\n"
-           f"  CV {tm.std()/tm.mean()*100:.1f}%\n\n"
-           f"freq-marginal\n"
-           f"  mean {fm.mean():.4f}\n"
-           f"  spread {fm.min():.4f}–{fm.max():.4f}\n"
-           f"  CV {fm.std()/fm.mean()*100:.2f}%")
-    ax_s.text(0.0, 0.95, txt, fontsize=8.5, va="top", family="monospace")
+    # freq-marginal: per window
+    ax = axes[1]
+    ax.bar(range(len(fm)), fm, color="0.55", edgecolor="none")
+    ax.axhline(fm.mean(), color="0.3", ls="--", lw=1.0)
+    ax.set_ylim(0, fm.max() * 1.35)
+    _setup_axes(ax, title=f"Freq-marginal — per 250 ms window "
+                          f"(CV {fm.std()/fm.mean()*100:.2f}%)",
+                xlabel="window", ylabel="mean activity")
 
     fig.savefig(fname, dpi=150)
     print(f"  saved {fname}")
@@ -416,9 +397,9 @@ def main():
           f"spread={fm.min():.4f}-{fm.max():.4f}  CV={fm.std()/fm.mean()*100:.2f}%")
 
     print("[ Plotting ]")
-    plot_sfg_stimulus(res, "sfg_m0_stimulus.png")
-    plot_sfg_run(res,      "sfg_m0_run.png")
-    plot_sfg_W(res,        "sfg_m0_W.png")
+    plot_sfg_marginals(res, "sfg_m0_marginals.png")
+    plot_sfg_run(res,       "sfg_m0_run.png")
+    plot_sfg_W(res,         "sfg_m0_W.png")
 
     W = res["W_final"]
     W_FF, W_GG, W_FG = compute_W_groups(W, fig_idx, res["gnd_idx"])
