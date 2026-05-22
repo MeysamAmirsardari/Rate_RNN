@@ -164,36 +164,52 @@ def _shade_tones(ax, n_seq, dt, intra_gap=30e-3, tone_dur=50e-3):
 #  Plotting
 # =====================================================================
 def plot_run(res: dict, suptitle: str, fname: str):
+    """Four-row summary of one oddball run.
+
+    Rows
+    ----
+    1. Stimulus raster (first 6 trials).
+    2. Activity   — trial-averaged firing rate E of channels A and B.
+    3. Input      — trial-averaged synaptic input onto E: recurrent
+                    excitation W @ E (which carries the learned A->B /
+                    B->A prediction, plotted positive) and inhibition
+                    M_IE @ I (plotted negative).
+    4. Recurrent E->E weight evolution and final W.
+
+    Rows 2-3 are averaged separately over the post-learning (2nd-half)
+    AB trials (green / solid) and BA trials (purple / dashed) — i.e. the
+    stimulus-locked trial average, aligned to sequence onset.
+    """
     cfg = res["cfg"]; dt = cfg.dt
-    E, I = res["E"], res["I"]
+    E   = res["E"]
+    inh = res["inh_to_E"]
     ch_A, ch_B = res["ch_A"], res["ch_B"]
     n_seq = res["n_seq"]
     stim = res["stim"]
 
     n_show = 6
     show_T = n_show * n_seq
-    t_show = res["t"][:show_T]
 
-    ev = evoked_per_trial(E, res["seq_starts"], n_seq)
-    evI = evoked_per_trial(I, res["seq_starts"], n_seq)
+    ev_E   = evoked_per_trial(E,            res["seq_starts"], n_seq)
+    ev_rec = evoked_per_trial(res["rec_E"], res["seq_starts"], n_seq)
+    ev_inh = evoked_per_trial(inh,          res["seq_starts"], n_seq)
     codes = res["codes"]
     is_AB = codes == "AB"
     half = len(codes) // 2
-    AB_late = ev[half:][is_AB[half:]]
-    BA_late = ev[half:][~is_AB[half:]]
-    AB_late_I = evI[half:][is_AB[half:]]
-    BA_late_I = evI[half:][~is_AB[half:]]
+    AB_E,   BA_E   = ev_E[half:][is_AB[half:]],   ev_E[half:][~is_AB[half:]]
+    AB_rec, BA_rec = ev_rec[half:][is_AB[half:]], ev_rec[half:][~is_AB[half:]]
+    AB_inh, BA_inh = ev_inh[half:][is_AB[half:]], ev_inh[half:][~is_AB[half:]]
     ts = np.arange(n_seq) * dt
 
     Wt = np.stack(res["W_traj"]) if len(res["W_traj"]) else np.empty((0, cfg.N, cfg.N))
     W_t = res["W_t"]
     W_f = res["W_final"]
 
-    fig = plt.figure(figsize=(13, 12), constrained_layout=True)
-    gs = fig.add_gridspec(5, 2)
+    fig = plt.figure(figsize=(13, 11), constrained_layout=True)
+    gs = fig.add_gridspec(4, 2)
     fig.suptitle(suptitle, fontsize=13, fontweight="bold")
 
-    # (1) stimulus raster
+    # ---- row 1: stimulus raster ----
     ax = fig.add_subplot(gs[0, :])
     ax.imshow(stim[:, :show_T], aspect="auto", origin="lower",
               cmap="Oranges", interpolation="nearest",
@@ -207,68 +223,49 @@ def plot_run(res: dict, suptitle: str, fname: str):
     _setup_axes(ax, title=f"Stimulus raster (first {n_show} trials)",
                 xlabel="time (s)", ylabel="channel")
 
-    # (2) E rate on A and B
-    ax = fig.add_subplot(gs[1, 0])
-    ax.plot(t_show, E[ch_A, :show_T], color="tab:red",  lw=1.2, label=f"E[A={ch_A}]")
-    ax.plot(t_show, E[ch_B, :show_T], color="tab:blue", lw=1.2, label=f"E[B={ch_B}]")
-    ax.legend(fontsize=8, frameon=False)
-    _setup_axes(ax, title="Excitatory rate at A and B",
-                xlabel="time (s)", ylabel="rate")
+    # ---- row 2: ACTIVITY — firing rate E, channel A and channel B ----
+    for col, ch, name in [(0, ch_A, "A"), (1, ch_B, "B")]:
+        ax = fig.add_subplot(gs[1, col])
+        _shade_tones(ax, n_seq, dt)
+        if len(AB_E):
+            ax.plot(ts, AB_E.mean(0)[ch], color="tab:green", lw=2,
+                    label=f"AB trial (n={len(AB_E)})")
+        if len(BA_E):
+            ax.plot(ts, BA_E.mean(0)[ch], color="tab:purple", ls="--", lw=2,
+                    label=f"BA trial (n={len(BA_E)})")
+        ax.legend(fontsize=8, frameon=False)
+        _setup_axes(ax, title=f"Activity — firing rate, channel {name}",
+                    xlabel="time in sequence (s)", ylabel=f"$E_{name}$")
 
-    # (3) I rate on A and B  (replaces "global I")
-    ax = fig.add_subplot(gs[1, 1])
-    ax.plot(t_show, I[ch_A, :show_T], color="tab:red",  lw=1.2, label=f"I[A={ch_A}]")
-    ax.plot(t_show, I[ch_B, :show_T], color="tab:blue", lw=1.2, label=f"I[B={ch_B}]")
-    ax.legend(fontsize=8, frameon=False)
-    _setup_axes(ax, title="Tone-selective inhibitory rates",
-                xlabel="time (s)", ylabel="I rate")
+    # ---- row 3: INPUT — recurrent excitation & inhibition onto E ----
+    # Recurrent excitation W @ E carries the learned A->B / B->A
+    # prediction (plotted positive); inhibition M_IE @ I is what can
+    # mask it (plotted negative).  This row shows the A->B input is
+    # *present* even when it produces no firing (see channel B, BA
+    # trial, 2nd tone: green dashed > 0 but the red dashed swamps it).
+    for col, ch, name in [(0, ch_A, "A"), (1, ch_B, "B")]:
+        ax = fig.add_subplot(gs[2, col])
+        _shade_tones(ax, n_seq, dt)
+        ax.axhline(0, color="0.6", lw=0.7)
+        if len(AB_rec):
+            ax.plot(ts, AB_rec.mean(0)[ch], color="tab:green", lw=2,
+                    label="recurrent exc. — AB")
+        if len(BA_rec):
+            ax.plot(ts, BA_rec.mean(0)[ch], color="tab:green", lw=2, ls="--",
+                    label="recurrent exc. — BA")
+        if len(AB_inh):
+            ax.plot(ts, -AB_inh.mean(0)[ch], color="tab:red", lw=2,
+                    label="− inhibition — AB")
+        if len(BA_inh):
+            ax.plot(ts, -BA_inh.mean(0)[ch], color="tab:red", lw=2, ls="--",
+                    label="− inhibition — BA")
+        ax.legend(fontsize=7.5, frameon=False)
+        _setup_axes(ax,
+                    title=f"Input — recurrent excitation & inhibition, channel {name}",
+                    xlabel="time in sequence (s)", ylabel="current")
 
-    # (4) evoked E on A
-    ax = fig.add_subplot(gs[2, 0])
-    _shade_tones(ax, n_seq, dt)
-    if len(AB_late):
-        ax.plot(ts, AB_late.mean(0)[ch_A], color="tab:green",  lw=2, label=f"AB (n={len(AB_late)})")
-    if len(BA_late):
-        ax.plot(ts, BA_late.mean(0)[ch_A], color="tab:purple", ls="--", lw=2, label=f"BA (n={len(BA_late)})")
-    _setup_axes(ax, title=f"Evoked E on channel A (ch {ch_A})",
-                xlabel="time in sequence (s)", ylabel="rate")
-    ax.legend(fontsize=8, frameon=False)
-
-    # (5) evoked E on B
-    ax = fig.add_subplot(gs[2, 1])
-    _shade_tones(ax, n_seq, dt)
-    if len(AB_late):
-        ax.plot(ts, AB_late.mean(0)[ch_B], color="tab:green",  lw=2, label=f"AB (n={len(AB_late)})")
-    if len(BA_late):
-        ax.plot(ts, BA_late.mean(0)[ch_B], color="tab:purple", ls="--", lw=2, label=f"BA (n={len(BA_late)})")
-    _setup_axes(ax, title=f"Evoked E on channel B (ch {ch_B})",
-                xlabel="time in sequence (s)", ylabel="rate")
-    ax.legend(fontsize=8, frameon=False)
-
-    # (6) evoked I on B — diagnostic of the new mechanism
+    # ---- row 4: weight evolution + final W ----
     ax = fig.add_subplot(gs[3, 0])
-    _shade_tones(ax, n_seq, dt)
-    if len(AB_late_I):
-        ax.plot(ts, AB_late_I.mean(0)[ch_B], color="tab:green",  lw=2, label=f"AB (n={len(AB_late_I)})")
-    if len(BA_late_I):
-        ax.plot(ts, BA_late_I.mean(0)[ch_B], color="tab:purple", ls="--", lw=2, label=f"BA (n={len(BA_late_I)})")
-    _setup_axes(ax, title=f"Evoked I on channel B (predicted-tone interneuron)",
-                xlabel="time in sequence (s)", ylabel="I rate")
-    ax.legend(fontsize=8, frameon=False)
-
-    # (7) evoked I on A
-    ax = fig.add_subplot(gs[3, 1])
-    _shade_tones(ax, n_seq, dt)
-    if len(AB_late_I):
-        ax.plot(ts, AB_late_I.mean(0)[ch_A], color="tab:green",  lw=2, label=f"AB (n={len(AB_late_I)})")
-    if len(BA_late_I):
-        ax.plot(ts, BA_late_I.mean(0)[ch_A], color="tab:purple", ls="--", lw=2, label=f"BA (n={len(BA_late_I)})")
-    _setup_axes(ax, title=f"Evoked I on channel A",
-                xlabel="time in sequence (s)", ylabel="I rate")
-    ax.legend(fontsize=8, frameon=False)
-
-    # (8) W trajectory
-    ax = fig.add_subplot(gs[4, 0])
     if Wt.size:
         ax.plot(W_t, Wt[:, ch_B, ch_A], color="tab:green", lw=2,
                 label=r"$W_{B\leftarrow A}$  (AB direction)")
@@ -282,8 +279,7 @@ def plot_run(res: dict, suptitle: str, fname: str):
     _setup_axes(ax, title="Recurrent E->E weight evolution",
                 xlabel="time (s)", ylabel="W")
 
-    # (9) learned W matrix
-    ax = fig.add_subplot(gs[4, 1])
+    ax = fig.add_subplot(gs[3, 1])
     im = ax.imshow(W_f, cmap="viridis", aspect="equal", origin="upper",
                    vmin=0, vmax=max(W_f.max(), 1e-3))
     ax.set_xticks([ch_A, ch_B]); ax.set_xticklabels(["A", "B"])
