@@ -4,39 +4,41 @@ sfg.py
 
 Stochastic Figure-Ground (SFG) paradigm for model0.
 
-Mirrors sfg_rnn2.m but adapted to model0's tone-selective-inhibition
-architecture and to two extra design constraints the user requested:
+Adapted from sfg_rnn2.m, with a rebuilt stimulus that satisfies three
+design goals:
 
-  (1) Every channel has (almost) the same total pulse count, so no
-      channel dominates the all-channel mean by raw activity.
-  (2) Every time-window has (almost) the same number of channels
-      simultaneously active, so the stimulus doesn't have bursty
-      time-periods and silent ones.
+  (1) Flat time-marginal.   Averaging the channels x time stimulus over
+      *time* gives a near-uniform per-channel total -- no channel is
+      over-stimulated.
 
-Stimulus design
----------------
-- N = 12 channels.  fig_idx = [1, 4, 7, 10] (4 figure, 8 ground).
-- T discretised into windows of length ``window`` (default 250 ms).
-- Coherent windows (every other): the 4 figure channels fire together,
-  + 2 random ground channels (constant density).
-- Non-coherent windows: 6 random ground channels.
-- Pulse onsets are aligned to the window start (25 ms pulse).
+  (2) Flat freq-marginal.   Averaging over *channels* gives a uniform
+      per-slot count -- no bursty time windows and no silent ones.
 
-With ``coherent_every = 2`` and 8 ground channels: every channel
-receives exactly the same number of pulses over the whole run.
+  (3) Figure channels also carry ground.   The figure channels are not
+      "figure only": besides their coherent pulses they also receive
+      random pulses, exactly like the ground channels.  They present
+      both figure and ground.
 
-Expected learning outcome
--------------------------
-- Figure-figure E->E weights grow to ~W_max  (24 same-time co-firings
-  per pair when T=12s, n_windows=48).
-- Ground-ground weights stay smaller (random combinatorics of pair
-  co-firings — same expected count, but spread across all pair indices
-  rather than concentrated on the figure indices).
-- Figure-ground weights stay near zero (figure and ground never fire
-  in the same window).
+Stimulus construction
+---------------------
+Time is a grid of ``slot_dur`` slots; each slot carries up to one pulse
+per channel (``pulse_dur`` wide).  Every slot has exactly ``K`` active
+channels -> the freq-marginal is flat by construction.
 
-Model & config: ``model0`` with the AB/BA-task config unchanged, except
-``N`` is overridden to 12.
+  - Coherent slots (every ``coherent_every``-th slot): the N_fig figure
+    channels fire together (aligned to the slot onset -> a coherent
+    figure).  The remaining K - N_fig slots are random ground.
+  - Non-coherent slots: K channels drawn at random from *all* N channels
+    (figure channels included -> figure presents ground).
+
+Per-channel totals are equalised by quota-weighted sampling: a channel
+that still owes pulses is proportionally more likely to be picked, so
+every channel ends near the same total -> the time-marginal is flat.
+
+Non-coherent pulses are jittered within their slot; coherent figure
+pulses stay aligned so the figure remains temporally coherent.
+
+Model: model0 with the AB/BA-task config, N overridden to 18.
 """
 
 from __future__ import annotations
@@ -48,175 +50,193 @@ from typing import Optional, Tuple
 import matplotlib.pyplot as plt
 import numpy as np
 
-# Allow `python tasks/sfg_model0/sfg.py` from the project root.
+# Run-as-script support.
 _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
 from model0 import A1Config, simulate
 
+# ---- paradigm defaults --------------------------------------------------------
+N_CHANNELS    = 18
+FIG_IDX       = np.array([1, 4, 7, 10, 13, 16])   # 6 figure channels, spaced
+PULSE_DUR     = 25e-3
+SLOT_DUR      = 75e-3
+K_PER_SLOT    = 8                                  # active channels per slot
+COHERENT_EVERY = 4                                 # figure coheres every 4 slots
+T_DEFAULT     = 60.0
+
 
 # =====================================================================
-# Stimulus
+#  Stimulus
 # =====================================================================
 def build_sfg_stim(
     cfg: A1Config,
     fig_idx: np.ndarray,
-    T: float = 20.0,
-    pulse_dur: float = 25e-3,
-    window: float = 250e-3,
-    K: int = 6,
-    coherent_every: int = 2,
+    T: float = T_DEFAULT,
+    pulse_dur: float = PULSE_DUR,
+    slot_dur: float = SLOT_DUR,
+    K: int = K_PER_SLOT,
+    coherent_every: int = COHERENT_EVERY,
     tone_amp: float = 1.0,
     seed: int = 7,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Build the SFG stimulus matrix with equal per-channel pulse count
-    and constant per-window channel density.
+) -> Tuple[np.ndarray, dict]:
+    """Build the balanced SFG stimulus.
 
-    Parameters
-    ----------
-    cfg : A1Config
-    fig_idx : (n_fig,) ndarray
-        Indices of the figure channels (must be in [0, cfg.N)).
-    T : float
-        Total simulation time (s).
-    pulse_dur : float
-        Width of each pulse (s).
-    window : float
-        Window length (s).  Pulse onset is aligned to window start.
-    K : int
-        Number of channels active per window (constant density).
-    coherent_every : int
-        Make every k-th window a "coherent" window (figure fires together).
-    tone_amp : float
-        Pulse amplitude.
-    seed : int
-        RNG seed for the ground-channel sub-selection.
-
-    Returns
-    -------
-    stim : (N, T_steps) ndarray
-    coherent_windows : (n_coh,) ndarray of window indices
-    gnd_idx : (n_gnd,) ndarray of ground channel indices
+    Returns (stim (N, T_steps), meta).
     """
     rng = np.random.default_rng(seed)
+    N, dt = cfg.N, cfg.dt
 
-    N = cfg.N
-    dt = cfg.dt
-
-    n_pulse_steps  = int(round(pulse_dur / dt))
-    n_window_steps = int(round(window / dt))
-    n_windows      = int(round(T / window))
-    T_steps        = n_windows * n_window_steps
+    n_pulse  = int(round(pulse_dur / dt))
+    n_slot   = int(round(slot_dur / dt))
+    n_slots  = int(round(T / slot_dur))
+    T_steps  = n_slots * n_slot
 
     fig_idx = np.asarray(fig_idx, dtype=int)
     gnd_idx = np.setdiff1d(np.arange(N), fig_idx)
-    n_fig = len(fig_idx)
-    n_gnd = len(gnd_idx)
+    n_fig   = len(fig_idx)
+    is_fig  = np.zeros(N, dtype=bool); is_fig[fig_idx] = True
 
-    K_gnd_coh = K - n_fig          # ground slots in a coherent window
-    K_gnd_nc  = K                   # ground slots in a non-coherent window
+    if K < n_fig or K > N:
+        raise ValueError(f"K={K} incompatible with N={N}, n_fig={n_fig}")
 
-    if K_gnd_coh < 0 or K_gnd_coh > n_gnd or K_gnd_nc > n_gnd:
-        raise ValueError(
-            f"density K={K} incompatible with n_fig={n_fig}, n_gnd={n_gnd}"
-        )
+    coherent = np.zeros(n_slots, dtype=bool)
+    coherent[::coherent_every] = True
 
+    # ---- choose which channels are active in each slot ----
+    active = np.zeros((N, n_slots), dtype=bool)
+    P = int(round(K * n_slots / N))          # target pulses per channel
+    quota = np.full(N, P, dtype=float)
+
+    # coherent figure pulses (figure channels fire together)
+    for s in np.flatnonzero(coherent):
+        active[fig_idx, s] = True
+        quota[fig_idx] -= 1.0
+
+    # fill every slot up to K, picking channels weighted by remaining quota
+    for s in rng.permutation(n_slots):
+        need = K - int(active[:, s].sum())
+        if need <= 0:
+            continue
+        elig = np.flatnonzero(~active[:, s])
+        w = np.clip(quota[elig], 0.0, None) + 1e-3   # small floor for robustness
+        w = w / w.sum()
+        pick = rng.choice(elig, size=min(need, len(elig)), replace=False, p=w)
+        active[pick, s] = True
+        quota[pick] -= 1.0
+
+    # ---- render to (N, T) with within-slot jitter ----
     stim = np.zeros((N, T_steps))
-    coherent_windows = []
+    max_jit = n_slot - n_pulse
+    for s in range(n_slots):
+        base = s * n_slot
+        for ch in np.flatnonzero(active[:, s]):
+            # coherent figure pulses stay aligned; everything else jitters
+            aligned = coherent[s] and is_fig[ch]
+            off = 0 if aligned else int(rng.integers(0, max_jit + 1))
+            stim[ch, base + off : base + off + n_pulse] = tone_amp
 
-    for w in range(n_windows):
-        t0 = w * n_window_steps
-        t1 = t0 + n_pulse_steps
-        is_coherent = (w % coherent_every == 0)
-
-        if is_coherent:
-            ground_chosen = rng.choice(gnd_idx, K_gnd_coh, replace=False)
-            active = np.concatenate([fig_idx, ground_chosen])
-            coherent_windows.append(w)
-        else:
-            active = rng.choice(gnd_idx, K_gnd_nc, replace=False)
-
-        stim[active, t0:t1] = tone_amp
-
-    return stim, np.array(coherent_windows, dtype=int), gnd_idx
+    meta = dict(
+        coherent=coherent, active=active, gnd_idx=gnd_idx,
+        n_slots=n_slots, n_slot_steps=n_slot, n_pulse_steps=n_pulse,
+        slot_dur=slot_dur, pulse_dur=pulse_dur, P_target=P,
+        n_coherent=int(coherent.sum()),
+    )
+    return stim, meta
 
 
-def stim_summary(stim: np.ndarray, cfg: A1Config, window: float = 250e-3):
-    """Verification helper: report per-channel pulses and per-window density."""
-    N = stim.shape[0]
-    dt = cfg.dt
-    n_window_steps = int(round(window / dt))
-    n_windows = stim.shape[1] // n_window_steps
+def stim_marginals(stim: np.ndarray, meta: dict) -> Tuple[np.ndarray, np.ndarray]:
+    """Return (time_marginal, freq_marginal).
 
-    pulse_starts = np.diff(np.concatenate([np.zeros((N, 1)),
-                                           (stim > 0).astype(int)], axis=1),
-                           axis=1) == 1
-    per_channel = pulse_starts.sum(axis=1)
-    per_window  = np.zeros(n_windows, dtype=int)
-    for w in range(n_windows):
-        t0 = w * n_window_steps
-        t1 = t0 + n_window_steps
-        per_window[w] = ((stim[:, t0:t1] > 0).any(axis=1)).sum()
-    return per_channel, per_window
+    time_marginal : (N,)  per-channel mean activity (averaged over time)
+    freq_marginal : (n_slots,)  per-slot mean activity (averaged over
+                                channels, then over the slot)
+    """
+    time_marginal = stim.mean(axis=1)
+    n_slots, n_slot = meta["n_slots"], meta["n_slot_steps"]
+    sl = stim[:, : n_slots * n_slot].reshape(stim.shape[0], n_slots, n_slot)
+    freq_marginal = sl.mean(axis=(0, 2))     # mean over channels and within-slot
+    return time_marginal, freq_marginal
 
 
 # =====================================================================
-# Experiment
+#  Experiment
 # =====================================================================
 def run_sfg(
     cfg: Optional[A1Config] = None,
     fig_idx: Optional[np.ndarray] = None,
-    T: float = 20.0,
+    T: float = T_DEFAULT,
     seed: int = 7,
 ) -> dict:
-    """Build SFG stimulus and run model0 on it."""
+    """Build the balanced SFG stimulus and run model0 on it."""
     if cfg is None:
-        cfg = A1Config(N=12)
+        cfg = A1Config(N=N_CHANNELS)
     if fig_idx is None:
-        fig_idx = np.array([1, 4, 7, 10])
+        fig_idx = FIG_IDX
 
-    stim, coh_windows, gnd_idx = build_sfg_stim(cfg, fig_idx, T=T, seed=seed)
-    snap_every = max(1, int(round(0.05 / cfg.dt)))   # 50 ms
+    stim, meta = build_sfg_stim(cfg, fig_idx, T=T, seed=seed)
+    snap_every = max(1, int(round(0.05 / cfg.dt)))
     out = simulate(stim, cfg=cfg, record_W_every=snap_every, seed=seed)
-    out.update(
-        stim=stim,
-        fig_idx=fig_idx,
-        gnd_idx=gnd_idx,
-        coh_windows=coh_windows,
-        T=T,
-    )
+    out.update(stim=stim, fig_idx=np.asarray(fig_idx), T=T, **meta)
     return out
 
 
 def compute_W_groups(W: np.ndarray, fig_idx: np.ndarray, gnd_idx: np.ndarray):
-    """Mean off-diagonal weights for figure-figure, ground-ground, and
-    figure<->ground sub-blocks of W."""
+    """Mean off-diagonal figure-figure, ground-ground, figure<->ground W."""
     N = W.shape[0]
     eye = np.eye(N, dtype=bool)
-
     mask_FF = np.zeros((N, N), dtype=bool); mask_FF[np.ix_(fig_idx, fig_idx)] = True
     mask_GG = np.zeros((N, N), dtype=bool); mask_GG[np.ix_(gnd_idx, gnd_idx)] = True
     mask_FG = np.zeros((N, N), dtype=bool)
     mask_FG[np.ix_(fig_idx, gnd_idx)] = True
     mask_FG[np.ix_(gnd_idx, fig_idx)] = True
-
     mask_FF &= ~eye
     mask_GG &= ~eye
-
     return W[mask_FF].mean(), W[mask_GG].mean(), W[mask_FG].mean()
 
 
 # =====================================================================
-# Plotting
+#  Plotting
 # =====================================================================
 COL_FIG = "#4ECB59"
 COL_GND = "#4D75BF"
-COL_FG  = "#737373"
+
+
+def _draw_raster(ax, res, n_show):
+    """Draw the stimulus raster up to sample ``n_show``.
+
+    Pulses are coloured by *type*, not by channel: a pulse is green only
+    if it is a coherent figure pulse (a figure channel in a coherent
+    slot); every other pulse -- including the random pulses that figure
+    channels also carry -- is blue.
+    """
+    cfg = res["cfg"]; dt = cfg.dt
+    stim = res["stim"]
+    fig_set = {int(c) for c in res["fig_idx"]}
+    coherent = res["coherent"]
+    n_slot_steps = res["n_slot_steps"]
+    n_pulse = res["n_pulse_steps"]
+
+    for ch in res["fig_idx"]:
+        ax.axhspan(ch - 0.5, ch + 0.5, color=COL_FIG, alpha=0.10, zorder=0)
+    for ch in range(cfg.N):
+        starts = np.where(np.diff(np.concatenate(
+            [[0], (stim[ch, :n_show] > 0).astype(int)])) == 1)[0]
+        for s in starts:
+            slot = s // n_slot_steps
+            is_coh_fig = (ch in fig_set and slot < len(coherent)
+                          and coherent[slot])
+            color = COL_FIG if is_coh_fig else COL_GND
+            ax.barh(ch, n_pulse * dt, left=s * dt, height=0.72,
+                    color=color, edgecolor="none")
+    ax.set_xlim(0, n_show * dt)
+    ax.set_ylim(cfg.N - 0.5, -0.5)
+    ax.set_yticks(range(cfg.N))
 
 
 def _setup_axes(ax, title=None, xlabel=None, ylabel=None):
-    if title: ax.set_title(title, fontsize=11, fontweight="bold")
+    if title:  ax.set_title(title, fontsize=11, fontweight="bold")
     if xlabel: ax.set_xlabel(xlabel, fontsize=10)
     if ylabel: ax.set_ylabel(ylabel, fontsize=10)
     ax.tick_params(labelsize=9)
@@ -224,18 +244,84 @@ def _setup_axes(ax, title=None, xlabel=None, ylabel=None):
         ax.spines[sp].set_visible(False)
 
 
-def plot_sfg_run(res: dict, fname: str):
-    """Main figure: raster, mean activity, W_FF/W_GG/W_FG evolution."""
+def plot_sfg_stimulus(res: dict, fname: str, t_show: float = 8.0):
+    """Stimulus raster with its two 1-D marginals -- the design check.
+
+    The freq-marginal (bottom) and time-marginal (right) should both be
+    near-uniform: that is the explicit design goal.
+    """
     cfg = res["cfg"]; dt = cfg.dt
     stim = res["stim"]
-    E    = res["E"]
     fig_idx = res["fig_idx"]
-    gnd_idx = res["gnd_idx"]
-    t    = res["t"]
-    pulse_dur = 25e-3
-    n_pulse_steps = int(round(pulse_dur / dt))
+    n_pulse = res["n_pulse_steps"]
+    N = cfg.N
 
-    Wt  = np.stack(res["W_traj"]) if len(res["W_traj"]) else None
+    time_marg, freq_marg = stim_marginals(stim, res)
+    n_show = int(round(t_show / dt))
+    n_show = min(n_show, stim.shape[1])
+
+    fig = plt.figure(figsize=(13, 8), constrained_layout=True)
+    gs = fig.add_gridspec(2, 2, width_ratios=[4, 1], height_ratios=[4, 1])
+    fig.suptitle(
+        "SFG stimulus — flat marginals, figure channels also carry ground",
+        fontsize=12, fontweight="bold")
+
+    # ---- raster ----
+    ax_r = fig.add_subplot(gs[0, 0])
+    _draw_raster(ax_r, res, n_show)
+    _setup_axes(ax_r, title=f"Stimulus raster (first {t_show:.0f} s) — "
+                            f"coherent figure pulses green, random pulses blue",
+                ylabel="channel")
+
+    # ---- time-marginal (right): per-channel mean activity ----
+    ax_t = fig.add_subplot(gs[0, 1], sharey=ax_r)
+    colors = [COL_FIG if ch in fig_idx else COL_GND for ch in range(N)]
+    ax_t.barh(range(N), time_marg, height=0.72, color=colors, edgecolor="none")
+    ax_t.axvline(time_marg.mean(), color="0.3", lw=1.0, ls="--")
+    ax_t.set_ylim(N - 0.5, -0.5)
+    _setup_axes(ax_t, title="time-marginal\n(mean over time)",
+                xlabel="mean activity")
+    ax_t.tick_params(labelleft=False)
+
+    # ---- freq-marginal (bottom): per-slot mean activity ----
+    ax_f = fig.add_subplot(gs[1, 0], sharex=ax_r)
+    slot_dur = res["slot_dur"]
+    n_slot_show = int(round(t_show / slot_dur))
+    slot_t = (np.arange(n_slot_show) + 0.5) * slot_dur
+    ax_f.bar(slot_t, freq_marg[:n_slot_show], width=slot_dur * 0.9,
+             color="0.55", edgecolor="none")
+    ax_f.axhline(freq_marg.mean(), color="0.2", lw=1.0, ls="--")
+    ax_f.set_xlim(0, n_show * dt)
+    _setup_axes(ax_f, title="freq-marginal (mean over channels, per slot)",
+                xlabel="time (s)", ylabel="mean activity")
+
+    # ---- corner: stats ----
+    ax_s = fig.add_subplot(gs[1, 1]); ax_s.axis("off")
+    tm, fm = time_marg, freq_marg
+    txt = (f"time-marginal\n"
+           f"  mean {tm.mean():.4f}\n"
+           f"  spread {tm.min():.4f}–{tm.max():.4f}\n"
+           f"  CV {tm.std()/tm.mean()*100:.1f}%\n\n"
+           f"freq-marginal\n"
+           f"  mean {fm.mean():.4f}\n"
+           f"  spread {fm.min():.4f}–{fm.max():.4f}\n"
+           f"  CV {fm.std()/fm.mean()*100:.2f}%")
+    ax_s.text(0.0, 0.95, txt, fontsize=8.5, va="top", family="monospace")
+
+    fig.savefig(fname, dpi=150)
+    print(f"  saved {fname}")
+    return fig
+
+
+def plot_sfg_run(res: dict, fname: str):
+    """Raster, mean activity (figure vs ground), W_FF/W_GG/W_FG evolution."""
+    cfg = res["cfg"]; dt = cfg.dt
+    stim = res["stim"]; E = res["E"]
+    fig_idx, gnd_idx = res["fig_idx"], res["gnd_idx"]
+    t = res["t"]
+    n_pulse = res["n_pulse_steps"]
+
+    Wt = np.stack(res["W_traj"]) if len(res["W_traj"]) else None
     W_t = res["W_t"]
 
     fig = plt.figure(figsize=(13, 10), constrained_layout=True)
@@ -243,46 +329,34 @@ def plot_sfg_run(res: dict, fname: str):
     fig.suptitle("Stochastic Figure-Ground (model0)",
                  fontsize=13, fontweight="bold")
 
-    # ---- (1) stimulus raster ----
+    # raster
     ax = fig.add_subplot(gs[0])
-    for ch in fig_idx:
-        ax.axhspan(ch - 0.5, ch + 0.5,
-                   color=COL_FIG, alpha=0.10, zorder=0)
-    for ch in range(cfg.N):
-        starts = np.where(np.diff(np.concatenate([[0],
-                                  (stim[ch] > 0).astype(int)])) == 1)[0]
-        color = COL_FIG if ch in fig_idx else COL_GND
-        for s in starts:
-            ax.barh(ch, n_pulse_steps * dt, left=s * dt,
-                    height=0.7, color=color, edgecolor="none")
-    ax.set_ylim(cfg.N - 0.5, -0.5)
-    ax.set_yticks(range(cfg.N))
-    _setup_axes(ax,
-                title="Stimulus raster — figure channels (green) co-fire every 2nd window",
+    n_show = min(int(round(8.0 / dt)), stim.shape[1])
+    _draw_raster(ax, res, n_show)
+    _setup_axes(ax, title="Stimulus raster (first 8 s) — coherent figure "
+                          "pulses green, random pulses blue",
                 xlabel="time (s)", ylabel="channel")
 
-    # ---- (2) mean E rate, figure vs ground ----
+    # mean activity
     ax = fig.add_subplot(gs[1])
-    ax.plot(t, E[gnd_idx].mean(0), color=COL_GND, lw=1.6, label="Ground")
-    ax.plot(t, E[fig_idx].mean(0), color=COL_FIG, lw=1.6, label="Figure")
+    ax.plot(t, E[gnd_idx].mean(0), color=COL_GND, lw=1.5, label="Ground")
+    ax.plot(t, E[fig_idx].mean(0), color=COL_FIG, lw=1.5, label="Figure")
     ax.legend(fontsize=9, frameon=False, loc="upper right")
     _setup_axes(ax, title="Mean excitatory rate (group average)",
                 xlabel="time (s)", ylabel=r"$\langle E\rangle$")
 
-    # ---- (3) W evolution ----
+    # W evolution
     ax = fig.add_subplot(gs[2])
-    if Wt is not None and len(W_t) > 0:
-        W_FF = np.zeros(len(W_t))
-        W_GG = np.zeros(len(W_t))
-        W_FG = np.zeros(len(W_t))
+    if Wt is not None and len(W_t):
+        FF = np.empty(len(W_t)); GG = np.empty(len(W_t)); FG = np.empty(len(W_t))
         for k in range(len(W_t)):
-            W_FF[k], W_GG[k], W_FG[k] = compute_W_groups(Wt[k], fig_idx, gnd_idx)
-        ax.plot(W_t, W_FF, color=COL_FIG, lw=2.4, label=r"$W_{F\to F}$")
-        ax.plot(W_t, W_GG, color=COL_GND, lw=2.4, label=r"$W_{G\to G}$")
-        ax.plot(W_t, W_FG, color=COL_FG,  lw=1.6, ls="--",
+            FF[k], GG[k], FG[k] = compute_W_groups(Wt[k], fig_idx, gnd_idx)
+        ax.plot(W_t, FF, color=COL_FIG, lw=2.4, label=r"$W_{F\to F}$")
+        ax.plot(W_t, GG, color=COL_GND, lw=2.4, label=r"$W_{G\to G}$")
+        ax.plot(W_t, FG, color="0.45", lw=1.6, ls="--",
                 label=r"$W_{F\leftrightarrow G}$")
         ax.legend(fontsize=9, frameon=False, loc="upper left")
-    _setup_axes(ax, title=r"Recurrent E$\to$E weight evolution (mean per group)",
+    _setup_axes(ax, title=r"Recurrent E$\to$E weight evolution (group mean)",
                 xlabel="time (s)", ylabel="mean W")
 
     fig.savefig(fname, dpi=150)
@@ -291,42 +365,31 @@ def plot_sfg_run(res: dict, fname: str):
 
 
 def plot_sfg_W(res: dict, fname: str):
-    """Final W matrix, two views (original + reordered)."""
-    fig_idx = res["fig_idx"]
-    gnd_idx = res["gnd_idx"]
+    """Final W matrix, original and figure-block-reordered views."""
+    fig_idx, gnd_idx = res["fig_idx"], res["gnd_idx"]
     W = res["W_final"]
     N = W.shape[0]
+    Wmax = max(W.max(), 1e-3)
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 6), constrained_layout=True)
 
-    Wmax = max(W.max(), 1e-3)
-
     perm = np.concatenate([fig_idx, gnd_idx])
-    W_perm = W[np.ix_(perm, perm)]
-    im = axes[0].imshow(W_perm, cmap="viridis", origin="upper",
+    im = axes[0].imshow(W[np.ix_(perm, perm)], cmap="viridis", origin="upper",
                         vmin=0, vmax=Wmax)
-    axes[0].add_patch(plt.Rectangle((-0.5, -0.5),
-                                    len(fig_idx), len(fig_idx),
+    axes[0].add_patch(plt.Rectangle((-0.5, -0.5), len(fig_idx), len(fig_idx),
                                     fill=False, edgecolor=COL_FIG, lw=3))
-    axes[0].set_xticks(range(N)); axes[0].set_xticklabels(perm)
-    axes[0].set_yticks(range(N)); axes[0].set_yticklabels(perm)
+    axes[0].set_xticks(range(N)); axes[0].set_xticklabels(perm, fontsize=7)
+    axes[0].set_yticks(range(N)); axes[0].set_yticklabels(perm, fontsize=7)
     axes[0].set_xlabel("pre"); axes[0].set_ylabel("post")
     axes[0].set_title("Reordered — figure block top-left",
                       fontsize=11, fontweight="bold")
     fig.colorbar(im, ax=axes[0], fraction=0.046, pad=0.04)
 
-    im = axes[1].imshow(W, cmap="viridis", origin="upper",
-                        vmin=0, vmax=Wmax)
-    for i in fig_idx:
-        for j in fig_idx:
-            if i != j:
-                axes[1].add_patch(plt.Rectangle((j - 0.5, i - 0.5),
-                                                1, 1, fill=False,
-                                                edgecolor=COL_FIG, lw=1.8))
+    im = axes[1].imshow(W, cmap="viridis", origin="upper", vmin=0, vmax=Wmax)
     axes[1].set_xticks(range(N)); axes[1].set_yticks(range(N))
+    axes[1].tick_params(labelsize=7)
     axes[1].set_xlabel("pre"); axes[1].set_ylabel("post")
-    axes[1].set_title("Original channel order",
-                      fontsize=11, fontweight="bold")
+    axes[1].set_title("Original channel order", fontsize=11, fontweight="bold")
     fig.colorbar(im, ax=axes[1], fraction=0.046, pad=0.04)
 
     fig.savefig(fname, dpi=150)
@@ -334,68 +397,28 @@ def plot_sfg_W(res: dict, fname: str):
     return fig
 
 
-def plot_sfg_currents(res: dict, fname: str):
-    """Synaptic currents: feed-forward + recurrent excitation vs inhibition,
-    averaged over figure and ground channels."""
-    cfg = res["cfg"]
-    t = res["t"]
-    fig_idx = res["fig_idx"]
-    gnd_idx = res["gnd_idx"]
-    tm_in   = res["tm_in"]
-    rec_E   = res["rec_E"]
-    inh_to_E = res["inh_to_E"]
-
-    Exc = tm_in + rec_E
-    Inh = inh_to_E
-    Net = Exc - Inh
-
-    fig, axes = plt.subplots(3, 1, figsize=(13, 9), constrained_layout=True)
-
-    axes[0].plot(t, Inh[gnd_idx].mean(0), color=COL_GND, lw=1.8, label="Ground")
-    axes[0].plot(t, Inh[fig_idx].mean(0), color=COL_FIG, lw=1.8, label="Figure")
-    axes[0].legend(fontsize=9, frameon=False, loc="upper right")
-    _setup_axes(axes[0], title="Inhibitory current onto E (per-channel)",
-                xlabel="time (s)", ylabel="I current")
-
-    axes[1].plot(t, Exc[gnd_idx].mean(0), color=COL_GND, lw=1.8, label="Ground")
-    axes[1].plot(t, Exc[fig_idx].mean(0), color=COL_FIG, lw=1.8, label="Figure")
-    axes[1].legend(fontsize=9, frameon=False, loc="upper right")
-    _setup_axes(axes[1], title=r"Excitatory current  (TC + W$\cdot$E)",
-                xlabel="time (s)", ylabel="E current")
-
-    axes[2].plot(t, Net[gnd_idx].mean(0), color=COL_GND, lw=1.8, label="Ground")
-    axes[2].plot(t, Net[fig_idx].mean(0), color=COL_FIG, lw=1.8, label="Figure")
-    axes[2].axhline(0, color="0.4", lw=0.6)
-    axes[2].legend(fontsize=9, frameon=False, loc="upper right")
-    _setup_axes(axes[2], title="Net drive (excitation − inhibition)",
-                xlabel="time (s)", ylabel="net")
-
-    fig.savefig(fname, dpi=150)
-    print(f"  saved {fname}")
-    return fig
-
-
 # =====================================================================
-# Main
+#  Main
 # =====================================================================
 def main():
-    cfg = A1Config(N=12)
-    fig_idx = np.array([1, 4, 7, 10])
+    cfg = A1Config(N=N_CHANNELS)
+    fig_idx = FIG_IDX
 
-    print("[ Running SFG on model0, T=60s ]")
-    res = run_sfg(cfg=cfg, fig_idx=fig_idx, T=60.0, seed=7)
+    print(f"[ Running SFG on model0 — N={N_CHANNELS}, "
+          f"{len(fig_idx)} figure channels, T={T_DEFAULT:.0f}s ]")
+    res = run_sfg(cfg=cfg, fig_idx=fig_idx, T=T_DEFAULT, seed=7)
 
-    # stimulus diagnostics — verify the design constraints
-    per_ch, per_win = stim_summary(res["stim"], cfg)
-    print(f"  per-channel pulses: min={per_ch.min()}, max={per_ch.max()}, "
-          f"mean={per_ch.mean():.1f}")
-    print(f"  per-window channels: min={per_win.min()}, max={per_win.max()}, "
-          f"mean={per_win.mean():.1f}")
+    # ---- stimulus diagnostics ----
+    tm, fm = stim_marginals(res["stim"], res)
+    print(f"  time-marginal (per channel):  mean={tm.mean():.4f}  "
+          f"spread={tm.min():.4f}-{tm.max():.4f}  CV={tm.std()/tm.mean()*100:.1f}%")
+    print(f"  freq-marginal (per slot):     mean={fm.mean():.4f}  "
+          f"spread={fm.min():.4f}-{fm.max():.4f}  CV={fm.std()/fm.mean()*100:.2f}%")
 
     print("[ Plotting ]")
+    plot_sfg_stimulus(res, "sfg_m0_stimulus.png")
     plot_sfg_run(res,      "sfg_m0_run.png")
     plot_sfg_W(res,        "sfg_m0_W.png")
-    plot_sfg_currents(res, "sfg_m0_currents.png")
 
     W = res["W_final"]
     W_FF, W_GG, W_FG = compute_W_groups(W, fig_idx, res["gnd_idx"])
@@ -405,6 +428,7 @@ def main():
     print(f"  mean W_F<->G     = {W_FG:.4f}")
     print(f"  ratio W_FF / W_GG = {W_FF/(W_GG+1e-9):.2f}x")
     print(f"  ratio W_FF / W_FG = {W_FF/(W_FG+1e-9):.2f}x")
+    print("Done.")
 
 
 if __name__ == "__main__":
