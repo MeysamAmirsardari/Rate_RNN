@@ -274,47 +274,95 @@ def plot_session_overview(res: dict, fname: str, n_trials_show: int = 8):
 
 
 def plot_repetition_suppression(res: dict, fname: str):
-    """Deviant-tone E response: rep 1 (after a block change) vs rep N."""
+    """Repetition suppression across the full 3-tone sequence.
+
+    Row 1: per-word population response (sum of E across the channels the
+           word actually drives), rep 1 vs rep N.
+    Row 2: surprisal trace, defined as rep_1 - rep_N (the part of the
+           novel response that fades with repetition).  This is the
+           model-side analogue of the rep-1-vs-rep-15 decoding signal
+           seen in ECoG of the local-global / roving task.
+    """
     a1_cfg = res["cfg"]
     cfg: RovingConfig = res["roving_cfg"]
     dt = a1_cfg.dt
 
-    epochs = epoch_E(res)          # (n_seq, N, epoch_len)
+    epochs = epoch_E(res)                 # (n_seq, N, epoch_len)
     rep = res["seq_rep"]; word = res["seq_word"]
     n_reps = cfg.n_reps_per_block
 
-    dev_idx = cfg.deviant_tone_index
-    dev_t = cfg.tone_onsets_in_epoch[dev_idx]
-    win_lo = max(0, dev_t - 50)
-    win_hi = dev_t + cfg.tone_dur + 100
-    ts = (np.arange(win_lo, win_hi) - dev_t) * dt   # 0 at deviant onset
+    # Full epoch window: pre + 3 tones + post.
+    epoch_len = cfg.epoch_steps
+    ts = (np.arange(epoch_len) - cfg.pre_stim_ms) * dt   # 0 at seq onset
+    tone_onsets_s = [(o - cfg.pre_stim_ms) * dt
+                     for o in cfg.tone_onsets_in_epoch]
+    tone_dur_s = cfg.tone_dur * dt
 
     words = list(cfg.words)
-    fig, axes = plt.subplots(1, len(words), figsize=(4.2 * len(words), 4.2),
-                             constrained_layout=True, sharey=True)
+    fig, axes = plt.subplots(2, len(words),
+                             figsize=(4.6 * len(words), 6.4),
+                             constrained_layout=True, sharex=True)
     if len(words) == 1:
-        axes = [axes]
-    fig.suptitle(f"Repetition suppression at the deviant tone "
-                 f"(position {cfg.deviant_tone_pos})",
-                 fontsize=12, fontweight="bold")
+        axes = axes[:, None]
+    fig.suptitle(f"Roving oddball: repetition suppression and surprisal "
+                 f"(deviant pos {cfg.deviant_tone_pos})",
+                 fontsize=13, fontweight="bold")
 
-    for ax, w in zip(axes, words):
-        dev_char = w[dev_idx]
-        dev_ch = cfg.tone_channel(dev_char)
+    dev_idx = cfg.deviant_tone_index
+
+    for col, w in enumerate(words):
+        # Channels this word drives, in tone order (e.g. ABC -> [A,B,C]).
+        chans = [cfg.tone_channel(c) for c in w]
         sel_first = (word == w) & (rep == 0)
-        sel_last = (word == w) & (rep == n_reps - 1)
-        first = epochs[sel_first][:, dev_ch, win_lo:win_hi]
-        last = epochs[sel_last][:, dev_ch, win_lo:win_hi]
-        ax.axvspan(0, cfg.tone_dur * dt, color=_word_colour(w), alpha=0.10)
-        if len(first):
-            ax.plot(ts, first.mean(0), color=_word_colour(w), lw=2.0,
-                    label=f"rep 1 (n={len(first)})")
-        if len(last):
-            ax.plot(ts, last.mean(0), color=_word_colour(w), lw=2.0, ls="--",
-                    label=f"rep {n_reps} (n={len(last)})")
-        ax.legend(fontsize=8, frameon=False)
-        _setup_axes(ax, title=f"word {w}, channel {dev_char}",
-                    xlabel="time from deviant onset (s)", ylabel="E rate")
+        sel_last  = (word == w) & (rep == n_reps - 1)
+
+        # Population response = sum across the tone-channels for this word.
+        first_pop = epochs[sel_first][:, chans, :].sum(axis=1)   # (n_first, T)
+        last_pop  = epochs[sel_last ][:, chans, :].sum(axis=1)
+
+        first_mean = first_pop.mean(0) if len(first_pop) else np.zeros(epoch_len)
+        last_mean  = last_pop.mean(0)  if len(last_pop)  else np.zeros(epoch_len)
+        first_sem  = (first_pop.std(0) / max(1.0, np.sqrt(len(first_pop)))
+                      if len(first_pop) else np.zeros(epoch_len))
+        last_sem   = (last_pop.std(0)  / max(1.0, np.sqrt(len(last_pop)))
+                      if len(last_pop)  else np.zeros(epoch_len))
+
+        col_word = _word_colour(w)
+        ax_top = axes[0, col]
+        ax_bot = axes[1, col]
+
+        # ----- tone-window shading -----
+        for ti, t0_s in enumerate(tone_onsets_s):
+            tone_char = w[ti]
+            shade = _word_colour(w) if ti == dev_idx else "0.5"
+            alpha = 0.13 if ti == dev_idx else 0.06
+            for ax in (ax_top, ax_bot):
+                ax.axvspan(t0_s, t0_s + tone_dur_s, color=shade, alpha=alpha)
+            ax_top.text(t0_s + tone_dur_s / 2, 0, tone_char,
+                        ha="center", va="bottom", fontsize=9, color="0.3")
+
+        # ----- Row 1: rep 1 vs rep N -----
+        ax_top.fill_between(ts, first_mean - first_sem, first_mean + first_sem,
+                            color=col_word, alpha=0.18, lw=0)
+        ax_top.fill_between(ts, last_mean  - last_sem,  last_mean  + last_sem,
+                            color=col_word, alpha=0.10, lw=0)
+        ax_top.plot(ts, first_mean, color=col_word, lw=2.0,
+                    label=f"rep 1 (n={len(first_pop)})")
+        ax_top.plot(ts, last_mean,  color=col_word, lw=2.0, ls="--",
+                    label=f"rep {n_reps} (n={len(last_pop)})")
+        ax_top.legend(fontsize=8, frameon=False, loc="upper right")
+        _setup_axes(ax_top,
+                    title=f"word {w}  (population E across {''.join(w)})",
+                    ylabel="summed E rate")
+
+        # ----- Row 2: surprisal = rep 1 - rep N -----
+        surp = first_mean - last_mean
+        ax_bot.axhline(0, color="0.7", lw=0.8)
+        ax_bot.plot(ts, surp, color=col_word, lw=2.0)
+        ax_bot.fill_between(ts, 0, surp, color=col_word, alpha=0.15)
+        _setup_axes(ax_bot, title="surprisal  (rep 1 - rep N)",
+                    xlabel="time from sequence onset (s)",
+                    ylabel=r"$\Delta$E rate")
 
     fig.savefig(fname, dpi=150)
     print(f"  saved {fname}")
@@ -366,7 +414,11 @@ def plot_block_dynamics(res: dict, fname: str):
 # =====================================================================
 def main():
     cfg = get_preset("default")
-    a1_cfg = A1Config(N=len(cfg.tones))
+    # Enable multi-timescale TC depression: its slow 5 s component
+    # survives the 1 s ITI and integrates across the 15 reps within a
+    # block.  Single-timescale TM (tau_D ~ 300 ms) recovers fully in
+    # the ITI and gives zero rep-1-vs-rep-15 separation.
+    a1_cfg = A1Config(N=len(cfg.tones), multiscale_std=True)
 
     print(f"[ Roving oddball -- preset '{cfg.name}' ]")
     print(f"  words = {cfg.words}, deviant_tone_pos = {cfg.deviant_tone_pos}")
