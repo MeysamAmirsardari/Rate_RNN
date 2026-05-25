@@ -382,10 +382,10 @@ def plot_comparisons(comparisons: List[dict], cfg: A1Config, fname: str):
         ax.fill_between(ts, 0, diff, where=(diff < 0), color="tab:blue",
                         alpha=0.25)
         ax.set_xlim(0, xmax)
-        ax.annotate(f"tone-5 effect = {eff:+.3f}",
-                    xy=(0.97, 0.92), xycoords="axes fraction",
-                    ha="right", fontsize=9.5, fontweight="bold",
-                    color="tab:purple")
+        # ax.annotate(f"tone-5 effect = {eff:+.3f}",
+        #             xy=(0.97, 0.92), xycoords="axes fraction",
+        #             ha="right", fontsize=9.5, fontweight="bold",
+        #             color="tab:purple")
         _setup_axes(ax, title=f"{cmp['expr']}",
                     xlabel="time in sequence (s)",
                     ylabel=r"$\Delta\langle E\rangle$")
