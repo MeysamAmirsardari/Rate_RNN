@@ -129,12 +129,28 @@ def simulate(
         dtr = (-tr + E) / cfg.tau_trace
 
         # --- Hebbian rate-STDP on W (row = post, col = pre) ---
+        # Two rules selectable via cfg.bounded_plasticity (see config.py
+        # for the docstring on the equilibrium math):
+        #   False (default) -- additive LTP + additive LTD + slow decay,
+        #                      clipped at W_max (legacy behaviour).
+        #   True            -- multiplicative bounded LTP +
+        #                      directional anti-Hebbian LTD +
+        #                      heterosynaptic LTD +
+        #                      slow decay.  Each weight settles at its
+        #                      own LTP/LTD-balance fraction of W_max,
+        #                      approached exponentially.
         if learn:
             En  = E  / cfg.W_norm
             trn = tr / cfg.W_norm
-            dW  = (cfg.eta_LTP * np.outer(En,  trn)
-                   - cfg.eta_LTD * np.outer(trn, En)
-                   - cfg.W_decay * W)
+            if cfg.bounded_plasticity:
+                dW = (cfg.eta_LTP * (cfg.W_max - W) * np.outer(En, trn)
+                      - cfg.eta_LTD * np.outer(trn, En)
+                      - cfg.eta_het * W * En[None, :]
+                      - cfg.W_decay * W)
+            else:
+                dW = (cfg.eta_LTP * np.outer(En,  trn)
+                      - cfg.eta_LTD * np.outer(trn, En)
+                      - cfg.W_decay * W)
 
         # --- Euler step ---
         E  += dt * dE
