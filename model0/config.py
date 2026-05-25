@@ -130,5 +130,27 @@ class A1Config:
 
     plastic_self: bool = True
 
+    # ---- Bounded plasticity (soft bound + heterosynaptic LTD) ----
+    # When False (default), the trace-based STDP rule is additive:
+    #   dW = eta_LTP * outer(E, tr) - eta_LTD * outer(tr, E) - W_decay * W
+    # clipped at W_max.  Every plastic weight that receives sustained
+    # net LTP saturates flat at W_max -- the cap visibly "sets" the
+    # connection map rather than the dynamics doing so.
+    #
+    # When True, the rule is multiplicative with heterosynaptic LTD:
+    #   dW = eta_LTP * (W_max - W) * outer(E, tr)    bounded Hebbian
+    #       - eta_LTD * outer(tr, E)                  directional anti-Hebbian
+    #       - eta_het * W * E[None, :]                heterosynaptic (pre-gated)
+    #       - W_decay * W                             slow forgetting
+    # Each weight settles at its own fraction of W_max set by the local
+    # LTP / LTD / heterosynaptic balance; the approach is exponential
+    # rather than linear; W_max becomes the biophysical asymptote
+    # (finite AMPA-receptor capacity per synapse), not a clip the
+    # dynamics hit.  References: van Rossum, Bi & Turrigiano (2000);
+    # Gutig & Sompolinsky (2003); heterosynaptic LTD: Lynch et al.
+    # (1977); Chistiakova & Volgushev (2009, review).
+    bounded_plasticity: bool = False
+    eta_het:            float = 0.01    # heterosynaptic LTD rate
+
     # ---- initial conditions ----
     W_init_scale: float = 0.0
