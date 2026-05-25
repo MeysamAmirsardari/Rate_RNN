@@ -152,5 +152,32 @@ class A1Config:
     bounded_plasticity: bool = False
     eta_het:            float = 0.01    # heterosynaptic LTD rate
 
+    # ---- Multi-timescale short-term depression (optional) ----
+    # When False (default), the TC synapse uses the single-timescale
+    # Tsodyks-Markram resource x (recovery tau_D ~ 300 ms).  When True,
+    # the TC depression is replaced by the three-timescale form from
+    # STD_Playground_Emergent.m: three depression variables D_k per
+    # channel, each driven by the tone input s and decaying at
+    # tau_std[k].  The available resource is
+    #     x_avail = max(0, 1 - sum_k w_std[k] * D_k)
+    # and the TC drive becomes  A_TC * U * x_avail * s  (u-dynamics
+    # are disabled; U serves as the baseline release probability).
+    #
+    # The slow (~5 s) component survives the 1 s inter-trial gap of the
+    # roving paradigm and integrates across the 15 reps within a block,
+    # producing the rep-1-vs-rep-15 repetition-suppression signature
+    # observed in ECoG recordings of the local-global / roving task.
+    # Reference: Mill, Coath, Wennekers, Denham (2011) PLoS Comp. Biol.
+    # use exactly this multi-timescale STD as the SSA substrate.
+    multiscale_std: bool = False
+    tau_std: tuple = (0.100, 0.800, 5.000)   # s -- three timescales
+    w_std:   tuple = (0.10, 0.35, 0.55)      # relative weight per scale
+    # U_std calibrated for a binary-stimulus driver (model0 drives the
+    # D_k by the tone input s rather than by the cell rate as in
+    # STD_Playground_Emergent.m -- the binary drive is sharper, so U_std
+    # is scaled down ~5x from the MATLAB default of 0.005 to land at
+    # a realistic ~30% rep-1-vs-rep-15 suppression on the roving task).
+    U_std:   float = 0.001                    # per-step utilisation
+
     # ---- initial conditions ----
     W_init_scale: float = 0.0
