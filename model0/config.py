@@ -181,3 +181,52 @@ class A1Config:
 
     # ---- initial conditions ----
     W_init_scale: float = 0.0
+
+
+# =====================================================================
+#  Inhibition-structure presets
+# =====================================================================
+# The four inhibition weights (w_EI_self, w_EI_lat, w_IE_self, w_IE_lat)
+# control how tone-selective the E<->I loop is.  Two named presets:
+#
+#   selective_inh()  -- the load-bearing default: strong self, weak
+#                       lateral on both sides.  Each I_i inherits the
+#                       tone preference of its E_i, so predictive
+#                       pre-activation of E_B (via W[B<-A]) drives I_B
+#                       specifically, which then suppresses E_B when
+#                       tone B itself arrives.
+#
+#   uniform_inh()    -- control: all four weights collapsed so every
+#                       (i,j) entry of M_EI and M_IE is equal.  Matched
+#                       on row-sum to selective_inh (at N=5) so the
+#                       *total* inhibitory drive per cell is preserved
+#                       and only the SELECTIVITY differs.  Predictive
+#                       suppression should collapse.
+#
+# Row-sum match (N=5):
+#   E->I:  selective row sum = 0.6 + 4*0.05 = 0.80;  uniform = 0.80/5 = 0.16
+#   I->E:  selective row sum = 4.0 + 4*0.20 = 4.80;  uniform = 4.80/5 = 0.96
+def selective_inh(**kw) -> "A1Config":
+    """Tone-selective inhibition (default A1Config values)."""
+    return A1Config(**kw)
+
+
+def uniform_inh(**kw) -> "A1Config":
+    """Uniform inhibition: every E->I and I->E weight identical.
+
+    M_EI and M_IE collapse to rank-1 (all-ones) matrices -- each I_i
+    pools E indiscriminately and inhibits E_i indiscriminately.  Total
+    inhibitory drive per cell is preserved (row-sum matched to the
+    selective preset at N=5)."""
+    defaults = dict(
+        w_EI_self=0.16, w_EI_lat=0.16,
+        w_IE_self=0.96, w_IE_lat=0.96,
+    )
+    defaults.update(kw)
+    return A1Config(**defaults)
+
+
+INH_PRESETS = {
+    "selective": selective_inh,
+    "uniform":   uniform_inh,
+}
