@@ -58,7 +58,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, simulate
+from model0 import A1Config, INH_PRESETS, simulate
 
 # ---- fixed paradigm constants -------------------------------------------------
 N_PER_SEQ = 5                  # tones per sequence
@@ -347,8 +347,12 @@ def plot_comparisons(comparisons: List[dict], cfg: A1Config, fname: str):
 
     fig = plt.figure(figsize=(13, 13), constrained_layout=True)
     gs = fig.add_gridspec(4, 2)
+    inh_tag = ("uniform inhibition"
+               if (cfg.w_EI_self == cfg.w_EI_lat
+                   and cfg.w_IE_self == cfg.w_IE_lat)
+               else "selective inhibition")
     fig.suptitle(
-        "Local-Global paradigm — model0\n"
+        f"Local-Global paradigm — model0 [{inh_tag}]\n"
         "purple band = 5th (critical) tone; effect measured over its "
         "150 ms response window",
         fontsize=12, fontweight="bold")
@@ -382,10 +386,10 @@ def plot_comparisons(comparisons: List[dict], cfg: A1Config, fname: str):
         ax.fill_between(ts, 0, diff, where=(diff < 0), color="tab:blue",
                         alpha=0.25)
         ax.set_xlim(0, xmax)
-        # ax.annotate(f"tone-5 effect = {eff:+.3f}",
-        #             xy=(0.97, 0.92), xycoords="axes fraction",
-        #             ha="right", fontsize=9.5, fontweight="bold",
-        #             color="tab:purple")
+        ax.annotate(f"tone-5 effect = {eff:+.3f}",
+                    xy=(0.97, 0.92), xycoords="axes fraction",
+                    ha="right", fontsize=9.5, fontweight="bold",
+                    color="tab:purple")
         _setup_axes(ax, title=f"{cmp['expr']}",
                     xlabel="time in sequence (s)",
                     ylabel=r"$\Delta\langle E\rangle$")
@@ -415,49 +419,65 @@ def plot_comparisons(comparisons: List[dict], cfg: A1Config, fname: str):
 #  Main
 # =====================================================================
 def main():
-    cfg = A1Config()
     ch_x, ch_y = 0, 1
 
-    print("[ Run 1 ]  standard = xxxxy (80%) / deviant = xxxxx (20%)")
-    res1 = run_experiment("xxxxy", seed=1, cfg=cfg, ch_x=ch_x, ch_y=ch_y)
-    print("[ Run 2 ]  standard = xxxxx (80%) / deviant = xxxxy (20%)")
-    res2 = run_experiment("xxxxx", seed=2, cfg=cfg, ch_x=ch_x, ch_y=ch_y)
+    # Loop over both inhibition-structure presets so the user can see
+    # the contribution of tone-selectivity to the local-global effects.
+    # Filenames carry the preset tag; the two runs do not overwrite.
+    for inh_name, inh_factory in INH_PRESETS.items():
+        cfg = inh_factory()
 
-    # ---- the four condition means (2nd half of test phase) ----
-    STD_xxxxy, n_sy = condition_mean(res1, "xxxxy")   # standard in Run 1
-    DEV_xxxxx, n_dx = condition_mean(res1, "xxxxx")   # deviant  in Run 1
-    STD_xxxxx, n_sx = condition_mean(res2, "xxxxx")   # standard in Run 2
-    DEV_xxxxy, n_dy = condition_mean(res2, "xxxxy")   # deviant  in Run 2
+        print(f"\n========================================================")
+        print(f"[ Local-global -- inhibition preset '{inh_name}' ]")
+        print(f"  w_EI = (self {cfg.w_EI_self}, lat {cfg.w_EI_lat}); "
+              f"w_IE = (self {cfg.w_IE_self}, lat {cfg.w_IE_lat})")
 
-    print("[ Plotting ]")
-    plot_run(res1, "Run 1 — standard xxxxy / deviant xxxxx — local-global",
-             "lg_m0_run1.png")
-    plot_run(res2, "Run 2 — standard xxxxx / deviant xxxxy — local-global",
-             "lg_m0_run2.png")
+        print("[ Run 1 ]  standard = xxxxy (80%) / deviant = xxxxx (20%)")
+        res1 = run_experiment("xxxxy", seed=1, cfg=cfg, ch_x=ch_x, ch_y=ch_y)
+        print("[ Run 2 ]  standard = xxxxx (80%) / deviant = xxxxy (20%)")
+        res2 = run_experiment("xxxxx", seed=2, cfg=cfg, ch_x=ch_x, ch_y=ch_y)
 
-    comparisons = [
-        dict(name="Local effect",
-             expr="STD xxxxy  −  STD xxxxx",
-             A=STD_xxxxy, lblA=f"STD xxxxy (n={n_sy})",
-             B=STD_xxxxx, lblB=f"STD xxxxx (n={n_sx})"),
-        dict(name="Global effect (xxxxx)",
-             expr="DEV xxxxx  −  STD xxxxx",
-             A=DEV_xxxxx, lblA=f"DEV xxxxx (n={n_dx})",
-             B=STD_xxxxx, lblB=f"STD xxxxx (n={n_sx})"),
-        dict(name="Global effect (xxxxy)",
-             expr="DEV xxxxy  −  STD xxxxy",
-             A=DEV_xxxxy, lblA=f"DEV xxxxy (n={n_dy})",
-             B=STD_xxxxy, lblB=f"STD xxxxy (n={n_sy})"),
-    ]
-    plot_comparisons(comparisons, cfg, "lg_m0_comparisons.png")
+        # ---- the four condition means (2nd half of test phase) ----
+        STD_xxxxy, n_sy = condition_mean(res1, "xxxxy")   # standard in Run 1
+        DEV_xxxxx, n_dx = condition_mean(res1, "xxxxx")   # deviant  in Run 1
+        STD_xxxxx, n_sx = condition_mean(res2, "xxxxx")   # standard in Run 2
+        DEV_xxxxy, n_dy = condition_mean(res2, "xxxxy")   # deviant  in Run 2
 
-    # ---- text summary ----
-    t5 = _tone5_window(cfg.dt)
-    print("\nTone-5 effect sizes (mean Δ⟨E⟩ over the 5th-tone window):")
-    for cmp in comparisons:
-        d = (cmp["A"].mean(0) - cmp["B"].mean(0))[t5].mean()
-        print(f"  {cmp['name']:<24s} ({cmp['expr']}):  {d:+.3f}")
-    print("Done.")
+        print("[ Plotting ]")
+        plot_run(res1,
+                 f"Run 1 — standard xxxxy / deviant xxxxx — local-global "
+                 f"[{inh_name} inhibition]",
+                 f"lg_m0_run1_{inh_name}.png")
+        plot_run(res2,
+                 f"Run 2 — standard xxxxx / deviant xxxxy — local-global "
+                 f"[{inh_name} inhibition]",
+                 f"lg_m0_run2_{inh_name}.png")
+
+        comparisons = [
+            dict(name="Local effect",
+                 expr="STD xxxxy  −  STD xxxxx",
+                 A=STD_xxxxy, lblA=f"STD xxxxy (n={n_sy})",
+                 B=STD_xxxxx, lblB=f"STD xxxxx (n={n_sx})"),
+            dict(name="Global effect (xxxxx)",
+                 expr="DEV xxxxx  −  STD xxxxx",
+                 A=DEV_xxxxx, lblA=f"DEV xxxxx (n={n_dx})",
+                 B=STD_xxxxx, lblB=f"STD xxxxx (n={n_sx})"),
+            dict(name="Global effect (xxxxy)",
+                 expr="DEV xxxxy  −  STD xxxxy",
+                 A=DEV_xxxxy, lblA=f"DEV xxxxy (n={n_dy})",
+                 B=STD_xxxxy, lblB=f"STD xxxxy (n={n_sy})"),
+        ]
+        plot_comparisons(comparisons, cfg,
+                         f"lg_m0_comparisons_{inh_name}.png")
+
+        # ---- text summary ----
+        t5 = _tone5_window(cfg.dt)
+        print(f"\nTone-5 effect sizes [{inh_name}] "
+              f"(mean Δ⟨E⟩ over the 5th-tone window):")
+        for cmp in comparisons:
+            d = (cmp["A"].mean(0) - cmp["B"].mean(0))[t5].mean()
+            print(f"  {cmp['name']:<24s} ({cmp['expr']}):  {d:+.3f}")
+    print("\nDone.")
 
 
 if __name__ == "__main__":
