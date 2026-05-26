@@ -40,7 +40,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, simulate
+from model0 import A1Config, INH_PRESETS, simulate
 
 if __package__:
     from .config import RovingConfig, get_preset
@@ -204,6 +204,14 @@ def _word_colour(word: str) -> str:
     return _WORD_COLOURS.get(word, "0.4")
 
 
+def _inh_tag(a1_cfg: A1Config) -> str:
+    """Human-readable inhibition-structure tag inferred from a1_cfg."""
+    if (a1_cfg.w_EI_self == a1_cfg.w_EI_lat
+            and a1_cfg.w_IE_self == a1_cfg.w_IE_lat):
+        return "uniform inhibition"
+    return "selective inhibition"
+
+
 def plot_session_overview(res: dict, fname: str, n_trials_show: int = 8):
     """Stimulus raster + per-channel E rate + recurrent weight evolution."""
     a1_cfg = res["cfg"]
@@ -220,9 +228,10 @@ def plot_session_overview(res: dict, fname: str, n_trials_show: int = 8):
 
     fig = plt.figure(figsize=(13, 10), constrained_layout=True)
     gs = fig.add_gridspec(3, 1)
-    fig.suptitle(f"Roving oddball, model0 ({cfg.n_blocks} blocks x "
-                 f"{cfg.n_reps_per_block} reps = {cfg.n_total_seqs} trials, "
-                 f"deviant pos {cfg.deviant_tone_pos})",
+    fig.suptitle(f"Roving oddball, model0 [{_inh_tag(a1_cfg)}] "
+                 f"({cfg.n_blocks} blocks x {cfg.n_reps_per_block} reps "
+                 f"= {cfg.n_total_seqs} trials, deviant pos "
+                 f"{cfg.deviant_tone_pos})",
                  fontsize=13, fontweight="bold")
 
     # ----- Row 1: stimulus raster -----
@@ -305,7 +314,8 @@ def plot_repetition_suppression(res: dict, fname: str):
     if len(words) == 1:
         axes = axes[:, None]
     fig.suptitle(f"Roving oddball: repetition suppression and surprisal "
-                 f"(deviant pos {cfg.deviant_tone_pos})",
+                 f"[{_inh_tag(a1_cfg)}, deviant pos "
+                 f"{cfg.deviant_tone_pos}]",
                  fontsize=13, fontweight="bold")
 
     dev_idx = cfg.deviant_tone_index
@@ -383,6 +393,8 @@ def plot_block_dynamics(res: dict, fname: str):
     win = slice(dev_t, dev_t + cfg.tone_dur)
 
     fig, ax = plt.subplots(figsize=(8, 4.5), constrained_layout=True)
+    fig.suptitle(f"[{_inh_tag(a1_cfg)}]",
+                 fontsize=11, fontweight="bold")
     for w in cfg.words:
         dev_char = w[dev_idx]
         dev_ch = cfg.tone_channel(dev_char)
@@ -414,34 +426,40 @@ def plot_block_dynamics(res: dict, fname: str):
 # =====================================================================
 def main():
     cfg = get_preset("default")
-    # Enable multi-timescale TC depression: its slow 5 s component
-    # survives the 1 s ITI and integrates across the 15 reps within a
-    # block.  Single-timescale TM (tau_D ~ 300 ms) recovers fully in
-    # the ITI and gives zero rep-1-vs-rep-15 separation.
-    a1_cfg = A1Config(N=len(cfg.tones), multiscale_std=True)
 
-    print(f"[ Roving oddball -- preset '{cfg.name}' ]")
-    print(f"  words = {cfg.words}, deviant_tone_pos = {cfg.deviant_tone_pos}")
-    print(f"  {cfg.n_blocks} blocks x {cfg.n_reps_per_block} reps "
-          f"= {cfg.n_total_seqs} trials")
-    print(f"  trial period {cfg.trial_period} ms; total sim "
-          f"{cfg.n_total_seqs * cfg.trial_period / 1000:.1f} s")
+    # Run both inhibition-structure presets back to back.  Filenames are
+    # tagged with the preset name so the figures don't overwrite each
+    # other.  Multi-timescale TC depression is enabled in both -- its
+    # 5 s component survives the 1 s ITI and integrates across the 15
+    # reps, which is what makes rep 1 differ from rep 15 at all.
+    for inh_name, inh_factory in INH_PRESETS.items():
+        a1_cfg = inh_factory(N=len(cfg.tones), multiscale_std=True)
 
-    res = run_experiment(cfg=cfg, a1_cfg=a1_cfg)
+        print(f"\n========================================================")
+        print(f"[ Roving oddball -- inhibition preset '{inh_name}' ]")
+        print(f"  words = {cfg.words}, deviant_tone_pos = {cfg.deviant_tone_pos}")
+        print(f"  {cfg.n_blocks} blocks x {cfg.n_reps_per_block} reps "
+              f"= {cfg.n_total_seqs} trials")
+        print(f"  trial period {cfg.trial_period} ms; total sim "
+              f"{cfg.n_total_seqs * cfg.trial_period / 1000:.1f} s")
+        print(f"  w_EI = (self {a1_cfg.w_EI_self}, lat {a1_cfg.w_EI_lat}); "
+              f"w_IE = (self {a1_cfg.w_IE_self}, lat {a1_cfg.w_IE_lat})")
 
-    print("[ Plotting ]")
-    plot_session_overview(res,     "roving_m0_overview.png")
-    plot_repetition_suppression(res, "roving_m0_repsupp.png")
-    plot_block_dynamics(res,        "roving_m0_blockdyn.png")
+        res = run_experiment(cfg=cfg, a1_cfg=a1_cfg)
 
-    W = res["W_final"]
-    print(f"\nFinal weight summary:")
-    post_B = cfg.tone_channel("B"); pre_A = cfg.tone_channel("A")
-    print(f"  W[B<-A] = {W[post_B, pre_A]:.3f}")
-    for var in cfg.variable_tones:
-        post = cfg.tone_channel(var); pre = cfg.tone_channel("B")
-        print(f"  W[{var}<-B] = {W[post, pre]:.3f}")
-    print("Done.")
+        print("[ Plotting ]")
+        plot_session_overview(res,       f"roving_m0_overview_{inh_name}.png")
+        plot_repetition_suppression(res, f"roving_m0_repsupp_{inh_name}.png")
+        plot_block_dynamics(res,         f"roving_m0_blockdyn_{inh_name}.png")
+
+        W = res["W_final"]
+        print(f"  Final weight summary [{inh_name}]:")
+        post_B = cfg.tone_channel("B"); pre_A = cfg.tone_channel("A")
+        print(f"    W[B<-A] = {W[post_B, pre_A]:.3f}")
+        for var in cfg.variable_tones:
+            post = cfg.tone_channel(var); pre = cfg.tone_channel("B")
+            print(f"    W[{var}<-B] = {W[post, pre]:.3f}")
+    print("\nDone.")
 
 
 if __name__ == "__main__":
