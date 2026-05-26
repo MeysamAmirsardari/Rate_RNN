@@ -7,7 +7,7 @@ of E_B during tone A drives I_B, and because tau_I > tau_E, residual I_B
 suppresses the response of E_B when tone B itself arrives.
 """
 
-from .config import A1Config
-from .model import simulate
+from model0.config import A1Config, selective_inh, uniform_inh, INH_PRESETS
+from model0.model import simulate
 
-__all__ = ["A1Config", "simulate"]
+__all__ = ["A1Config", "selective_inh", "uniform_inh", "INH_PRESETS", "simulate"]
