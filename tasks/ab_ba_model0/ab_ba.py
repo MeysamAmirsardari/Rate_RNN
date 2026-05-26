@@ -35,7 +35,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, simulate
+from model0 import A1Config, INH_PRESETS, simulate
 
 
 # =====================================================================
@@ -633,54 +633,67 @@ def plot_recurrent_masking(res: dict, fname: str):
 #  Main
 # =====================================================================
 def main():
-    cfg = A1Config()
+    # Loop over both inhibition-structure presets so the contribution
+    # of tone-selectivity to the AB/BA effects is visible.  Figure
+    # filenames carry the preset tag; the two runs do not overwrite.
+    for inh_name, inh_factory in INH_PRESETS.items():
+        cfg = inh_factory()
 
-    print("[ Run 1 ]  90% AB / 10% BA")
-    res1 = run_experiment(p_AB=0.90, n_trials=400, seed=1, cfg=cfg, ch_A=0, ch_B=1)
-    print("[ Run 2 ]  10% AB / 90% BA")
-    res2 = run_experiment(p_AB=0.10, n_trials=400, seed=2, cfg=cfg, ch_A=0, ch_B=1)
+        print(f"\n========================================================")
+        print(f"[ AB/BA -- inhibition preset '{inh_name}' ]")
+        print(f"  w_EI = (self {cfg.w_EI_self}, lat {cfg.w_EI_lat}); "
+              f"w_IE = (self {cfg.w_IE_self}, lat {cfg.w_IE_lat})")
 
-    print("[ Plotting ]")
-    plot_run(res1, "Run 1 — 90% AB (standard) / 10% BA (deviant) — selective-inhibition model",
-             "m0_ab_ba_run1.png")
-    plot_run(res2, "Run 2 — 10% AB (deviant)  / 90% BA (standard) — selective-inhibition model",
-             "m0_ab_ba_run2.png")
-    plot_surprise(res1, res2, "m0_ab_ba_surprise.png")
-    plot_inhibition_timing(res1, res2, "m0_ab_ba_inhibition.png")
-    plot_recurrent_masking(res1, "m0_ab_ba_recurrent_masking.png")
+        print("[ Run 1 ]  90% AB / 10% BA")
+        res1 = run_experiment(p_AB=0.90, n_trials=400, seed=1, cfg=cfg, ch_A=0, ch_B=1)
+        print("[ Run 2 ]  10% AB / 90% BA")
+        res2 = run_experiment(p_AB=0.10, n_trials=400, seed=2, cfg=cfg, ch_A=0, ch_B=1)
 
-    # ---- text summary ----
-    ch_A, ch_B = res1["ch_A"], res1["ch_B"]
-    def W_pair(W):
-        return W[ch_B, ch_A], W[ch_A, ch_B]
-    wba1, wab1 = W_pair(res1["W_final"])
-    wba2, wab2 = W_pair(res2["W_final"])
+        print("[ Plotting ]")
+        plot_run(res1,
+                 f"Run 1 — 90% AB (standard) / 10% BA (deviant) "
+                 f"[{inh_name} inhibition]",
+                 f"m0_ab_ba_run1_{inh_name}.png")
+        plot_run(res2,
+                 f"Run 2 — 10% AB (deviant) / 90% BA (standard) "
+                 f"[{inh_name} inhibition]",
+                 f"m0_ab_ba_run2_{inh_name}.png")
+        plot_surprise(res1, res2,            f"m0_ab_ba_surprise_{inh_name}.png")
+        plot_inhibition_timing(res1, res2,   f"m0_ab_ba_inhibition_{inh_name}.png")
+        plot_recurrent_masking(res1,         f"m0_ab_ba_recurrent_masking_{inh_name}.png")
 
-    n_tone = int(round(50e-3 / cfg.dt))
-    n_intra = int(round(30e-3 / cfg.dt))
-    win_B = slice(n_tone + n_intra, 2 * n_tone + n_intra)
+        # ---- text summary ----
+        ch_A, ch_B = res1["ch_A"], res1["ch_B"]
+        def W_pair(W):
+            return W[ch_B, ch_A], W[ch_A, ch_B]
+        wba1, wab1 = W_pair(res1["W_final"])
+        wba2, wab2 = W_pair(res2["W_final"])
 
-    def AB_mean_E(res):
-        ev = evoked_per_trial(res["E"], res["seq_starts"], res["n_seq"])
-        half = len(res["codes"]) // 2
-        sel = ev[half:][res["codes"][half:] == "AB"]
-        return sel.mean(0) if len(sel) else None
+        n_tone = int(round(50e-3 / cfg.dt))
+        n_intra = int(round(30e-3 / cfg.dt))
+        win_B = slice(n_tone + n_intra, 2 * n_tone + n_intra)
 
-    abE_STD = AB_mean_E(res1); abE_DEV = AB_mean_E(res2)
-    peak_STD = abE_STD[ch_B, win_B].max(); peak_DEV = abE_DEV[ch_B, win_B].max()
-    mean_STD = abE_STD[ch_B, win_B].mean(); mean_DEV = abE_DEV[ch_B, win_B].mean()
+        def AB_mean_E(res):
+            ev = evoked_per_trial(res["E"], res["seq_starts"], res["n_seq"])
+            half = len(res["codes"]) // 2
+            sel = ev[half:][res["codes"][half:] == "AB"]
+            return sel.mean(0) if len(sel) else None
 
-    print("\nLearned recurrent weights (B<-A , A<-B):")
-    print(f"  Run 1 (90% AB):  W[B<-A] = {wba1:.3f}   W[A<-B] = {wab1:.3f}"
-          f"   asym = {(wba1 - wab1):+.3f}")
-    print(f"  Run 2 (90% BA):  W[B<-A] = {wba2:.3f}   W[A<-B] = {wab2:.3f}"
-          f"   asym = {(wba2 - wab2):+.3f}")
-    print(f"\nTone-B response, channel B:")
-    print(f"  peak  STD={peak_STD:.2f}  DEV={peak_DEV:.2f}  "
-          f"-> suppression of predicted = {(peak_DEV-peak_STD)/peak_DEV*100:+.1f}%")
-    print(f"  mean  STD={mean_STD:.2f}  DEV={mean_DEV:.2f}  "
-          f"-> suppression of predicted = {(mean_DEV-mean_STD)/mean_DEV*100:+.1f}%")
-    print("Done.")
+        abE_STD = AB_mean_E(res1); abE_DEV = AB_mean_E(res2)
+        peak_STD = abE_STD[ch_B, win_B].max(); peak_DEV = abE_DEV[ch_B, win_B].max()
+        mean_STD = abE_STD[ch_B, win_B].mean(); mean_DEV = abE_DEV[ch_B, win_B].mean()
+
+        print(f"\nLearned recurrent weights [{inh_name}] (B<-A , A<-B):")
+        print(f"  Run 1 (90% AB):  W[B<-A] = {wba1:.3f}   W[A<-B] = {wab1:.3f}"
+              f"   asym = {(wba1 - wab1):+.3f}")
+        print(f"  Run 2 (90% BA):  W[B<-A] = {wba2:.3f}   W[A<-B] = {wab2:.3f}"
+              f"   asym = {(wba2 - wab2):+.3f}")
+        print(f"Tone-B response, channel B [{inh_name}]:")
+        print(f"  peak  STD={peak_STD:.2f}  DEV={peak_DEV:.2f}  "
+              f"-> suppression of predicted = {(peak_DEV-peak_STD)/peak_DEV*100:+.1f}%")
+        print(f"  mean  STD={mean_STD:.2f}  DEV={mean_DEV:.2f}  "
+              f"-> suppression of predicted = {(mean_DEV-mean_STD)/mean_DEV*100:+.1f}%")
+    print("\nDone.")
 
 
 if __name__ == "__main__":
