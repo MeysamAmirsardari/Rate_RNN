@@ -109,7 +109,16 @@ class A1Config:
     # for the analytical scaling argument).
     tau_trace:   float = 30e-3
     eta_LTP:     float = 0.8
-    eta_LTD:     float = 0.7
+    # eta_LTD calibrated for the bounded rule.  At the diagonal the LTP
+    # and LTD pre/post factors collapse to the same E*tr, so the net
+    # drive is E*tr*(eta_LTP*(W_max - W) - eta_LTD).  Requiring this to
+    # be positive at W=0 means eta_LTD < eta_LTP * W_max = 0.20; we sit
+    # comfortably below that at 0.10 so self synapses settle at
+    #   W*_self = W_max - eta_LTD/eta_LTP = 0.25 - 0.125 = 0.125
+    # while cross synapses (anti-causal/causal STDP ratio r ~ 0.1)
+    # settle close to W_max -- still set by the LTP/LTD balance, not
+    # by the clip.
+    eta_LTD:     float = 0.10
     W_decay:     float = 5e-4
     # Recurrent unitary strength bounded well below TC strength.  In
     # cortex, intracortical EPSPs are ~25-30% of thalamocortical EPSPs
@@ -118,8 +127,13 @@ class A1Config:
     # pre-activation of E_B during tone A subtle (E_B^pre/E_A < 13%)
     # while preserving the ~5% MMN polarity that's empirically observed
     # in A1 (Ulanovsky+2003; Nieto-Diego & Malmierca 2016).
+    # Single cap shared by self and lateral E->E synapses.  The bounded
+    # rule sets each weight's fixed point internally (W_max - LTD/LTP·r),
+    # so the cap no longer needs to differ between self and cross to
+    # keep self synapses subordinate -- the dynamics do that on their
+    # own.
     W_max:       float = 0.25
-    W_max_self:  float = 0.17
+    W_max_self:  float = 0.25
     # W_norm calibrates the rate units in the Hebbian product
     # (E/W_norm)*(tr/W_norm).  In model0 E peaks at ~13 (vs ~4 in the
     # divisive model/), so the scale factor must rise accordingly.
@@ -149,7 +163,7 @@ class A1Config:
     # dynamics hit.  References: van Rossum, Bi & Turrigiano (2000);
     # Gutig & Sompolinsky (2003); heterosynaptic LTD: Lynch et al.
     # (1977); Chistiakova & Volgushev (2009, review).
-    bounded_plasticity: bool = False
+    bounded_plasticity: bool = True
     eta_het:            float = 0.01    # heterosynaptic LTD rate
 
     # ---- Multi-timescale short-term depression (optional) ----
