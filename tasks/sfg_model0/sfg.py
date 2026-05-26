@@ -58,7 +58,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, simulate
+from model0 import A1Config, INH_PRESETS, simulate
 
 # ---- paradigm defaults --------------------------------------------------------
 N_CHANNELS    = 28
@@ -473,32 +473,41 @@ def plot_sfg_drive(res: dict, fname: str,
 #  Main
 # =====================================================================
 def main():
-    cfg = A1Config(N=N_CHANNELS)
     fig_idx = FIG_IDX
 
-    print(f"[ Running SFG on model0, N={N_CHANNELS}, "
-          f"{len(fig_idx)} figure channels, {N_TRIALS} presentations ]")
-    res = run_sfg(cfg=cfg, fig_idx=fig_idx, n_trials=N_TRIALS, seed=7)
+    # Loop over both inhibition-structure presets.  Filenames carry the
+    # preset tag; the two runs do not overwrite.
+    for inh_name, inh_factory in INH_PRESETS.items():
+        cfg = inh_factory(N=N_CHANNELS)
 
-    tm, fm, _ = stim_marginals(res["stim"][:, : res["T_trial_steps"]], cfg)
-    print(f"  time-marginal CV (one trial):  {tm.std()/tm.mean()*100:.1f}%")
-    print(f"  freq-marginal CV (one trial):  {fm.std()/fm.mean()*100:.1f}%")
+        print(f"\n========================================================")
+        print(f"[ SFG -- inhibition preset '{inh_name}' "
+              f"(N={N_CHANNELS}, {len(fig_idx)} figure channels, "
+              f"{N_TRIALS} presentations) ]")
+        print(f"  w_EI = (self {cfg.w_EI_self}, lat {cfg.w_EI_lat}); "
+              f"w_IE = (self {cfg.w_IE_self}, lat {cfg.w_IE_lat})")
 
-    print("[ Plotting ]")
-    plot_sfg_marginals(res, "sfg_m0_marginals.png")
-    plot_sfg_run(res,       "sfg_m0_run.png")
-    plot_sfg_W(res,         "sfg_m0_W.png")
-    plot_sfg_drive(res,     "sfg_m0_drive.png")
+        res = run_sfg(cfg=cfg, fig_idx=fig_idx, n_trials=N_TRIALS, seed=7)
 
-    W = res["W_final"]
-    W_FF, W_GG, W_FG = compute_W_groups(W, fig_idx, res["gnd_idx"])
-    print(f"\nFinal weight statistics:")
-    print(f"  mean W_F->F       = {W_FF:.4f}")
-    print(f"  mean W_G->G       = {W_GG:.4f}")
-    print(f"  mean W_F<->G      = {W_FG:.4f}")
-    print(f"  ratio W_FF / W_GG = {W_FF/(W_GG+1e-9):.2f}x")
-    print(f"  ratio W_FF / W_FG = {W_FF/(W_FG+1e-9):.2f}x")
-    print("Done.")
+        tm, fm, _ = stim_marginals(res["stim"][:, : res["T_trial_steps"]], cfg)
+        print(f"  time-marginal CV (one trial):  {tm.std()/tm.mean()*100:.1f}%")
+        print(f"  freq-marginal CV (one trial):  {fm.std()/fm.mean()*100:.1f}%")
+
+        print("[ Plotting ]")
+        plot_sfg_marginals(res, f"sfg_m0_marginals_{inh_name}.png")
+        plot_sfg_run(res,       f"sfg_m0_run_{inh_name}.png")
+        plot_sfg_W(res,         f"sfg_m0_W_{inh_name}.png")
+        plot_sfg_drive(res,     f"sfg_m0_drive_{inh_name}.png")
+
+        W = res["W_final"]
+        W_FF, W_GG, W_FG = compute_W_groups(W, fig_idx, res["gnd_idx"])
+        print(f"\nFinal weight statistics [{inh_name}]:")
+        print(f"  mean W_F->F       = {W_FF:.4f}")
+        print(f"  mean W_G->G       = {W_GG:.4f}")
+        print(f"  mean W_F<->G      = {W_FG:.4f}")
+        print(f"  ratio W_FF / W_GG = {W_FF/(W_GG+1e-9):.2f}x")
+        print(f"  ratio W_FF / W_FG = {W_FF/(W_FG+1e-9):.2f}x")
+    print("\nDone.")
 
 
 if __name__ == "__main__":
