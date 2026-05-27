@@ -91,9 +91,9 @@ class A1Config:
     # E_A drive that loads the predictive cascade in the first place.
     # Raising w_EI_self instead would damp both ends symmetrically
     # and produce no Pareto gain (verified empirically).
-    w_EI_self: float = 0.6         # E_i -> I_i (strong)
+    w_EI_self: float = 0.20        # E_i -> I_i (strong)
     w_EI_lat:  float = 0.05        # E_i -> I_{j!=i} (weak)
-    w_IE_self: float = 4.0         # I_i -> E_i (strong self-inhibition)
+    w_IE_self: float = 0.65        # I_i -> E_i (strong self-inhibition)
     w_IE_lat:  float = 0.20        # I_i -> E_{j!=i} (weak lateral)
 
     # ---- Short-term depression on TC input (Tsodyks-Markram) ----
@@ -135,11 +135,15 @@ class A1Config:
     W_max:       float = 0.25
     W_max_self:  float = 0.25
     # W_norm calibrates the rate units in the Hebbian product
-    # (E/W_norm)*(tr/W_norm).  In model0 E peaks at ~13 (vs ~4 in the
-    # divisive model/), so the scale factor must rise accordingly.
-    # W_norm=20 makes per-trial dW ~16x smaller than model/'s setting,
-    # so W saturates gradually over ~130 trials rather than ~10 -- in
-    # line with cortical plasticity timescales.
+    # (E/W_norm)*(tr/W_norm).  Under the bounded rule the asymptote is
+    # W_norm-independent (both LTP and LTD scale together), but the
+    # convergence TIME scales as W_norm^2.  W_norm=20 keeps the cross
+    # weight approach to W_max slow (~6000-trial timescale), which is
+    # what most paradigms here want -- the network shouldn't have its
+    # cross weights at the asymptote within a few hundred trials.
+    # The AB/BA task is an exception: it specifically tests the
+    # MMN-polarity signature, which requires W[B<-A] near the asymptote.
+    # tasks/ab_ba_model0/ab_ba.py overrides W_norm=4 for that reason.
     W_norm:      float = 20.0
 
     plastic_self: bool = True
@@ -164,7 +168,16 @@ class A1Config:
     # Gutig & Sompolinsky (2003); heterosynaptic LTD: Lynch et al.
     # (1977); Chistiakova & Volgushev (2009, review).
     bounded_plasticity: bool = True
-    eta_het:            float = 0.01    # heterosynaptic LTD rate
+    # Set to 0.  The pre-gated het-LTD term -eta_het*W*E_pre was added
+    # as a per-pre stabilizer following Chistiakova & Volgushev (2009),
+    # but in practice it pinned CROSS synapses below the W_max asymptote
+    # (their causal partner fires often, making E_pre large).  Self
+    # synapses are stabilized by the LTP/LTD balance alone, so removing
+    # het-LTD selectively unblocks the cross-weight asymptote at W_max.
+    # If het-LTD becomes necessary later (e.g. for an excitatory-pool
+    # normalization story), reintroduce it at ~1e-4 to keep the
+    # AB/BA cross-weight saturation intact.
+    eta_het:            float = 0.0     # heterosynaptic LTD rate
 
     # ---- Multi-timescale short-term depression (optional) ----
     # When False (default), the TC synapse uses the single-timescale
@@ -234,7 +247,7 @@ def uniform_inh(**kw) -> "A1Config":
     selective preset at N=5)."""
     defaults = dict(
         w_EI_self=0.16, w_EI_lat=0.16,
-        w_IE_self=0.96, w_IE_lat=0.96,
+        w_IE_self=0.16, w_IE_lat=0.16,
     )
     defaults.update(kw)
     return A1Config(**defaults)
