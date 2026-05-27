@@ -98,6 +98,13 @@ class A1Config:
 
     # ---- Short-term depression on TC input (Tsodyks-Markram) ----
     # Identical to model/.  Wehr & Zador 2005; Cruikshank+2007; Markram+1998.
+    # Master switch: when False, ALL TC short-term plasticity is bypassed.
+    # u, x (single-timescale) and D_k (multi-timescale) state evolution
+    # are skipped entirely and the TC drive becomes A_TC * U * s -- the
+    # resting value the TM machinery would deliver in the absence of
+    # spikes.  Useful as a control to isolate STP contributions from
+    # the rest of the cascade.
+    stp_enabled: bool = True
     tau_D: float = 0.30
     tau_F: float = 0.10
     U:     float = 0.5

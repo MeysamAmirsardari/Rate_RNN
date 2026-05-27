@@ -99,7 +99,7 @@ def simulate(
     tr = np.zeros(N)
 
     # ---- multi-timescale STD state (active only when cfg.multiscale_std) ----
-    if cfg.multiscale_std:
+    if cfg.stp_enabled and cfg.multiscale_std:
         tau_std_arr = np.asarray(cfg.tau_std, dtype=float)         # (3,)
         decay_std   = np.exp(-dt / tau_std_arr)                     # per-step decay
         w_std_arr   = np.asarray(cfg.w_std,   dtype=float)          # (3,)
@@ -120,8 +120,13 @@ def simulate(
     for t in range(T):
         s = stim[:, t]
 
-        # TC depression: single-timescale TM (u, x) or multi-scale D_k.
-        if cfg.multiscale_std:
+        # TC drive: STP disabled (constant release), single-timescale TM
+        # (u, x), or multi-scale D_k.
+        if not cfg.stp_enabled:
+            # u == U, x == 1 at rest; drive collapses to A_TC * U * s.
+            x_eff = np.ones(N)
+            tm_in = cfg.A_TC * cfg.U * s
+        elif cfg.multiscale_std:
             x_eff = np.maximum(0.0, 1.0 - D_std @ w_std_arr)
             tm_in = cfg.A_TC * cfg.U * x_eff * s
         else:
@@ -137,7 +142,7 @@ def simulate(
         # net_E -- so inhibition acts directly on the firing rate.
         dE  = (-E  + net_E) / cfg.tau_E
         dI  = (-Iv + _relu(net_I)) / cfg.tau_I
-        if not cfg.multiscale_std:
+        if cfg.stp_enabled and not cfg.multiscale_std:
             du = (cfg.U - u) / cfg.tau_F + cfg.U * (1.0 - u) * s
             dx = (1.0 - x) / cfg.tau_D            - u * x * s
         dtr = (-tr + E) / cfg.tau_trace
@@ -169,13 +174,14 @@ def simulate(
         # --- Euler step ---
         E  += dt * dE
         Iv += dt * dI
-        if cfg.multiscale_std:
-            # Discrete update for the three D_k (matches the MATLAB
-            # STD_Playground_Emergent.m form: decay, then add drive).
-            D_std = D_std * decay_std + cfg.U_std * s[:, None]
-        else:
-            u += dt * du
-            x += dt * dx
+        if cfg.stp_enabled:
+            if cfg.multiscale_std:
+                # Discrete update for the three D_k (matches the MATLAB
+                # STD_Playground_Emergent.m form: decay, then add drive).
+                D_std = D_std * decay_std + cfg.U_std * s[:, None]
+            else:
+                u += dt * du
+                x += dt * dx
         tr += dt * dtr
         if learn:
             W += dt * dW
@@ -185,7 +191,7 @@ def simulate(
             if cfg.plastic_self:
                 W[eye_diag_idx] = np.minimum(W.diagonal(), cfg.W_max_self)
 
-        if not cfg.multiscale_std:
+        if cfg.stp_enabled and not cfg.multiscale_std:
             np.clip(u, 0.0, 1.0, out=u)
             np.clip(x, 0.0, 1.0, out=x)
         np.clip(E, 0.0, None, out=E)     # relu on the rate: E >= 0
