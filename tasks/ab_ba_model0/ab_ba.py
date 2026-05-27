@@ -633,11 +633,25 @@ def plot_recurrent_masking(res: dict, fname: str):
 #  Main
 # =====================================================================
 def main():
-    # Loop over both inhibition-structure presets so the contribution
-    # of tone-selectivity to the AB/BA effects is visible.  Figure
-    # filenames carry the preset tag; the two runs do not overwrite.
+    import dataclasses as _dc
+    # AB/BA is the MMN-polarity test.  To make the predictive cascade
+    # (E_A -> pre-activate E_B -> drive I_B -> suppress E_B at tone B)
+    # visible at the ~5% empirical magnitude, we need W[B<-A] near the
+    # asymptote AND a strong I_B delivery arm.  The bounded plasticity
+    # rule -- our default for the other tasks -- cannot reach the
+    # asymptote in 400 trials (the (W_max - W) gate stalls growth when
+    # the LTP source itself is small).  Override here:
+    #   - bounded_plasticity=False  -> W[B<-A] saturates at W_max=0.25
+    #   - w_IE_self = 3.0           -> strong I -> E delivery
+    #   - w_EI_self = 0.40          -> moderate E -> I drive
+    # Other tasks (roving, local_global, sfg) keep the bounded rule.
+    ab_ba_overrides = dict(bounded_plasticity=False,
+                           w_IE_self=3.0, w_EI_self=0.40)
+
     for inh_name, inh_factory in INH_PRESETS.items():
         cfg = inh_factory()
+        if inh_name == "selective":
+            cfg = _dc.replace(cfg, **ab_ba_overrides)
 
         print(f"\n========================================================")
         print(f"[ AB/BA -- inhibition preset '{inh_name}' ]")
