@@ -634,19 +634,20 @@ def plot_recurrent_masking(res: dict, fname: str):
 # =====================================================================
 def main():
     import dataclasses as _dc
-    # AB/BA is the MMN-polarity test.  To make the predictive cascade
-    # (E_A -> pre-activate E_B -> drive I_B -> suppress E_B at tone B)
-    # visible at the ~5% empirical magnitude, we need W[B<-A] near the
-    # asymptote AND a strong I_B delivery arm.  The bounded plasticity
-    # rule -- our default for the other tasks -- cannot reach the
-    # asymptote in 400 trials (the (W_max - W) gate stalls growth when
-    # the LTP source itself is small).  Override here:
-    #   - bounded_plasticity=False  -> W[B<-A] saturates at W_max=0.25
-    #   - w_IE_self = 3.0           -> strong I -> E delivery
-    #   - w_EI_self = 0.40          -> moderate E -> I drive
-    # Other tasks (roving, local_global, sfg) keep the bounded rule.
-    ab_ba_overrides = dict(bounded_plasticity=False,
-                           w_IE_self=3.0, w_EI_self=0.40)
+    # AB/BA is the MMN-polarity test.  The predictive cascade
+    # (E_A -> pre-activate E_B via W[B<-A] -> drive I_B
+    #     -> tau_I persistence -> suppress E_B at tone B)
+    # needs (i) W[B<-A] near its asymptote and (ii) a strong I -> E
+    # delivery arm.  The bounded plasticity rule (preserved here -- not
+    # switched to additive) gives the right ASYMPTOTE (W_max for purely
+    # causal pairs), but at the default W_norm=20 the time-constant of
+    # the (W_max - W)-gated approach is ~6000 trials, far beyond the
+    # 400-trial test horizon.  W_norm=4 speeds the approach 25x while
+    # leaving self-weight fixed points unchanged (W_max - LTD/LTP=0.125).
+    # The strong w_IE_self provides I -> E delivery.
+    # Other tasks (roving, local_global, sfg) keep W_norm=20 and lower
+    # inhibition -- they don't want recurrent saturation in <500 trials.
+    ab_ba_overrides = dict(w_IE_self=3.0, w_EI_self=0.40, W_norm=4.0)
 
     for inh_name, inh_factory in INH_PRESETS.items():
         cfg = inh_factory()
