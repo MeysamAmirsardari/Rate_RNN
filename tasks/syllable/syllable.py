@@ -263,7 +263,6 @@ def plot_syllable_figures(cfg: SyllableConfig, fname: str):
     """
     figs = {s: cfg.figure(s) for s in cfg.syllables}
     fmat = cfg.figure_matrix                       # (n_channels, n_syllables)
-    ch = np.arange(cfg.n_channels)
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 4.4),
                              constrained_layout=True,
@@ -271,11 +270,21 @@ def plot_syllable_figures(cfg: SyllableConfig, fname: str):
     fig.suptitle("Syllable figures (spectral activation patterns)",
                  fontsize=13, fontweight="bold")
 
-    # ----- Left: line plot of each figure -----
+    # ----- Left: per-channel amplitude as stems (channels are discrete
+    #        and non-contiguous, so markers -- not lines -- are honest).
+    #        A small per-syllable x-offset separates the shared-core
+    #        channels that all syllables occupy. -----
     ax = axes[0]
-    for s in cfg.syllables:
-        ax.plot(ch, figs[s], color=_syll_colour(s), lw=2.0, label=f"/{s}/")
-    ax.legend(fontsize=9, frameon=False, ncol=cfg.n_syllables)
+    n_s = cfg.n_syllables
+    for k, s in enumerate(cfg.syllables):
+        chans = cfg.active_channels(s)
+        amps = figs[s][chans]
+        off = (k - (n_s - 1) / 2) * 0.13
+        ax.vlines(chans + off, 0, amps, color=_syll_colour(s),
+                  lw=1.4, alpha=0.85)
+        ax.plot(chans + off, amps, "o", color=_syll_colour(s), ms=4,
+                label=f"/{s}/")
+    ax.legend(fontsize=9, frameon=False, ncol=n_s)
     _setup_axes(ax, title="per-channel amplitude",
                 xlabel="channel (log-frequency)", ylabel="amplitude")
 
@@ -521,7 +530,16 @@ def main():
     cfg = get_preset("default")
 
     # The syllable figures are inhibition-independent -- save the figure
-    # bank once.
+    # bank once and report the realised channel structure.
+    print(f"[ Syllable figures ]")
+    print(f"  {cfg.n_channels} channels; {cfg.n_active} active per syllable; "
+          f"common core = {cfg.core_size} channels")
+    print(f"  mean pairwise overlap = {100 * cfg.mean_pairwise_overlap():.1f}% "
+          f"(target {100 * cfg.overlap:.0f}%)")
+    for s in cfg.syllables:
+        ch = cfg.active_channels(s)
+        print(f"    /{s}/  channels {list(ch)}  mean amp "
+              f"{cfg.figure(s)[ch].mean():.3f}")
     plot_syllable_figures(cfg, "syllable_m0_figures.png")
 
     # Run both inhibition-structure presets back to back.  Filenames are
