@@ -1,0 +1,436 @@
+"""
+live_demo.app
+=============
+
+Real-time, talk-ready visualisation of the model0 A1 RNN listening to a
+live audio stream (microphone, WAV, or synthetic).
+
+Two scrolling heatmaps share a time axis:
+
+    top     cochleo-thalamic mel input (dB)   -- what the thalamus sends
+    middle  A1 excitatory rate E              -- the cortical response
+    bottom  population traces (summed E + active-channel count)
+
+plus a header with the title and a live stats strip.  The visual contrast
+between the dense input (top) and the sparse cortical code (middle) *is*
+the model's claim -- lateral inhibition as a global normaliser turning a
+dense thalamic drive into a sparse, contrast-enhanced cortical
+representation, with multi-timescale depression making repeated sounds
+visibly adapt.
+
+Built on pyqtgraph for smooth scrolling; the model still steps at 1 ms
+internally while the display refreshes at ``target_fps``.
+
+Keyboard
+--------
+    L      toggle Hebbian learning on/off
+    I      toggle selective <-> uniform inhibition (state carried over)
+    Space  pause / resume
+    R      reset model + display
+    Q/Esc  quit
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Optional
+
+import numpy as np
+import pyqtgraph as pg
+from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
+
+from .audio import MelFrontEnd
+from .config import LiveConfig
+from .engine import LiveEngine
+
+# ---- palette (matches preview.py) ----
+_BG = "#0e1117"
+_PANEL = "#161b22"
+_FG = "#c9d1d9"
+_MUTED = "#8b949e"
+_GRID = "#30363d"
+_E = "#58d6ff"
+_ACT = "#ff8c42"
+_OK = "#3fb950"
+_OFF = "#f85149"
+
+
+class LiveDemoApp(QtWidgets.QMainWindow):
+    """Main window: scrolling input/cortex heatmaps + population traces."""
+
+    def __init__(self, cfg: LiveConfig, source, parent=None):
+        super().__init__(parent)
+        self.cfg = cfg
+        self.source = source
+        self.paused = False
+
+        self.fe = MelFrontEnd(cfg)
+        self.engine = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
+        self._inhibition = cfg.inhibition
+        self._learn = cfg.learn
+
+        # ---- scrolling ring buffers ----
+        F = cfg.history_frames
+        N = cfg.n_channels
+        self._F = F
+        self._in_db = np.full((N, F), -cfg.top_db, dtype=np.float32)
+        self._E = np.zeros((N, F), dtype=np.float32)
+        self._popE = np.zeros(F, dtype=np.float32)
+        self._active = np.zeros(F, dtype=np.float32)
+        self._E_vmax = 1.0
+        self._last_read = None
+        self._fps_ema = float(cfg.target_fps)
+        self._last_tick = time.perf_counter()
+
+        self._build_ui()
+
+        self.timer = QtCore.QTimer(self)
+        self.timer.timeout.connect(self._tick)
+        self.timer.setInterval(int(1000 / max(1, cfg.target_fps)))
+
+    # -----------------------------------------------------------------
+    #  UI construction
+    # -----------------------------------------------------------------
+    def _build_ui(self):
+        cfg = self.cfg
+        pg.setConfigOptions(antialias=True, imageAxisOrder="row-major")
+        self.setWindowTitle("Artificial Auditory Cortex — model0 (live)")
+        self.resize(1280, 860)
+        self.setStyleSheet(f"background-color:{_BG};")
+
+        self.glw = pg.GraphicsLayoutWidget()
+        self.glw.setBackground(_BG)
+        self.setCentralWidget(self.glw)
+
+        # image -> plot coordinate rect: x in [-history, 0] s, y in [0, N] ch.
+        self._img_rect = QtCore.QRectF(-cfg.history_s, 0.0, cfg.history_s,
+                                       cfg.n_channels)
+
+        # ---- header ----
+        self.title = self.glw.addLabel(
+            "ARTIFICIAL AUDITORY CORTEX", row=0, col=0, colspan=2,
+            color=_FG, size="20pt", bold=True)
+        self.subtitle = self.glw.addLabel(
+            "model0 — tonotopic rate RNN with SST-like selective inhibition · "
+            "listening in real time",
+            row=1, col=0, colspan=2, color=_MUTED, size="10pt")
+        self.stats = self.glw.addLabel("", row=2, col=0, colspan=2,
+                                       color=_FG, size="10.5pt")
+
+        in_cmap = pg.colormap.get(cfg.input_cmap, source="matplotlib")
+        ctx_cmap = pg.colormap.get(cfg.cortex_cmap, source="matplotlib")
+        freqs = self.fe.mel_frequencies()
+
+        # ---- input spectrogram ----
+        self.p_in = self.glw.addPlot(row=3, col=0)
+        self.img_in = pg.ImageItem()
+        self.img_in.setColorMap(in_cmap)
+        self._setup_heat(self.p_in, self.img_in,
+                         "THALAMIC INPUT — cochleo-mel (dB)", freqs)
+        self.img_in.setLevels((-cfg.top_db, 0.0))
+        bar_in = pg.ColorBarItem(values=(-cfg.top_db, 0.0), colorMap=in_cmap,
+                                 label="dB", width=14)
+        bar_in.setImageItem(self.img_in)
+        self.glw.addItem(bar_in, row=3, col=1)
+        self._style_cbar(bar_in)
+
+        # ---- cortical response ----
+        self.p_ctx = self.glw.addPlot(row=4, col=0)
+        self.img_ctx = pg.ImageItem()
+        self.img_ctx.setColorMap(ctx_cmap)
+        self._setup_heat(self.p_ctx, self.img_ctx,
+                         "A1 CORTICAL RESPONSE — excitatory rate E", freqs)
+        self.img_ctx.setLevels((0.0, self._E_vmax))
+        self.bar_ctx = pg.ColorBarItem(values=(0.0, self._E_vmax),
+                                       colorMap=ctx_cmap, label="rate", width=14)
+        self.bar_ctx.setImageItem(self.img_ctx)
+        self.glw.addItem(self.bar_ctx, row=4, col=1)
+        self._style_cbar(self.bar_ctx)
+        self.p_ctx.setXLink(self.p_in)
+
+        # ---- population traces ----
+        self.p_pop = self.glw.addPlot(row=5, col=0)
+        self.p_pop.setMaximumHeight(150)
+        self._style_plot(self.p_pop, "POPULATION ACTIVITY", "time (s)",
+                         "summed E")
+        self.p_pop.setXLink(self.p_in)
+        t = np.linspace(-cfg.history_s, 0.0, self._F)
+        self._t = t
+        self.curve_E = self.p_pop.plot(t, self._popE, pen=pg.mkPen(_E, width=2))
+        self.vb_act = pg.ViewBox()
+        self.p_pop.scene().addItem(self.vb_act)
+        self.p_pop.getAxis("right").linkToView(self.vb_act)
+        self.p_pop.showAxis("right")
+        self.p_pop.getAxis("right").setLabel("active ch", color=_ACT)
+        self.p_pop.getAxis("right").setPen(_GRID)
+        self.p_pop.getAxis("right").setTextPen(_ACT)
+        self.vb_act.setXLink(self.p_in)
+        self.vb_act.enableAutoRange(x=False, y=False)
+        self.vb_act.setXRange(-cfg.history_s, 0.0, padding=0)
+        self.vb_act.setYRange(0.0, 100.0, padding=0)
+        self.curve_act = pg.PlotDataItem(t, self._active,
+                                         pen=pg.mkPen(_ACT, width=1.5))
+        self.vb_act.addItem(self.curve_act)
+        self.vb_act.setMaximumHeight(150)
+        self.p_pop.getViewBox().sigResized.connect(
+            lambda: self.vb_act.setGeometry(
+                self.p_pop.getViewBox().sceneBoundingRect()))
+
+        # layout proportions
+        self.glw.ci.layout.setRowStretchFactor(3, 6)
+        self.glw.ci.layout.setRowStretchFactor(4, 6)
+        self.glw.ci.layout.setRowStretchFactor(5, 2)
+        self._refresh_images()
+
+    def _setup_heat(self, plot, img, title, freqs):
+        cfg = self.cfg
+        plot.addItem(img)
+        plot.setMouseEnabled(x=False, y=False)
+        plot.hideButtons()
+        plot.setMenuEnabled(False)
+        plot.setDefaultPadding(0.0)
+        vb = plot.getViewBox()
+        vb.setBackgroundColor(_PANEL)
+        vb.enableAutoRange(x=False, y=False)
+        plot.setRange(xRange=(-cfg.history_s, 0.0),
+                      yRange=(0, cfg.n_channels), padding=0)
+        plot.setTitle(title, color=_FG, size="11pt", bold=True)
+        # left axis: mel channel; right axis: tonotopic centre freq (kHz)
+        plot.setLabel("left", "mel channel", color=_MUTED)
+        plot.getAxis("left").setPen(_GRID)
+        plot.getAxis("left").setTextPen(_MUTED)
+        plot.getAxis("bottom").setPen(_GRID)
+        plot.getAxis("bottom").setTextPen(_MUTED)
+        idx = np.linspace(0, cfg.n_channels - 1, 6).astype(int)
+        rax = plot.getAxis("right")
+        rax.setTicks([[(int(i), f"{freqs[i] / 1000:.1f}") for i in idx]])
+        rax.setLabel("kHz", color=_MUTED)
+        rax.setPen(_GRID)
+        rax.setTextPen(_MUTED)
+        plot.showAxis("right")
+
+    def _style_plot(self, plot, title, xlabel, ylabel):
+        plot.setTitle(title, color=_FG, size="11pt", bold=True)
+        plot.setLabel("bottom", xlabel, color=_MUTED)
+        plot.setLabel("left", ylabel, color=_E)
+        plot.getViewBox().setBackgroundColor(_PANEL)
+        plot.showGrid(x=True, y=True, alpha=0.2)
+        plot.setMouseEnabled(x=False, y=False)
+        plot.hideButtons()
+        plot.setMenuEnabled(False)
+        for a in ("left", "bottom"):
+            plot.getAxis(a).setPen(_GRID)
+        plot.getAxis("bottom").setTextPen(_MUTED)
+        plot.getAxis("left").setTextPen(_E)
+        plot.setXRange(-self.cfg.history_s, 0.0, padding=0)
+
+    def _style_cbar(self, bar):
+        try:
+            bar.getAxis("right").setTextPen(_MUTED)
+            bar.getAxis("right").setPen(_GRID)
+        except Exception:
+            pass
+
+    # -----------------------------------------------------------------
+    #  Streaming loop
+    # -----------------------------------------------------------------
+    def start(self):
+        if hasattr(self.source, "start"):
+            self.source.start()
+        self._last_read = time.perf_counter()
+        self.timer.start()
+
+    def _read_samples(self) -> np.ndarray:
+        now = time.perf_counter()
+        if getattr(self.source, "paced", False):
+            elapsed = now - (self._last_read or now)
+            n = int(self.cfg.sr * elapsed)
+            self._last_read = now
+            if n <= 0:
+                return np.empty(0)
+            return self.source.read(n)
+        # unpaced (mic): drain whatever the callback queued
+        self._last_read = now
+        return self.source.read()
+
+    def _tick(self):
+        if self.paused:
+            return
+        samples = self._read_samples()
+        drive, db = self.fe.push(samples)
+        k = drive.shape[1]
+        if k:
+            out = self.engine.step_block(drive)
+            E = out["E"]
+            self._push_cols(self._in_db, db.astype(np.float32))
+            self._push_cols(self._E, E.astype(np.float32))
+            thr = 0.05 * max(self._E_vmax, 1e-6)
+            popE = E.sum(axis=0)
+            active = (E > thr).sum(axis=0).astype(np.float32)
+            self._push_1d(self._popE, popE.astype(np.float32))
+            self._push_1d(self._active, active)
+            self._refresh_images()
+
+        # fps estimate
+        now = time.perf_counter()
+        dt = now - self._last_tick
+        self._last_tick = now
+        if dt > 0:
+            self._fps_ema = 0.9 * self._fps_ema + 0.1 * (1.0 / dt)
+        self._update_stats()
+
+    def _push_cols(self, buf, new):
+        k = new.shape[1]
+        if k >= buf.shape[1]:
+            buf[:, :] = new[:, -buf.shape[1]:]
+        else:
+            buf[:, :-k] = buf[:, k:]
+            buf[:, -k:] = new
+
+    def _push_1d(self, buf, new):
+        k = new.shape[0]
+        if k >= buf.shape[0]:
+            buf[:] = new[-buf.shape[0]:]
+        else:
+            buf[:-k] = buf[k:]
+            buf[-k:] = new
+
+    def _update_cortex_scale(self):
+        """Track the colour ceiling toward the 90th percentile of the active
+        cortical code so the sparse response blooms vividly (the strongest
+        few channels saturate) instead of rendering uniformly dim."""
+        pos = self._E[self._E > 1e-3]
+        if pos.size > 16:
+            target = float(np.percentile(pos, 90))
+            self._E_vmax = max(0.85 * self._E_vmax + 0.15 * target, 0.05)
+        else:
+            self._E_vmax = max(0.97 * self._E_vmax, 0.05)
+
+    def _refresh_images(self):
+        self._update_cortex_scale()
+        self.img_in.setImage(self._in_db, autoLevels=False,
+                             levels=(-self.cfg.top_db, 0.0))
+        self.img_ctx.setImage(self._E, autoLevels=False,
+                              levels=(0.0, self._E_vmax))
+        # (re)anchor the images into plot coordinates -- setImage on an
+        # empty item leaves an identity transform, so apply the rect here.
+        self.img_in.setRect(self._img_rect)
+        self.img_ctx.setRect(self._img_rect)
+        self.bar_ctx.setLevels((0.0, self._E_vmax))
+        self.curve_E.setData(self._t, self._popE)
+        self.curve_act.setData(self._t, self._active)
+        amax = float(self._active.max())
+        if amax > 0:
+            self.vb_act.setYRange(0.0, max(5.0, amax * 1.1), padding=0)
+
+    def _update_stats(self):
+        lvl = self.fe.level_db
+        gate = self.fe.gate_open
+        nact = int(self._active[-1]) if self._F else 0
+        spars = 100.0 * nact / self.cfg.n_channels
+        learn_c = _OK if self._learn else _OFF
+        gate_c = _OK if gate else _MUTED
+        self.stats.setText(
+            f"<span style='color:{gate_c}'>●</span> "
+            f"<span style='color:{_MUTED}'>input</span> "
+            f"<b>{lvl:+5.1f} dB</b> &nbsp;|&nbsp; "
+            f"<span style='color:{_MUTED}'>inhibition</span> "
+            f"<b style='color:{_E}'>{self._inhibition}</b> &nbsp;|&nbsp; "
+            f"<span style='color:{_MUTED}'>plasticity</span> "
+            f"<b style='color:{learn_c}'>{'ON' if self._learn else 'OFF'}</b> "
+            f"&nbsp;|&nbsp; <span style='color:{_MUTED}'>active</span> "
+            f"<b style='color:{_ACT}'>{nact}/{self.cfg.n_channels}</b> "
+            f"({spars:.0f}%) &nbsp;|&nbsp; "
+            f"<span style='color:{_MUTED}'>peak E</span> "
+            f"<b>{self._E_vmax:.2f}</b> &nbsp;|&nbsp; "
+            f"<span style='color:{_MUTED}'>{self._fps_ema:.0f} fps</span>")
+
+    # -----------------------------------------------------------------
+    #  Controls
+    # -----------------------------------------------------------------
+    def _carry_state(self, new_engine, old):
+        new_engine.E[:] = old.E
+        new_engine.Iv[:] = old.Iv
+        new_engine.tr[:] = old.tr
+        new_engine.W[:] = old.W
+        if new_engine.D_std is not None and old.D_std is not None:
+            new_engine.D_std[:] = old.D_std
+
+    def toggle_learning(self):
+        self._learn = not self._learn
+        self.engine.learn = self._learn
+
+    def toggle_inhibition(self):
+        self._inhibition = ("uniform" if self._inhibition == "selective"
+                            else "selective")
+        new_cfg = self.cfg.replace(inhibition=self._inhibition)
+        new_engine = LiveEngine(new_cfg.to_a1_config(), learn=self._learn,
+                                W_init=self.engine.W, seed=0)
+        self._carry_state(new_engine, self.engine)
+        self.engine = new_engine
+        self.cfg = new_cfg
+
+    def reset(self):
+        self.engine = LiveEngine(self.cfg.to_a1_config(), learn=self._learn,
+                                 seed=0)
+        self.fe.reset()
+        self._in_db[:] = -self.cfg.top_db
+        self._E[:] = 0.0
+        self._popE[:] = 0.0
+        self._active[:] = 0.0
+        self._E_vmax = 1.0
+        self._refresh_images()
+
+    def keyPressEvent(self, ev):
+        k = ev.key()
+        if k in (QtCore.Qt.Key.Key_Q, QtCore.Qt.Key.Key_Escape):
+            self.close()
+        elif k == QtCore.Qt.Key.Key_L:
+            self.toggle_learning()
+        elif k == QtCore.Qt.Key.Key_I:
+            self.toggle_inhibition()
+        elif k == QtCore.Qt.Key.Key_R:
+            self.reset()
+        elif k == QtCore.Qt.Key.Key_Space:
+            self.paused = not self.paused
+        else:
+            super().keyPressEvent(ev)
+
+    def closeEvent(self, ev):
+        try:
+            self.timer.stop()
+            if hasattr(self.source, "stop"):
+                self.source.stop()
+        finally:
+            super().closeEvent(ev)
+
+    # -----------------------------------------------------------------
+    #  Offline driving (for headless snapshot / validation)
+    # -----------------------------------------------------------------
+    def feed_offline(self, audio: np.ndarray):
+        """Synchronously push a whole audio array through the pipeline and
+        refresh the view once (no timer / no real-time pacing).  Used to
+        produce a screenshot of the real GUI headlessly."""
+        bs = self.cfg.blocksize
+        for lo in range(0, audio.size, bs):
+            drive, db = self.fe.push(audio[lo:lo + bs])
+            if drive.shape[1] == 0:
+                continue
+            out = self.engine.step_block(drive)
+            E = out["E"]
+            self._push_cols(self._in_db, db.astype(np.float32))
+            self._push_cols(self._E, E.astype(np.float32))
+            thr = 0.05 * max(self._E_vmax, 1e-3)
+            self._push_1d(self._popE, E.sum(axis=0).astype(np.float32))
+            self._push_1d(self._active, (E > thr).sum(axis=0).astype(np.float32))
+        for _ in range(30):          # converge the smoothed colour ceiling
+            self._update_cortex_scale()
+        self._refresh_images()
+        self._update_stats()
+
+    def grab_image(self, path: str):
+        """Save a screenshot of the window (works with the offscreen
+        Qt platform for headless rendering)."""
+        QtWidgets.QApplication.processEvents()
+        self.glw.grab().save(path)
+        return path
