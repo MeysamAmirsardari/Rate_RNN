@@ -16,14 +16,25 @@ amplitudes per channel.
 
 Figures ("syllable spectrograms")
 ---------------------------------
-There are ``n_channels`` (default 35) tonotopic channels spanning a
-log-frequency axis in [0, 1].  Each syllable is the sum of a few
-*formants*: Gaussian energy bumps centred at fractional positions along
-that axis, each with its own relative amplitude.  Syllables deliberately
-**share some formants and differ in others** -- exactly as real speech
-syllables share spectral structure (e.g. a common vowel formant) while
-differing elsewhere -- so their figures overlap partially in channel
-space.  See ``SYLLABLE_FORMANTS`` for the layout.
+There are ``n_channels`` (default 40) tonotopic channels.  Each syllable
+activates exactly ``n_active`` (default 10) of them with heterogeneous
+per-channel amplitudes.  All syllables share a common **core** of
+``round(overlap * n_active)`` channels (default ``overlap = 0.6`` -> 6
+shared channels = 60% pairwise overlap); the remaining channels are
+*private* and disjoint across syllables.
+
+The common-core structure is not a stylistic choice -- it is the only
+way to make every pair of syllables overlap by the same high fraction.
+Demanding 60-65% overlap with *all* other syllables (not just spectral
+neighbours) forces a shared spectral region common to the whole set
+(e.g. a common vowel formant), because a syllable's mere 10 channels
+cannot otherwise reach that much overlap with four different partners at
+once.  A tonotopic-shift layout, by contrast, only overlaps neighbours.
+
+Per-channel amplitudes are drawn deterministically (from ``seed``) in
+``[amp_min, amp_max]`` and then rescaled so every syllable has the
+**same average amplitude over its active channels** (``syll_amp``).  See
+``_figure_bank``.
 
 Vocabulary
 ----------
@@ -96,36 +107,6 @@ def _make_words(deviant_syllable_pos: int) -> Tuple[str, ...]:
 
 
 # =====================================================================
-#  Syllable figures (spectral activation patterns)
-# =====================================================================
-# Each syllable is a list of formants ``(centre_fraction, amplitude)``.
-# ``centre_fraction`` is the formant's position along the log-frequency
-# axis in [0, 1] (so the layout is independent of ``n_channels``);
-# ``amplitude`` is its relative strength before per-figure peak
-# normalisation.
-#
-# The layout is hand-designed so that syllables share some formants and
-# differ in others (the shared channels are noted on the right):
-#
-#     A: 0.18  0.42  0.70
-#     B: 0.18  0.54  0.82          (0.18 shared with A)
-#     C: 0.28  0.42  0.88          (0.42 shared with A)
-#     D: 0.28  0.60  0.70          (0.28 shared with C; 0.70 shared with A)
-#     E: 0.36  0.54  0.88          (0.54 shared with B; 0.88 shared with C)
-#
-# This gives every syllable both a private formant and at least one
-# formant it shares with another syllable -- the partial spectral
-# overlap characteristic of real speech.
-SYLLABLE_FORMANTS: Dict[str, Tuple[Tuple[float, float], ...]] = {
-    "A": ((0.18, 1.0), (0.42, 0.7), (0.70, 0.5)),
-    "B": ((0.18, 0.9), (0.54, 0.8), (0.82, 0.5)),
-    "C": ((0.28, 1.0), (0.42, 0.6), (0.88, 0.6)),
-    "D": ((0.28, 0.8), (0.60, 0.9), (0.70, 0.5)),
-    "E": ((0.36, 1.0), (0.54, 0.7), (0.88, 0.6)),
-}
-
-
-# =====================================================================
 #  Configuration dataclass
 # =====================================================================
 @dataclass(frozen=True)
@@ -135,7 +116,7 @@ class SyllableConfig:
     name: str = "default"
 
     # ---- Spectral channels ----
-    n_channels: int = 35
+    n_channels: int = 40
 
     # ---- Timing (ms; assumes A1Config.dt == 1 ms) ----
     syll_dur: int = 180
@@ -157,9 +138,11 @@ class SyllableConfig:
     syllables: Tuple[str, ...] = ("A", "B", "C", "D", "E")
 
     # ---- Figure (spectral pattern) parameters ----
-    formant_width: float = 1.5         # Gaussian sigma, in channels
-    active_thresh: float = 0.2         # fraction-of-peak cut for "active"
-    syll_amp: float = 1.0              # global gain applied to every figure
+    n_active: int = 10                 # channels activated per syllable
+    overlap: float = 0.6               # target pairwise overlap fraction
+    amp_min: float = 0.4               # min per-channel amplitude (pre-norm)
+    amp_max: float = 1.0               # max per-channel amplitude (pre-norm)
+    syll_amp: float = 1.0              # mean amplitude over active channels
 
     # ---- Reproducibility ----
     seed: int = 42
@@ -223,39 +206,58 @@ class SyllableConfig:
         return VARIABLE_SYLLABLES
 
     # ---- Figures ----
-    def figure(self, syllable: str) -> np.ndarray:
-        """Spectral activation pattern for ``syllable``: shape (n_channels,).
+    @property
+    def core_size(self) -> int:
+        """Number of channels shared by every syllable (the common core)."""
+        c = int(round(self.overlap * self.n_active))
+        return max(0, min(c, self.n_active))
 
-        The figure is a sum of Gaussian formant bumps, peak-normalised to
-        1 and then scaled by ``syll_amp`` so every syllable delivers a
-        comparable peak drive regardless of how many formants it has.
+    def _figure_bank(self) -> np.ndarray:
+        """Deterministically build the (n_channels, n_syllables) figure matrix.
+
+        A common core of ``core_size`` channels is shared by every syllable;
+        the remaining ``n_active - core_size`` channels of each syllable are
+        private and disjoint across syllables, so every pair of syllables
+        overlaps in exactly ``core_size`` channels.  Per-channel amplitudes
+        are drawn in ``[amp_min, amp_max]`` and then rescaled so each
+        syllable's mean amplitude over its active channels equals
+        ``syll_amp`` (equal average drive across syllables).
         """
-        if syllable not in SYLLABLE_FORMANTS:
+        rng = np.random.default_rng(self.seed)
+        n_syll = self.n_syllables
+        core_size = self.core_size
+        private_size = self.n_active - core_size
+
+        perm = rng.permutation(self.n_channels)
+        core = perm[:core_size]
+        pool = perm[core_size:]
+        if private_size * n_syll > len(pool):
             raise ValueError(
-                f"No formant layout for syllable {syllable!r}; "
-                f"known: {tuple(SYLLABLE_FORMANTS)}")
-        ch = np.arange(self.n_channels, dtype=float)
-        fig = np.zeros(self.n_channels)
-        for frac, amp in SYLLABLE_FORMANTS[syllable]:
-            centre = frac * (self.n_channels - 1)
-            fig += amp * np.exp(-0.5 * ((ch - centre) / self.formant_width) ** 2)
-        peak = fig.max()
-        if peak > 0:
-            fig = fig / peak
-        return self.syll_amp * fig
+                f"Cannot place {private_size} private channels for each of "
+                f"{n_syll} syllables in {len(pool)} non-core channels; "
+                f"reduce n_active/overlap or raise n_channels.")
+
+        fmat = np.zeros((self.n_channels, n_syll))
+        for j in range(n_syll):
+            priv = pool[j * private_size:(j + 1) * private_size]
+            chans = np.concatenate([core, priv]).astype(int)
+            amps = rng.uniform(self.amp_min, self.amp_max, size=chans.size)
+            amps *= self.syll_amp / amps.mean()      # equal average amplitude
+            fmat[chans, j] = amps
+        return fmat
 
     @property
     def figure_matrix(self) -> np.ndarray:
         """All syllable figures stacked column-wise: (n_channels, n_syllables)."""
-        return np.stack([self.figure(s) for s in self.syllables], axis=1)
+        return self._figure_bank()
+
+    def figure(self, syllable: str) -> np.ndarray:
+        """Spectral activation pattern for ``syllable``: shape (n_channels,)."""
+        return self._figure_bank()[:, self.syllables.index(syllable)]
 
     def active_channels(self, syllable: str) -> np.ndarray:
-        """Channels driven above ``active_thresh`` * peak by ``syllable``."""
-        fig = self.figure(syllable)
-        peak = fig.max()
-        if peak <= 0:
-            return np.empty(0, dtype=int)
-        return np.where(fig >= self.active_thresh * peak)[0]
+        """Channels this syllable activates (nonzero amplitude)."""
+        return np.where(self.figure(syllable) > 0)[0]
 
     def word_channels(self, word: str) -> np.ndarray:
         """Union of active channels across all syllables in ``word``."""
@@ -264,19 +266,39 @@ class SyllableConfig:
             chans.update(self.active_channels(s).tolist())
         return np.array(sorted(chans), dtype=int)
 
+    def overlap_matrix(self) -> np.ndarray:
+        """Pairwise overlap fraction |S_i ∩ S_j| / n_active for all syllables."""
+        sets = [set(self.active_channels(s).tolist()) for s in self.syllables]
+        n = self.n_syllables
+        M = np.zeros((n, n))
+        for i in range(n):
+            for j in range(n):
+                M[i, j] = len(sets[i] & sets[j]) / self.n_active
+        return M
+
+    def mean_pairwise_overlap(self) -> float:
+        """Average overlap fraction over distinct syllable pairs."""
+        M = self.overlap_matrix()
+        n = self.n_syllables
+        iu = np.triu_indices(n, k=1)
+        return float(M[iu].mean()) if len(iu[0]) else 0.0
+
     def replace(self, **kw) -> "SyllableConfig":
         return dataclasses.replace(self, **kw)
 
     def __post_init__(self):
         if self.n_channels < 2:
             raise ValueError(f"n_channels must be >= 2; got {self.n_channels}")
-        # Validate the word machinery and that every syllable has a figure.
+        if not (1 <= self.n_active <= self.n_channels):
+            raise ValueError(
+                f"n_active must be in [1, n_channels={self.n_channels}]; "
+                f"got {self.n_active}")
+        if not (0.0 <= self.overlap <= 1.0):
+            raise ValueError(f"overlap must be in [0, 1]; got {self.overlap}")
+        # Validate the word machinery.
         _ = _make_words(self.deviant_syllable_pos)
-        for s in self.syllables:
-            if s not in SYLLABLE_FORMANTS:
-                raise ValueError(
-                    f"Syllable {s!r} has no entry in SYLLABLE_FORMANTS "
-                    f"(known: {tuple(SYLLABLE_FORMANTS)}).")
+        # Validate the private-channel budget (raises with a clear message).
+        _ = self._figure_bank()
 
 
 # =====================================================================
