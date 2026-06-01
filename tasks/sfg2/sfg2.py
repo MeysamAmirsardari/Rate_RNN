@@ -25,26 +25,39 @@ Two measures, no STRFs:
         rec_E    recurrent excitation               (W @ E)   <- the binder
         inh_to_E inhibition                          (M_IE @ I)
         net      = tm_in + rec_E - inh_to_E
-      We average each over the figure-channel set vs. the ground-channel
-      set, per epoch (pre / figure / post), per presentation.  The
-      signature of binding is that during the FIGURE epoch the figure
-      channels' RECURRENT excitation (and net drive) rises above the
-      ground channels' as W_FF accumulates, while the PRE epoch
-      (no figure) stays balanced -- a within-presentation control.
+      These are measured CHORD-LOCKED: averaged over the 50 ms chord
+      windows of the figure epoch (where figure channels actually fire),
+      for the figure-channel set vs. the ground-channel set, per
+      presentation, against each set's own PRE-epoch baseline (no figure).
+      Epoch-mean would dilute the effect away, because in rate-matched
+      mode the figure channels are silent ~80 % of the figure epoch.  The
+      signature: the figure channels' chord-locked RECURRENT excitation
+      and NET drive rise far above their baseline as W_FF accumulates,
+      while ground stays at baseline -- figure / ground net contrast ~5x.
 
 Mechanism (model0 terms)
 ------------------------
-The coherent chord makes the figure channels co-fire on the same ms.
-Their eligibility traces overlap, so Hebbian rate-STDP grows W_FF; the
-recurrent term W @ E then feeds figure activity back onto figure
-channels.  Ground channels fire incoherently, their traces rarely
-coincide, W_GG is held near zero by decay, and per-channel inhibition
-keeps ground net drive flat.
+The coherent chord makes the figure channels co-fire on the same ms, so
+their eligibility traces overlap and Hebbian rate-STDP grows W_FF.  The
+figure channels then form a recurrent AMPLIFIER: the recurrent gain
+(n-1) * W_FF is held subcritical (< 1, via the N=37 W_max cap below) so
+the assembly amplifies the chord ~1.7x rather than running away.  Their
+elevated activity drives the shared (global) inhibitory pool, which is
+felt by every channel; ground channels, lacking the recurrent boost, are
+held at / below baseline -- the population-normalisation read of SFG.
+Ground pairs co-fire only incoherently, and the raised W_decay prunes
+those weakly-correlated synapses, so W_GG stays below W_FF.
+
+Why N=37 needs recalibration: model0's presets were tuned at N=2/5; at
+N=37 the recurrent assembly becomes supercritical and the inhibitory loop
+gain explodes ~ N^2.  Both are corrected LOCALLY in ``sfg2_config`` (see
+its notes) without touching the shared model0 defaults.
 
 Figures (simple, testing-style titles; figure = green, ground = blue-gray):
-  sfg2_stim.png            one presentation (raster + marginals)
-  sfg2_weights_{preset}.png   W_FF/W_GG/W_FG over session + vs figure size
-  sfg2_currents_{preset}.png  4 currents, figure vs ground, per presentation
+  sfg2_stim.png               one presentation (raster + marginals)
+  sfg2_weights_{preset}.png   W_FF/W_GG/W_FG over session, vs size, and
+                              assembly drive (n-1)*W_FF vs size
+  sfg2_currents_{preset}.png  4 currents, figure vs ground, CHORD-LOCKED
   sfg2_balance_{preset}.png   recurrent gap early/late + net contrast vs size
 """
 
@@ -73,6 +86,72 @@ try:
 except ImportError:                                   # run as a bare script
     from stimulus import (build_session, N_CHANNELS, N_FIG_OPTS, DT_MS,
                           TONE_DUR_MS, PRE_MS, FIGURE_MS, POST_MS, FREQS_HZ)
+
+
+# =====================================================================
+#  N = 37 recalibration  (see module docstring "Why N=37 needs recal")
+# =====================================================================
+# model0's inhibition presets and recurrent ceiling were calibrated at
+# N = 2 (AB/BA).  Two things break at N = 37 and are fixed HERE, locally,
+# without touching the shared model0 defaults (other tasks keep theirs):
+#
+#  (1) Recurrent ceiling.  A coherent figure assembly of n channels has
+#      recurrent gain W_FF * (n - 1).  With the default W_max = 0.25 the
+#      bounded-rule fixed point W_FF -> 0.125 gives gain 0.125 * 9 = 1.13
+#      at n = 10: the assembly is SUPERCRITICAL, and the slow SST-like
+#      inhibition (tau_I = 80 ms) cannot stabilise the fast (tau_E =
+#      20 ms) recurrent loop within a 50 ms chord -> divergence.  Capping
+#      W_max = 0.17 sets the fixed-point gain to 0.045 * 9 = 0.41 < 1 -- a
+#      stable recurrent AMPLIFIER (~1.7x), the N = 37 analogue of the
+#      automatically-subcritical N = 2 regime.  17 % of TC is within the
+#      intracortical-EPSP range (Stratford+1996), at its lower end.
+#
+#  (2) Inhibition scale.  The disynaptic global-inhibition loop gain is
+#      the top eigenvalue of M_IE @ M_EI; its all-to-all term grows as
+#      N^2 * w_lat^2.  At N = 37 the row-sum-matched presets give loop
+#      gain ~16 (selective) / ~35 (uniform): a pathologically over-
+#      inhibited regime (net ~ -8) that floors E so no recurrent
+#      excitation can build.  We rescale the LATERAL (population-pooling)
+#      weights so BOTH presets sit at loop gain ~6.3 -- strong enough that
+#      figure activity drives global inhibition that suppresses ground,
+#      weak enough that the figure assembly becomes highly activated.  The
+#      per-channel (self) inhibition of the selective preset is intact, so
+#      the selective/uniform contrast is preserved; matching on loop gain
+#      (the dynamically relevant invariant) replaces the N = 5 row-sum
+#      match that diverges at N = 37.
+#
+#  (3) Forgetting rate.  W_decay is raised 5e-4 -> 2e-3 to prune the
+#      weakly-correlated ground synapses.  The bounded rule gives
+#      FF / GG = 1 + W_decay / (eta_LTP * c_gnd): a larger decay sharpens
+#      the asymptotic figure/ground weight contrast, while the
+#      coincidence-saturated figure synapses (c_fig >> c_gnd) are
+#      unaffected.
+W_MAX_N37     = 0.17
+W_DECAY_N37   = 2e-3
+LOOP_GAIN_N37 = 6.3              # target disynaptic inhibitory loop gain
+
+
+def sfg2_config(preset: str) -> A1Config:
+    """N=37-recalibrated config for an inhibition preset (see notes above)."""
+    common = dict(N=N_CHANNELS, W_max=W_MAX_N37, W_max_self=W_MAX_N37,
+                  W_decay=W_DECAY_N37)
+    if preset == "uniform":
+        u = 0.068                                     # (u*N)^2 ~ 6.3
+        return A1Config(w_EI_self=u, w_EI_lat=u,
+                        w_IE_self=u, w_IE_lat=u, **common)
+    if preset == "selective":                         # self 0.20/0.65 kept
+        return A1Config(w_EI_lat=0.030, w_IE_lat=0.120, **common)
+    raise ValueError(f"unknown inhibition preset {preset!r}")
+
+
+def _loop_gain(cfg: A1Config) -> float:
+    """Top eigenvalue of the disynaptic inhibitory loop M_IE @ M_EI."""
+    N = cfg.N
+    J, eye = np.ones((N, N)), np.eye(N)
+    M_EI = cfg.w_EI_lat * J + (cfg.w_EI_self - cfg.w_EI_lat) * eye
+    M_IE = cfg.w_IE_lat * J + (cfg.w_IE_self - cfg.w_IE_lat) * eye
+    G = M_IE @ M_EI
+    return float(np.max(np.linalg.eigvalsh((G + G.T) / 2)))
 
 
 # =====================================================================
@@ -147,6 +226,44 @@ def epoch_currents(out: Dict) -> Dict[str, Dict[str, np.ndarray]]:
     return res
 
 
+def triggered_currents(out: Dict) -> Dict[str, Dict[str, Dict[str, np.ndarray]]]:
+    """CHORD-LOCKED currents -- where the figure-ground mechanism lives.
+
+    In rate-matched mode the figure channels are silent for ~80 % of the
+    figure epoch (they fire only the synchronous chord), so an epoch-mean
+    average dilutes the effect away.  Here each current is averaged over
+    the 50 ms chord WINDOWS of the figure epoch, and -- as a within-
+    presentation baseline -- over the whole PRE epoch (no figure).
+
+    Returns ``{current: {'fig'/'gnd': {'chord': (nR,), 'pre': (nR,)}}}``
+    with ``current`` one of tm / rec / inh / net.
+    """
+    sess = out["sess"]
+    fig_idx, gnd_idx = sess["fig_idx"], sess["gnd_idx"]
+    reps = sess["reps"]
+    nR = len(reps)
+    tone = max(1, int(round(TONE_DUR_MS / DT_MS)))
+
+    arrays = {
+        "tm":  out["tm_in"],
+        "rec": out["rec_E"],
+        "inh": out["inh_to_E"],
+        "net": out["tm_in"] + out["rec_E"] - out["inh_to_E"],
+    }
+    T = out["tm_in"].shape[1]
+    res = {k: {s: {"chord": np.zeros(nR), "pre": np.zeros(nR)}
+               for s in ("fig", "gnd")} for k in arrays}
+    for r, rep in enumerate(reps):
+        wins = np.concatenate([np.arange(on, min(on + tone, T))
+                               for on in rep["fig_starts"]])
+        plo, phi = rep["bounds"]["pre"]
+        for k, arr in arrays.items():
+            for s, idx in (("fig", fig_idx), ("gnd", gnd_idx)):
+                res[k][s]["chord"][r] = arr[np.ix_(idx, wins)].mean()
+                res[k][s]["pre"][r]   = arr[idx, plo:phi].mean()
+    return res
+
+
 def summarize_run(out: Dict) -> Dict:
     """Extract the small structures the plots need; drop the big histories."""
     fig_idx, gnd_idx = out["fig_idx"], out["gnd_idx"]
@@ -157,6 +274,7 @@ def summarize_run(out: Dict) -> Dict:
         traj=traj,
         final=compute_W_groups(out["W_final"], fig_idx, gnd_idx),  # (3,)
         ec=epoch_currents(out),
+        tc=triggered_currents(out),
         n_reps=out["sess"]["n_reps"],
         n_fig=out["sess"]["n_fig"],
     )
@@ -272,10 +390,17 @@ def plot_stimulus(fname: str, n_fig: int = 10):
 # =====================================================================
 def plot_weights(store: Dict[int, Dict], sizes: List[int], preset: str,
                  fname: str):
-    """W_FF / W_GG / W_FG over the session (largest figure) + vs figure size."""
+    """W_FF / W_GG / W_FG over session, final vs size, and assembly drive.
+
+    The right panel makes the size effect explicit: the MEAN per-pair
+    weight W_FF has a size-independent bounded-rule fixed point, so what
+    grows with the figure is the TOTAL recurrent input a figure channel
+    receives from its assembly, (n-1) * <W_FF> -- the quantity that
+    actually drives the recurrent excitation current.
+    """
     big = max(sizes)
     s = store[big]
-    fig, axes = plt.subplots(1, 2, figsize=(13, 4.4), constrained_layout=True)
+    fig, axes = plt.subplots(1, 3, figsize=(16, 4.3), constrained_layout=True)
     fig.suptitle(f"E to E weights  [{preset}]", fontsize=12, fontweight="bold")
 
     # ---- left: trajectory (largest figure) ----
@@ -288,7 +413,7 @@ def plot_weights(store: Dict[int, Dict], sizes: List[int], preset: str,
     _ax(ax, title=f"Over session ({big}-tone figure)",
         xlabel="time (s)", ylabel="mean W", legend=True)
 
-    # ---- right: final weights vs figure size ----
+    # ---- middle: final weights vs figure size ----
     ax = axes[1]
     sz = np.array(sizes)
     FF = np.array([store[n]["final"][0] for n in sizes])
@@ -298,8 +423,22 @@ def plot_weights(store: Dict[int, Dict], sizes: List[int], preset: str,
     ax.plot(sz, GG, "-o", color=COL_GND, lw=1.8, ms=5, label=r"$W_{G\to G}$")
     ax.plot(sz, FG, "--o", color=COL_CTL, lw=1.5, ms=4, label=r"$W_{F\leftrightarrow G}$")
     ax.set_xticks(sz)
-    _ax(ax, title="Final weights vs figure size",
+    _ax(ax, title="Final mean weight vs figure size",
         xlabel="figure size (coherent channels)", ylabel="mean W", legend=True)
+
+    # ---- right: assembly recurrent drive (n-1) * W_FF vs size ----
+    ax = axes[2]
+    drive = np.array([(n - 1) * store[n]["final"][0] for n in sizes])
+    ax.plot(sz, drive, "-o", color=COL_FIG, lw=2.4, ms=6,
+            label=r"$(n-1)\,W_{F\to F}$")
+    ax.axhline(1.0, color="0.7", lw=0.8, ls=":")
+    ax.text(sz[0], 1.0, " runaway (gain = 1)", fontsize=8, color="0.5",
+            va="bottom", ha="left")
+    ax.set_xticks(sz)
+    ax.set_ylim(0, max(1.08, drive.max() * 1.15))
+    _ax(ax, title="Figure-assembly recurrent drive",
+        xlabel="figure size (coherent channels)",
+        ylabel=r"recurrent gain $(n-1)\,W_{F\to F}$", legend=True)
 
     fig.savefig(fname, dpi=150)
     plt.close(fig)
@@ -311,35 +450,41 @@ def plot_weights(store: Dict[int, Dict], sizes: List[int], preset: str,
 # =====================================================================
 def plot_currents(store: Dict[int, Dict], sizes: List[int], preset: str,
                   fname: str):
-    """Four currents, figure vs ground, across presentations (largest figure).
+    """Four currents, figure vs ground, CHORD-LOCKED, across presentations.
 
-    Solid = the FIGURE epoch (figure present); dotted gray = the figure
-    channels during the PRE epoch (no figure) -- a within-presentation
-    control showing the elevation is figure-evoked, not channel bias.
+    Solid lines = mean current during the 50 ms chord windows (figure
+    epoch); the figure channels are silent between chords in rate-matched
+    mode, so this is where the mechanism lives.  Faint dotted lines = each
+    set's own PRE-epoch baseline (no figure) -- a within-presentation
+    control.  The signature: figure chord-locked current rises far above
+    its baseline as W_FF accumulates (recurrent excitation -> net drive),
+    while ground stays at baseline.
     """
     big = max(sizes)
-    ec = store[big]["ec"]
+    tc = store[big]["tc"]
     nR = store[big]["n_reps"]
     reps = np.arange(1, nR + 1)
 
     panels = [("tm", "Thalamic excitation"), ("rec", "Recurrent excitation"),
               ("inh", "Inhibition"), ("net", "Net drive")]
     fig, axes = plt.subplots(2, 2, figsize=(13, 8.5), constrained_layout=True)
-    fig.suptitle(f"Synaptic currents: figure vs ground  ({big}-tone figure)  [{preset}]",
+    fig.suptitle(f"Synaptic currents (chord-locked): figure vs ground  "
+                 f"({big}-tone figure)  [{preset}]",
                  fontsize=12, fontweight="bold")
 
     for ax, (k, title) in zip(axes.ravel(), panels):
-        fig_e = ec[k]["fig"][:, 1]          # figure channels, figure epoch
-        gnd_e = ec[k]["gnd"][:, 1]          # ground channels, figure epoch
-        fig_pre = ec[k]["fig"][:, 0]        # figure channels, pre epoch (control)
         if k == "net":
             ax.axhline(0, color="0.7", lw=0.7)
-        ax.plot(reps, fig_e, color=COL_FIG, lw=2.2, label="figure ch (figure epoch)")
-        ax.plot(reps, gnd_e, color=COL_GND, lw=2.0, label="ground ch (figure epoch)")
-        ax.plot(reps, fig_pre, color=COL_CTL, lw=1.4, ls=":",
-                label="figure ch (pre epoch, control)")
+        ax.plot(reps, tc[k]["fig"]["chord"], color=COL_FIG, lw=2.4,
+                label="figure ch (chord)")
+        ax.plot(reps, tc[k]["gnd"]["chord"], color=COL_GND, lw=2.0,
+                label="ground ch (chord)")
+        ax.plot(reps, tc[k]["fig"]["pre"], color=COL_FIG, lw=1.2, ls=":",
+                alpha=0.7, label="figure ch (pre, baseline)")
+        ax.plot(reps, tc[k]["gnd"]["pre"], color=COL_GND, lw=1.2, ls=":",
+                alpha=0.7, label="ground ch (pre, baseline)")
         _ax(ax, title=title, xlabel="presentation #",
-            ylabel="mean current", legend=True)
+            ylabel="mean current", legend=(k == "rec"))
 
     fig.savefig(fname, dpi=150)
     plt.close(fig)
@@ -351,36 +496,40 @@ def plot_currents(store: Dict[int, Dict], sizes: List[int], preset: str,
 # =====================================================================
 def plot_balance(store: Dict[int, Dict], sizes: List[int], preset: str,
                  fname: str):
-    """Recurrent-excitation gap early vs late + net contrast vs figure size."""
+    """Recurrent-excitation gap early vs late + net contrast vs figure size.
+
+    All quantities are CHORD-LOCKED (50 ms chord windows of the figure
+    epoch), the window in which the figure-ground competition plays out.
+    """
     big = max(sizes)
-    ec = store[big]["ec"]
+    tc = store[big]["tc"]
     nR = store[big]["n_reps"]
     K = max(1, min(10, nR // 4))
 
     fig, axes = plt.subplots(1, 2, figsize=(13, 4.4), constrained_layout=True)
-    fig.suptitle(f"Figure / ground balance  [{preset}]",
+    fig.suptitle(f"Figure / ground balance (chord-locked)  [{preset}]",
                  fontsize=12, fontweight="bold")
 
-    # ---- left: recurrent exc, figure vs ground, early vs late (figure epoch) ----
+    # ---- left: recurrent exc, figure vs ground, early vs late ----
     ax = axes[0]
-    rec = ec["rec"]
-    early_fig = rec["fig"][:K, 1].mean(); late_fig = rec["fig"][-K:, 1].mean()
-    early_gnd = rec["gnd"][:K, 1].mean(); late_gnd = rec["gnd"][-K:, 1].mean()
+    rf, rg = tc["rec"]["fig"]["chord"], tc["rec"]["gnd"]["chord"]
+    early_fig, late_fig = rf[:K].mean(), rf[-K:].mean()
+    early_gnd, late_gnd = rg[:K].mean(), rg[-K:].mean()
     x = np.array([0, 1]); w = 0.38
     ax.bar(x - w / 2, [early_fig, early_gnd], w, color=[COL_FIG, COL_GND],
            alpha=0.45, label=f"early (first {K})")
     ax.bar(x + w / 2, [late_fig, late_gnd], w, color=[COL_FIG, COL_GND],
            label=f"late (last {K})")
     ax.set_xticks(x); ax.set_xticklabels(["figure ch", "ground ch"])
-    _ax(ax, title=f"Recurrent excitation ({big}-tone, figure epoch)",
+    _ax(ax, title=f"Recurrent excitation ({big}-tone figure)",
         ylabel="mean recurrent current", legend=True)
 
     # ---- right: late net contrast (figure - ground) vs figure size ----
     ax = axes[1]
     sz = np.array(sizes)
     contrast = np.array([
-        (store[n]["ec"]["net"]["fig"][-K:, 1].mean()
-         - store[n]["ec"]["net"]["gnd"][-K:, 1].mean())
+        (store[n]["tc"]["net"]["fig"]["chord"][-K:].mean()
+         - store[n]["tc"]["net"]["gnd"]["chord"][-K:].mean())
         for n in sizes])
     ax.bar(sz, contrast, width=1.2, color=COL_FIG, alpha=0.85)
     ax.axhline(0, color="0.7", lw=0.7)
@@ -415,23 +564,32 @@ def main():
     plot_stimulus("sfg2_stim.png", n_fig=max(sizes))
 
     for preset in args.presets:
-        factory = INH_PRESETS[preset]
-        cfg = factory(N=N_CHANNELS)
+        cfg = sfg2_config(preset)                         # N=37-recalibrated
 
         print(f"\n========================================================")
         print(f"[ SFG2 -- inhibition preset '{preset}'  "
               f"(N={N_CHANNELS}, {args.reps} presentations) ]")
         print(f"  w_EI = (self {cfg.w_EI_self}, lat {cfg.w_EI_lat}); "
               f"w_IE = (self {cfg.w_IE_self}, lat {cfg.w_IE_lat})")
+        print(f"  W_max={cfg.W_max}  W_decay={cfg.W_decay:.0e}  "
+              f"inhibitory loop gain={_loop_gain(cfg):.2f}")
 
         store: Dict[int, Dict] = {}
+        K = max(1, min(10, args.reps // 4))
         for n_fig in sizes:
             out = run_sfg2(cfg, n_fig, args.reps,
                            base_seed=args.base_seed, fig_seed=args.fig_seed)
+            stable = bool(np.all(np.isfinite(out["W_final"]))
+                          and np.all(np.isfinite(out["E"])))
             store[n_fig] = summarize_run(out)
-            FF, GG, FG = store[n_fig]["final"]
+            sm = store[n_fig]
+            FF, GG, FG = sm["final"]
+            dnet = (sm["tc"]["net"]["fig"]["chord"][-K:].mean()
+                    - sm["tc"]["net"]["gnd"]["chord"][-K:].mean())
+            flag = "" if stable else "   [UNSTABLE/nan]"
             print(f"  n_fig={n_fig:2d}:  W_FF={FF:.4f}  W_GG={GG:.4f}  "
-                  f"W_FG={FG:.4f}   FF/GG={FF/(GG+1e-9):.1f}x")
+                  f"W_FG={FG:.4f}   FF/GG={FF/(GG+1e-9):.2f}x   "
+                  f"net(fig-gnd|chord)={dnet:+.2f}{flag}")
             del out                                       # free big histories
 
         print("[ Plotting ]")
