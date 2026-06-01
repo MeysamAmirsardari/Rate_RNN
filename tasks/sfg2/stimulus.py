@@ -157,11 +157,32 @@ def make_cloud(rng: np.random.Generator, dur_ms: int = 5000,
 
 def make_figure_epoch(rng_fig: np.random.Generator,
                       rng_cloud: np.random.Generator,
-                      n_fig: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+                      n_fig: int,
+                      rate_matched: bool = True
+                      ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """``(FIGURE_MS, N_CHANNELS)`` cloud + synchronous figure chords.
 
     ``rng_fig`` (frozen across presentations) sets the figure onsets;
     ``rng_cloud`` (fresh) sets the surrounding background.
+
+    ``rate_matched`` (default)
+        COHERENCE-ONLY figure.  Figure channels fire ONLY the synchronous
+        chord (~mean 4 Hz) and carry NO independent background; ground
+        channels carry an independent cloud at the same mean rate.  Figure
+        and ground channels then have matched per-channel statistics
+        (same pip count, flat time-marginal) and differ ONLY in temporal
+        coherence -- so any figure enhancement is attributable to
+        coherence, not to extra thalamic drive.  This is the principled
+        substrate for testing "temporal coherence induces binding".
+
+    ``rate_matched = False``
+        ADDITIVE figure (the original baphy ``fgFrozen`` form).  The chord
+        is added on top of a full independent cloud and background pips
+        within +/-50 ms of a chord onset are dropped to flatten the global
+        envelope.  Figure channels then fire MORE than ground (chord +
+        surviving background) -- the global energy is matched but the
+        per-channel rate is not, which confounds the figure-vs-ground
+        comparison.  Kept only for fidelity to the recording stimulus.
     """
     fig_channels = FIG_CHANNELS_10[:n_fig]
     onsets = figure_onsets(rng_fig)
@@ -176,19 +197,26 @@ def make_figure_epoch(rng_fig: np.random.Generator,
         starts.append(t0)
     starts = np.asarray(starts)
 
-    cloud = make_cloud(rng_cloud, FIGURE_MS, drop_onsets_ms=starts)
-    np.maximum(M, cloud, out=M)
+    if rate_matched:
+        cloud = make_cloud(rng_cloud, FIGURE_MS)       # independent, no drop
+        gnd_mask = np.ones(N_CHANNELS, dtype=bool)
+        gnd_mask[fig_channels] = False
+        M[:, gnd_mask] = cloud[:, gnd_mask]            # ground only; figure = chord
+    else:
+        cloud = make_cloud(rng_cloud, FIGURE_MS, drop_onsets_ms=starts)
+        np.maximum(M, cloud, out=M)
     return M, fig_channels, starts
 
 
 def build_presentation(n_fig: int, fig_seed: int, cloud_seed: int,
-                       with_silence: bool = True) -> Tuple[np.ndarray, Dict]:
+                       with_silence: bool = True,
+                       rate_matched: bool = True) -> Tuple[np.ndarray, Dict]:
     """One SFG presentation ``(T, N_CHANNELS)`` + epoch metadata.
 
     The figure (onsets + channels) is determined by ``fig_seed`` only,
     so a constant ``fig_seed`` freezes it across presentations; the
     cloud is seeded by ``cloud_seed`` (vary it per presentation for a
-    fresh background).
+    fresh background).  ``rate_matched`` -> see ``make_figure_epoch``.
     """
     rng_fig  = np.random.default_rng(fig_seed)
     rng_pre  = np.random.default_rng(cloud_seed)
@@ -196,7 +224,8 @@ def build_presentation(n_fig: int, fig_seed: int, cloud_seed: int,
     rng_post = np.random.default_rng(cloud_seed + 2)
 
     pre  = make_cloud(rng_pre,  PRE_MS)
-    figM, fig_channels, fig_starts = make_figure_epoch(rng_fig, rng_figc, n_fig)
+    figM, fig_channels, fig_starts = make_figure_epoch(
+        rng_fig, rng_figc, n_fig, rate_matched=rate_matched)
     post = make_cloud(rng_post, POST_MS)
 
     parts: List[np.ndarray] = []
@@ -221,9 +250,14 @@ def build_presentation(n_fig: int, fig_seed: int, cloud_seed: int,
 #  Session: repeated presentations (frozen figure, fresh cloud)
 # =====================================================================
 def build_session(n_fig: int, n_reps: int, base_seed: int = 0,
-                  fig_seed: int = 12345, with_silence: bool = True
+                  fig_seed: int = 12345, with_silence: bool = True,
+                  rate_matched: bool = True
                   ) -> Tuple[np.ndarray, Dict]:
     """Concatenate ``n_reps`` presentations into a model-ready stimulus.
+
+    ``rate_matched`` (default True) -> figure channels carry only the
+    coherent chord, ground channels an independent cloud at the same
+    mean rate; see ``make_figure_epoch``.
 
     Returns
     -------
@@ -237,7 +271,7 @@ def build_session(n_fig: int, n_reps: int, base_seed: int = 0,
     for r in range(n_reps):
         M, meta = build_presentation(
             n_fig, fig_seed=fig_seed, cloud_seed=base_seed + 1000 * (r + 1),
-            with_silence=with_silence)
+            with_silence=with_silence, rate_matched=rate_matched)
         gbounds = {k: (lo + pos, hi + pos) for k, (lo, hi) in meta["bounds"].items()}
         reps.append(dict(bounds=gbounds, start=pos, T=meta["T"],
                          fig_starts=meta["fig_starts"] + pos))
@@ -249,5 +283,5 @@ def build_session(n_fig: int, n_reps: int, base_seed: int = 0,
     gnd_idx = np.setdiff1d(np.arange(N_CHANNELS), fig_idx)
     sess = dict(reps=reps, n_fig=n_fig, n_reps=n_reps,
                 fig_idx=fig_idx, gnd_idx=gnd_idx,
-                T=pos, with_silence=with_silence)
+                T=pos, with_silence=with_silence, rate_matched=rate_matched)
     return stim, sess
