@@ -56,6 +56,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+import numpy as np
+
 
 @dataclass
 class A1Config:
@@ -263,4 +265,117 @@ def uniform_inh(**kw) -> "A1Config":
 INH_PRESETS = {
     "selective": selective_inh,
     "uniform":   uniform_inh,
+}
+
+
+# =====================================================================
+#  Disynaptic inhibitory loop gain  (the cross-paradigm invariant)
+# =====================================================================
+def inhibitory_loop_gain(cfg: "A1Config") -> float:
+    """Top eigenvalue of the symmetrised disynaptic loop ``M_IE @ M_EI``.
+
+    This is the dynamically relevant measure of global (population-pooling)
+    inhibition -- the gain of the E -> I -> E negative-feedback loop.  Its
+    all-to-all term grows as ``N**2 * w_lat**2``, so a preset calibrated at
+    one channel count sits in a completely different inhibitory regime at
+    another N unless the LATERAL weights are rescaled to hold this quantity
+    fixed.  ``sfg_config`` does exactly that.
+    """
+    N = cfg.N
+    J, eye = np.ones((N, N)), np.eye(N)
+    M_EI = cfg.w_EI_lat * J + (cfg.w_EI_self - cfg.w_EI_lat) * eye
+    M_IE = cfg.w_IE_lat * J + (cfg.w_IE_self - cfg.w_IE_lat) * eye
+    G = M_IE @ M_EI
+    return float(np.max(np.linalg.eigvalsh((G + G.T) / 2)))
+
+
+# =====================================================================
+#  SFG / recurrent-binding regime  (finalised tasks/sfg2 config, promoted)
+# =====================================================================
+# The Stochastic-Figure-Ground recalibration (tasks/sfg2) is the first
+# paradigm run at the full A1 channel count (N = 37) rather than the N = 2
+# AB/BA minimal circuit the A1Config defaults were tuned for.  Three regime
+# constants define it -- two flat, ONE that must scale with N:
+#
+#   * W_max = W_max_self = 0.17  (recurrent ceiling).  A coherent figure
+#     assembly of n channels has recurrent gain W_FF * (n - 1); the
+#     bounded-rule fixed point W_FF -> 0.045 at this cap keeps the gain
+#     0.41 < 1 at n = 10 -- a stable amplifier, not a runaway loop.  Set by
+#     assembly SIZE, not channel count, so it does NOT scale with N.
+#
+#   * W_decay = 2e-3  (forgetting).  FF/GG = 1 + W_decay/(eta_LTP*c_gnd):
+#     larger decay sharpens the figure/ground weight contrast by pruning
+#     weakly-correlated ground synapses.  Flat in N.
+#
+#   * inhibitory_loop_gain = 6.3  (global inhibition).  THIS is the term
+#     that explodes as N**2 if the laterals are held fixed.  We hold the
+#     loop gain itself fixed and SOLVE the lateral weights for it at the
+#     requested N -- the cross-paradigm invariant.  Per-channel (self)
+#     weights keep their biophysical A1Config values; only the population-
+#     pooling laterals scale (w_lat ~ 1/N).
+#
+# At N = 37 this realises the committed tasks/sfg2 weights (selective
+# w_EI_lat 0.0298 / w_IE_lat 0.1193; uniform u 0.0678 -- i.e. the task's
+# rounded 0.030 / 0.120 / 0.068, all at loop gain 6.3).
+#
+# NOTE the selective structure cannot reach loop gain 6.3 below N = 8: the
+# N**2 pooling term is too small, so the solve demands a lateral exceeding
+# the self weight (unphysical) and raises (and the laterals are only
+# genuinely *weak* -- << self -- for N >> 10).  This is a real finding for
+# the invariance study, not a bug: the N = 2 AB/BA default sits at loop gain
+# ~0.2, three regimes away from SFG's 6.3 -- so "hold the loop gain fixed
+# across paradigms" is a Phase-1 decision with teeth, not a free lunch.
+def sfg_config(inh: str = "selective", N: int = 37,
+               loop_gain: float = 6.3, lat_ratio: float = 4.0,
+               **kw) -> "A1Config":
+    """Finalised SFG (recurrent-binding) regime at channel count ``N``.
+
+    ``inh`` selects the inhibition STRUCTURE: ``"selective"`` keeps strong
+    per-channel self inhibition with weak lateral; ``"uniform"`` collapses
+    all four E<->I weights equal.  Both are solved to the SAME disynaptic
+    ``loop_gain`` so the two structures differ only in selectivity, not in
+    total inhibitory drive.  ``lat_ratio`` = w_IE_lat / w_EI_lat for the
+    selective case (4.0 in the SFG calibration).  Extra ``kw`` override
+    A1Config fields (e.g. ``stp_enabled=False``).
+    """
+    common = dict(N=N, W_max=0.17, W_max_self=0.17, W_decay=2e-3)
+    common.update(kw)
+
+    if inh == "uniform":
+        # M_EI = M_IE = u*J  ->  loop gain = (u*N)**2.  Solve u = sqrt(g)/N.
+        u = float(np.sqrt(loop_gain)) / N
+        return A1Config(w_EI_self=u, w_EI_lat=u,
+                        w_IE_self=u, w_IE_lat=u, **common)
+
+    if inh == "selective":
+        # Keep self at the A1Config biophysical values; lock
+        # w_IE_lat = lat_ratio * w_EI_lat; solve the loop-gain quadratic
+        # for w_EI_lat = x (derivation: G = M_IE@M_EI = c*J + alpha*beta*I,
+        # top eigenvalue c*N + alpha*beta with alpha = a_self - x,
+        # beta = b_self - rho*x):
+        #   rho*(N-1)**2 x**2 + (rho*a_self + b_self)(N-1) x
+        #       + (a_self*b_self - g) = 0
+        a_self = A1Config.w_EI_self          # 0.20  (E_i -> I_i)
+        b_self = A1Config.w_IE_self          # 0.65  (I_i -> E_i)
+        rho = lat_ratio
+        A = rho * (N - 1) ** 2
+        B = (rho * a_self + b_self) * (N - 1)
+        C = a_self * b_self - loop_gain
+        x = (-B + float(np.sqrt(B * B - 4 * A * C))) / (2 * A)
+        if not 0.0 < x < a_self or rho * x >= b_self:
+            raise ValueError(
+                f"selective loop gain {loop_gain} unreachable at N={N} with "
+                f"physical laterals (solved w_EI_lat={x:.4f} vs self "
+                f"{a_self}); the N**2 pooling term is too small -- N must be "
+                f"large enough, or use inh='uniform'.")
+        return A1Config(w_EI_lat=x, w_IE_lat=rho * x, **common)
+
+    raise ValueError(f"unknown inhibition structure {inh!r}")
+
+
+# Ready-to-use named presets (zero-arg factories, mirroring INH_PRESETS).
+# Pass kwargs through to override N / loop_gain, e.g. SFG_PRESETS["selective"](N=37).
+SFG_PRESETS = {
+    "selective": lambda **kw: sfg_config("selective", **kw),
+    "uniform":   lambda **kw: sfg_config("uniform", **kw),
 }
