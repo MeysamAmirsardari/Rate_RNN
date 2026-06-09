@@ -35,7 +35,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate
+from model0 import A1Config, INH_PRESETS, simulate, shared_config
 
 
 # =====================================================================
@@ -108,7 +108,7 @@ def run_experiment(
     ch_B: int = 1,
 ) -> dict:
     if cfg is None:
-        cfg = A1Config()
+        cfg = shared_config(N=2)
 
     rng = np.random.default_rng(seed)
     codes = shuffled_codes(n_trials, p_AB, rng)
@@ -633,26 +633,16 @@ def plot_recurrent_masking(res: dict, fname: str):
 #  Main
 # =====================================================================
 def main():
-    import dataclasses as _dc
-    # AB/BA is the MMN-polarity test.  The predictive cascade
-    # (E_A -> pre-activate E_B via W[B<-A] -> drive I_B
-    #     -> tau_I persistence -> suppress E_B at tone B)
-    # needs (i) W[B<-A] near its asymptote and (ii) a strong I -> E
-    # delivery arm.  The bounded plasticity rule (preserved here -- not
-    # switched to additive) gives the right ASYMPTOTE (W_max for purely
-    # causal pairs), but at the default W_norm=20 the time-constant of
-    # the (W_max - W)-gated approach is ~6000 trials, far beyond the
-    # 400-trial test horizon.  W_norm=4 speeds the approach 25x while
-    # leaving self-weight fixed points unchanged (W_max - LTD/LTP=0.125).
-    # The strong w_IE_self provides I -> E delivery.
-    # Other tasks (roving, local_global, sfg) keep W_norm=20 and lower
-    # inhibition -- they don't want recurrent saturation in <500 trials.
-    ab_ba_overrides = dict(w_IE_self=3.0, w_EI_self=0.40, W_norm=4.0)
-
-    for inh_name, inh_factory in INH_PRESETS.items():
-        cfg = inh_factory()
-        if inh_name == "selective":
-            cfg = _dc.replace(cfg, **ab_ba_overrides)
+    # AB/BA is the MMN-polarity test: the predictive cascade
+    # (E_A -> pre-activate E_B via W[B<-A] -> drive I_B -> tau_I persistence
+    #  -> suppress E_B at tone B) needs W[B<-A] near its asymptote.  Under the
+    # single shared config (W_norm=20) the (W_max-W)-gated approach is slow
+    # (~6000 trials), so this 400-trial run reaches only part of the asymptote
+    # -- the polarity is present but weaker than the old bespoke config
+    # (W_norm=4, strong w_IE_self).  See model0/legacy_configs.ab_ba to
+    # reproduce the original; raise n_trials here to recover the full effect.
+    for inh_name in INH_PRESETS:
+        cfg = shared_config(N=2, inh=inh_name)
 
         print(f"\n========================================================")
         print(f"[ AB/BA -- inhibition preset '{inh_name}' ]")

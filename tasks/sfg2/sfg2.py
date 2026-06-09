@@ -78,7 +78,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate
+from model0 import A1Config, INH_PRESETS, simulate, shared_config
 
 try:
     from .stimulus import (build_session, N_CHANNELS, N_FIG_OPTS, DT_MS,
@@ -564,7 +564,7 @@ def main():
     plot_stimulus("sfg2_stim.png", n_fig=max(sizes))
 
     for preset in args.presets:
-        cfg = sfg2_config(preset)                         # N=37-recalibrated
+        cfg = shared_config(N=N_CHANNELS, inh=preset)     # the one shared config
 
         print(f"\n========================================================")
         print(f"[ SFG2 -- inhibition preset '{preset}'  "

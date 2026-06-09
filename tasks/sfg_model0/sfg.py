@@ -58,7 +58,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate
+from model0 import A1Config, INH_PRESETS, simulate, shared_config
 
 # ---- paradigm defaults --------------------------------------------------------
 N_CHANNELS    = 28
@@ -221,7 +221,7 @@ def run_sfg(
 ) -> dict:
     """Build a repeated-presentation SFG session and run model0 on it."""
     if cfg is None:
-        cfg = A1Config(N=N_CHANNELS)
+        cfg = shared_config(N=N_CHANNELS)
     if fig_idx is None:
         fig_idx = FIG_IDX
 
@@ -477,8 +477,8 @@ def main():
 
     # Loop over both inhibition-structure presets.  Filenames carry the
     # preset tag; the two runs do not overwrite.
-    for inh_name, inh_factory in INH_PRESETS.items():
-        cfg = inh_factory(N=N_CHANNELS)
+    for inh_name in INH_PRESETS:
+        cfg = shared_config(N=N_CHANNELS, inh=inh_name)
 
         print(f"\n========================================================")
         print(f"[ SFG -- inhibition preset '{inh_name}' "

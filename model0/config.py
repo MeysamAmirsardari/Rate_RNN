@@ -54,7 +54,7 @@ References
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 
 import numpy as np
 
@@ -289,6 +289,25 @@ def inhibitory_loop_gain(cfg: "A1Config") -> float:
     return float(np.max(np.linalg.eigvalsh((G + G.T) / 2)))
 
 
+def _selective_laterals(N: int, loop_gain: float, lat_ratio: float,
+                        a_self: float = A1Config.w_EI_self,
+                        b_self: float = A1Config.w_IE_self):
+    """Lateral E->I, I->E weights that hold the disynaptic loop gain at
+    ``loop_gain``, with ``w_IE_lat = lat_ratio * w_EI_lat`` and the self
+    weights fixed.  Closed form: with G = M_IE@M_EI = c*J + alpha*beta*I
+    (top eigenvalue c*N + alpha*beta, alpha = a_self - x, beta = b_self -
+    rho*x), the constraint is the quadratic
+        rho*(N-1)**2 x**2 + (rho*a_self + b_self)(N-1) x + (a_self*b_self - g) = 0
+    in x = w_EI_lat.  Returns (w_EI_lat, w_IE_lat); the caller checks physicality.
+    """
+    rho = lat_ratio
+    A = rho * (N - 1) ** 2
+    B = (rho * a_self + b_self) * (N - 1)
+    C = a_self * b_self - loop_gain
+    x = (-B + float(np.sqrt(B * B - 4 * A * C))) / (2 * A)
+    return x, rho * x
+
+
 # =====================================================================
 #  SFG / recurrent-binding regime  (finalised tasks/sfg2 config, promoted)
 # =====================================================================
@@ -348,27 +367,15 @@ def sfg_config(inh: str = "selective", N: int = 37,
                         w_IE_self=u, w_IE_lat=u, **common)
 
     if inh == "selective":
-        # Keep self at the A1Config biophysical values; lock
-        # w_IE_lat = lat_ratio * w_EI_lat; solve the loop-gain quadratic
-        # for w_EI_lat = x (derivation: G = M_IE@M_EI = c*J + alpha*beta*I,
-        # top eigenvalue c*N + alpha*beta with alpha = a_self - x,
-        # beta = b_self - rho*x):
-        #   rho*(N-1)**2 x**2 + (rho*a_self + b_self)(N-1) x
-        #       + (a_self*b_self - g) = 0
-        a_self = A1Config.w_EI_self          # 0.20  (E_i -> I_i)
-        b_self = A1Config.w_IE_self          # 0.65  (I_i -> E_i)
-        rho = lat_ratio
-        A = rho * (N - 1) ** 2
-        B = (rho * a_self + b_self) * (N - 1)
-        C = a_self * b_self - loop_gain
-        x = (-B + float(np.sqrt(B * B - 4 * A * C))) / (2 * A)
-        if not 0.0 < x < a_self or rho * x >= b_self:
+        x, y = _selective_laterals(N, loop_gain, lat_ratio)
+        a_self, b_self = A1Config.w_EI_self, A1Config.w_IE_self
+        if not 0.0 < x < a_self or y >= b_self:
             raise ValueError(
                 f"selective loop gain {loop_gain} unreachable at N={N} with "
                 f"physical laterals (solved w_EI_lat={x:.4f} vs self "
                 f"{a_self}); the N**2 pooling term is too small -- N must be "
                 f"large enough, or use inh='uniform'.")
-        return A1Config(w_EI_lat=x, w_IE_lat=rho * x, **common)
+        return A1Config(w_EI_lat=x, w_IE_lat=y, **common)
 
     raise ValueError(f"unknown inhibition structure {inh!r}")
 
@@ -379,3 +386,71 @@ SFG_PRESETS = {
     "selective": lambda **kw: sfg_config("selective", **kw),
     "uniform":   lambda **kw: sfg_config("uniform", **kw),
 }
+
+
+# =====================================================================
+#  THE single shared config  (one parameter set for every paradigm)
+# =====================================================================
+# Goal: run every paradigm (SFG, AB-BA, SSA/oddball, local-global, roving,
+# syllable, speech) on ONE config, with only N -- the channel count, which
+# is dictated by the stimulus, not a free knob -- differing between tasks.
+#
+# Every biophysical/learning constant is the A1Config default (tau_E, tau_I,
+# tau_trace, eta_LTP, eta_LTD, U, A_TC, tau_D, W_norm, bounded plasticity).
+# Three deliberate, paradigm-independent choices sit on top:
+#
+#   * W_max = W_max_self = 0.17.  A coherent assembly of n channels has
+#     recurrent gain W_FF*(n-1); 0.17 keeps the LARGEST assemblies (the SFG
+#     figure, n~10) subcritical and stable.  Small-circuit paradigms (n<=2)
+#     are unaffected by the lower ceiling.
+#
+#   * multiscale_std = True.  The three-timescale TC depression is one
+#     synapse model, not a per-task switch; the fast within-trial paradigms
+#     simply do not probe its slow (~5 s) component, while roving/speech do.
+#
+#   * inhibition: a single rule -- CAP the disynaptic loop gain at 6.3.
+#     The pooling term grows as N^2, so FIXED lateral weights over-inhibit
+#     large networks (loop gain ~16 at N=37, ~330 at N=180).  Below the cap
+#     (small/mid N) the laterals stay the A1Config defaults, so AB-BA /
+#     local-global / oddball keep EXACTLY their current inhibition; above it
+#     the laterals scale down to hold 6.3 (a saturating balanced-network
+#     setpoint).  selective and uniform are matched to the same loop gain,
+#     so they differ only in selectivity.
+#
+# Dropped vs the old per-task configs (preserved in model0/legacy_configs.py):
+#   - AB-BA's selective override (w_IE_self=3.0, w_EI_self=0.40, W_norm=4):
+#     W_norm=4 only sped convergence, so AB-BA now needs more exposure trials
+#     to reach the same W[B<-A] asymptote.
+#   - SFG2's bespoke recalibration: the loop-gain cap reproduces its 6.3
+#     target automatically; W_max=0.17 and multiscale are now global.
+SHARED_W_MAX         = 0.17
+SHARED_LOOP_GAIN_CAP = 6.3
+SHARED_LAT_RATIO     = 4.0
+
+
+def shared_config(N: int, inh: str = "selective",
+                  loop_gain_cap: float = SHARED_LOOP_GAIN_CAP,
+                  lat_ratio: float = SHARED_LAT_RATIO, **overrides) -> "A1Config":
+    """The one shared config at channel count ``N`` (see notes above).
+
+    ``inh`` selects the inhibition STRUCTURE ("selective" / "uniform"); both
+    are placed at the same (capped) loop gain.  ``**overrides`` replace any
+    A1Config field afterwards (e.g. ``stp_enabled=False`` for an ablation).
+    """
+    common = dict(N=N, W_max=SHARED_W_MAX, W_max_self=SHARED_W_MAX,
+                  multiscale_std=True)
+    # natural loop gain of the default weak-lateral selective preset at this N
+    g_nat = inhibitory_loop_gain(A1Config(N=N))
+    g_eff = min(loop_gain_cap, g_nat)
+    if inh == "selective":
+        if g_nat <= loop_gain_cap:
+            cfg = A1Config(**common)                       # default laterals
+        else:
+            x, y = _selective_laterals(N, loop_gain_cap, lat_ratio)
+            cfg = A1Config(w_EI_lat=x, w_IE_lat=y, **common)
+    elif inh == "uniform":
+        u = float(np.sqrt(g_eff)) / N                      # (u*N)^2 = g_eff
+        cfg = A1Config(w_EI_self=u, w_EI_lat=u, w_IE_self=u, w_IE_lat=u, **common)
+    else:
+        raise ValueError(f"unknown inhibition structure {inh!r}")
+    return replace(cfg, **overrides) if overrides else cfg

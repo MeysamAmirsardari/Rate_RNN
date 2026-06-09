@@ -54,7 +54,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate
+from model0 import A1Config, INH_PRESETS, simulate, shared_config
 
 if __package__:
     from .config import AuditoryConfig, get_preset
@@ -164,7 +164,7 @@ def run_experiment(
     if cfg is None:
         cfg = AuditoryConfig()
     if a1_cfg is None:
-        a1_cfg = A1Config(N=cfg.n_channels)
+        a1_cfg = shared_config(N=cfg.n_channels)
     if enc is None:
         enc = MelEncoder(cfg)
 
@@ -578,8 +578,8 @@ def main():
     plot_input(enc, cfg, "auditory_m0_input.png")
 
     # Run both inhibition-structure presets back to back.
-    for inh_name, inh_factory in INH_PRESETS.items():
-        a1_cfg = inh_factory(N=cfg.n_channels, multiscale_std=True)
+    for inh_name in INH_PRESETS:
+        a1_cfg = shared_config(N=cfg.n_channels, inh=inh_name)
 
         print(f"\n========================================================")
         print(f"[ Auditory roving -- inhibition preset '{inh_name}' ]")

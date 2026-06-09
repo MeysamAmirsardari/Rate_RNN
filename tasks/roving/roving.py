@@ -40,7 +40,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate
+from model0 import A1Config, INH_PRESETS, simulate, shared_config
 
 if __package__:
     from .config import RovingConfig, get_preset
@@ -132,7 +132,7 @@ def run_experiment(
     if cfg is None:
         cfg = RovingConfig()
     if a1_cfg is None:
-        a1_cfg = A1Config(N=len(cfg.tones))
+        a1_cfg = shared_config(N=len(cfg.tones))
 
     rng = np.random.default_rng(cfg.seed)
     block_order = generate_block_order(cfg, rng)
@@ -432,8 +432,8 @@ def main():
     # other.  Multi-timescale TC depression is enabled in both -- its
     # 5 s component survives the 1 s ITI and integrates across the 15
     # reps, which is what makes rep 1 differ from rep 15 at all.
-    for inh_name, inh_factory in INH_PRESETS.items():
-        a1_cfg = inh_factory(N=len(cfg.tones), multiscale_std=True)
+    for inh_name in INH_PRESETS:
+        a1_cfg = shared_config(N=len(cfg.tones), inh=inh_name)
 
         print(f"\n========================================================")
         print(f"[ Roving oddball -- inhibition preset '{inh_name}' ]")
