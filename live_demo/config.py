@@ -74,9 +74,11 @@ class LiveConfig:
     gate_factor: float = 4.0        # peak must exceed gate_factor * floor (~6 dB)
 
     # ---- model ----
-    inhibition: str = "selective"   # 'selective' | 'uniform' (INH_PRESETS)
+    inhibition: str = "uniform"   # 'selective' | 'uniform' (INH_PRESETS)
     multiscale_std: bool = True     # multi-timescale TC depression (adapts live)
     learn: bool = True              # Hebbian plasticity on E->E during the demo
+    loop_gain_cap: float = 6.3      # cap on disynaptic inhibition loop gain
+                                    # (raise for a sparser cortical code)
 
     # ---- display ----
     history_s: float = 4.0          # seconds of scrolling history shown
@@ -112,18 +114,49 @@ class LiveConfig:
         return dataclasses.replace(self, **kw)
 
     def to_a1_config(self):
-        """Instantiate the committed model0 inhibition preset at N=n_channels.
+        """Build the model0 A1Config at N=n_channels, with the disynaptic
+        inhibition loop gain capped and a stable recurrent ceiling.
 
-        Imported lazily so the config module stays import-light (and usable
-        for unit tests that never touch the model)."""
+        At N=180 the fixed-weight model0 inhibition presets give a
+        disynaptic loop gain of several HUNDRED -- its all-to-all term grows
+        as N**2 * w_lat**2 -- which floors the cortical response to ~0%
+        active (the bug that hid the low-frequency voicing).  We scale all
+        four E<->I weights by sqrt(cap / gain) so the loop gain lands exactly
+        on ``loop_gain_cap``; scaling them together preserves the selective
+        vs uniform STRUCTURE (only the magnitude changes).  W_max is capped
+        at 0.17 so a growing recurrent assembly stays subcritical and the
+        live (plastic) demo cannot diverge.
+
+        Self-contained on purpose (no model0.shared_config dependency), so it
+        runs on any model0 that exposes INH_PRESETS.  To restore the old
+        over-inhibited behaviour: INH_PRESETS[self.inhibition](
+        N=self.n_channels, dt=self.dt, multiscale_std=self.multiscale_std).
+        """
+        import dataclasses as _dc
+        import numpy as np
         from model0 import INH_PRESETS
         if self.inhibition not in INH_PRESETS:
             avail = ", ".join(sorted(INH_PRESETS))
             raise ValueError(
                 f"Unknown inhibition preset '{self.inhibition}'. "
                 f"Available: {avail}")
-        return INH_PRESETS[self.inhibition](
+        cfg = INH_PRESETS[self.inhibition](
             N=self.n_channels, dt=self.dt, multiscale_std=self.multiscale_std)
+
+        N = cfg.N
+        J, eye = np.ones((N, N)), np.eye(N)
+        M_EI = cfg.w_EI_lat * J + (cfg.w_EI_self - cfg.w_EI_lat) * eye
+        M_IE = cfg.w_IE_lat * J + (cfg.w_IE_self - cfg.w_IE_lat) * eye
+        G = M_IE @ M_EI
+        gain = float(np.max(np.linalg.eigvalsh((G + G.T) / 2)))
+
+        repl = dict(W_max=min(cfg.W_max, 0.17),
+                    W_max_self=min(cfg.W_max_self, 0.17))
+        if gain > self.loop_gain_cap > 0:
+            s = (self.loop_gain_cap / gain) ** 0.5      # G scales as s**2
+            repl.update(w_EI_self=cfg.w_EI_self * s, w_EI_lat=cfg.w_EI_lat * s,
+                        w_IE_self=cfg.w_IE_self * s, w_IE_lat=cfg.w_IE_lat * s)
+        return _dc.replace(cfg, **repl)
 
     def __post_init__(self):
         if self.n_channels < 2:

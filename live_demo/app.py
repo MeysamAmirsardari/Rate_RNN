@@ -43,6 +43,12 @@ from .audio import MelFrontEnd
 from .config import LiveConfig
 from .engine import LiveEngine
 
+# QShortcut moved between Qt modules across bindings; resolve once.
+try:
+    _QShortcut = QtGui.QShortcut
+except AttributeError:                      # PyQt5 keeps it in QtWidgets
+    _QShortcut = QtWidgets.QShortcut
+
 # ---- palette (matches preview.py) ----
 _BG = "#0e1117"
 _PANEL = "#161b22"
@@ -78,6 +84,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._popE = np.zeros(F, dtype=np.float32)
         self._active = np.zeros(F, dtype=np.float32)
         self._E_vmax = 1.0
+        self._W_vmax = 1e-3
         self._last_read = None
         self._fps_ema = float(cfg.target_fps)
         self._last_tick = time.perf_counter()
@@ -94,7 +101,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
     def _build_ui(self):
         cfg = self.cfg
         pg.setConfigOptions(antialias=True, imageAxisOrder="row-major")
-        self.setWindowTitle("Artificial Auditory Cortex — model0 (live)")
+        self.setWindowTitle("model0 (live)")
         self.resize(1280, 860)
         self.setStyleSheet(f"background-color:{_BG};")
 
@@ -108,13 +115,13 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         # ---- header ----
         self.title = self.glw.addLabel(
-            "ARTIFICIAL AUDITORY CORTEX", row=0, col=0, colspan=2,
+            "Acoustic Surprisal", row=0, col=0, colspan=4,
             color=_FG, size="20pt", bold=True)
         self.subtitle = self.glw.addLabel(
-            "model0 — tonotopic rate RNN with SST-like selective inhibition · "
+            "model0; tonotopic rate RNN with selective inhibition · "
             "listening in real time",
-            row=1, col=0, colspan=2, color=_MUTED, size="10pt")
-        self.stats = self.glw.addLabel("", row=2, col=0, colspan=2,
+            row=1, col=0, colspan=4, color=_MUTED, size="10pt")
+        self.stats = self.glw.addLabel("", row=2, col=0, colspan=4,
                                        color=_FG, size="10.5pt")
 
         in_cmap = pg.colormap.get(cfg.input_cmap, source="matplotlib")
@@ -126,7 +133,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.img_in = pg.ImageItem()
         self.img_in.setColorMap(in_cmap)
         self._setup_heat(self.p_in, self.img_in,
-                         "THALAMIC INPUT — cochleo-mel (dB)", freqs)
+                         "Thalamic input; cochleo-mel (dB)", freqs)
         self.img_in.setLevels((-cfg.top_db, 0.0))
         bar_in = pg.ColorBarItem(values=(-cfg.top_db, 0.0), colorMap=in_cmap,
                                  label="dB", width=14)
@@ -139,7 +146,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.img_ctx = pg.ImageItem()
         self.img_ctx.setColorMap(ctx_cmap)
         self._setup_heat(self.p_ctx, self.img_ctx,
-                         "A1 CORTICAL RESPONSE — excitatory rate E", freqs)
+                         "A1 Cortical Response; excitatory rate E", freqs)
         self.img_ctx.setLevels((0.0, self._E_vmax))
         self.bar_ctx = pg.ColorBarItem(values=(0.0, self._E_vmax),
                                        colorMap=ctx_cmap, label="rate", width=14)
@@ -148,10 +155,43 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._style_cbar(self.bar_ctx)
         self.p_ctx.setXLink(self.p_in)
 
+        # ---- recurrent weights W (E->E), live 180x180 connectivity ----
+        # Right-hand square panel: the learned recurrent matrix, refreshed
+        # every frame.  Off the scrolling time axis on purpose -- it is a
+        # snapshot of connectivity, not a time series -- so it doesn't crowd
+        # the heatmaps.  Watch assemblies (bright off-diagonal blocks) grow
+        # while plasticity is ON.
+        w_cmap = pg.colormap.get("inferno", source="matplotlib")
+        self.p_W = self.glw.addPlot(row=3, col=2, rowspan=2)
+        self.img_W = pg.ImageItem()
+        self.img_W.setColorMap(w_cmap)
+        self.p_W.addItem(self.img_W)
+        self.p_W.setTitle("Recurrent weights  W (E→E)", color=_FG,
+                          size="11pt", bold=True)
+        self.p_W.setLabel("left", "post channel", color=_MUTED)
+        self.p_W.setLabel("bottom", "pre channel", color=_MUTED)
+        self.p_W.setMouseEnabled(x=False, y=False)
+        self.p_W.hideButtons()
+        self.p_W.setMenuEnabled(False)
+        self.p_W.setDefaultPadding(0.0)
+        wvb = self.p_W.getViewBox()
+        wvb.setBackgroundColor(_PANEL)
+        wvb.setAspectLocked(True)
+        for _a in ("left", "bottom"):
+            self.p_W.getAxis(_a).setPen(_GRID)
+            self.p_W.getAxis(_a).setTextPen(_MUTED)
+        self.p_W.setRange(xRange=(0, cfg.n_channels),
+                          yRange=(0, cfg.n_channels), padding=0)
+        self.bar_W = pg.ColorBarItem(values=(0.0, self._W_vmax),
+                                     colorMap=w_cmap, label="weight", width=14)
+        self.bar_W.setImageItem(self.img_W)
+        self.glw.addItem(self.bar_W, row=3, col=3, rowspan=2)
+        self._style_cbar(self.bar_W)
+
         # ---- population traces ----
         self.p_pop = self.glw.addPlot(row=5, col=0)
         self.p_pop.setMaximumHeight(150)
-        self._style_plot(self.p_pop, "POPULATION ACTIVITY", "time (s)",
+        self._style_plot(self.p_pop, "Population Activity", "time (s)",
                          "summed E")
         self.p_pop.setXLink(self.p_in)
         t = np.linspace(-cfg.history_s, 0.0, self._F)
@@ -176,11 +216,14 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             lambda: self.vb_act.setGeometry(
                 self.p_pop.getViewBox().sceneBoundingRect()))
 
-        # layout proportions
+        # layout proportions: heatmaps (col 0) wide, W panel (col 2) ~half.
         self.glw.ci.layout.setRowStretchFactor(3, 6)
         self.glw.ci.layout.setRowStretchFactor(4, 6)
         self.glw.ci.layout.setRowStretchFactor(5, 2)
+        self.glw.ci.layout.setColumnStretchFactor(0, 12)
+        self.glw.ci.layout.setColumnStretchFactor(2, 6)
         self._refresh_images()
+        self._install_shortcuts()
 
     def _setup_heat(self, plot, img, title, freqs):
         cfg = self.cfg
@@ -306,12 +349,23 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         else:
             self._E_vmax = max(0.97 * self._E_vmax, 0.05)
 
+    def _update_W_scale(self):
+        """Track the W colour ceiling toward the 99.5th percentile so the
+        forming assemblies bloom vividly as the weights grow from ~0."""
+        w = self.engine.W
+        p = float(np.percentile(w, 99.5)) if w.size else 0.0
+        self._W_vmax = max(0.9 * self._W_vmax + 0.1 * p, 1e-3)
+
     def _refresh_images(self):
         self._update_cortex_scale()
         self.img_in.setImage(self._in_db, autoLevels=False,
                              levels=(-self.cfg.top_db, 0.0))
         self.img_ctx.setImage(self._E, autoLevels=False,
                               levels=(0.0, self._E_vmax))
+        self._update_W_scale()
+        self.img_W.setImage(self.engine.W, autoLevels=False,
+                            levels=(0.0, self._W_vmax))
+        self.bar_W.setLevels((0.0, self._W_vmax))
         # (re)anchor the images into plot coordinates -- setImage on an
         # empty item leaves an identity transform, so apply the rect here.
         self.img_in.setRect(self._img_rect)
@@ -330,7 +384,10 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         spars = 100.0 * nact / self.cfg.n_channels
         learn_c = _OK if self._learn else _OFF
         gate_c = _OK if gate else _MUTED
+        paused_badge = (f"<b style='color:{_ACT}'>⏸ PAUSED</b> &nbsp;|&nbsp; "
+                        if self.paused else "")
         self.stats.setText(
+            paused_badge +
             f"<span style='color:{gate_c}'>●</span> "
             f"<span style='color:{_MUTED}'>input</span> "
             f"<b>{lvl:+5.1f} dB</b> &nbsp;|&nbsp; "
@@ -355,6 +412,35 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         new_engine.W[:] = old.W
         if new_engine.D_std is not None and old.D_std is not None:
             new_engine.D_std[:] = old.D_std
+
+    def _install_shortcuts(self):
+        """App-level shortcuts so the keys work no matter which child widget
+        (e.g. the pyqtgraph view) holds focus -- a plain keyPressEvent on the
+        window is easily swallowed by the focused GraphicsView."""
+        binds = [("Space", self.toggle_pause), ("L", self.toggle_learning),
+                 ("I", self.toggle_inhibition), ("R", self.reset),
+                 ("Q", self.close)]
+        self._shortcuts = []
+        for seq, fn in binds:
+            sc = _QShortcut(QtGui.QKeySequence(seq), self)
+            try:
+                sc.setContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
+            except AttributeError:               # PyQt5 enum location
+                sc.setContext(QtCore.Qt.ApplicationShortcut)
+            sc.activated.connect(fn)
+            self._shortcuts.append(sc)
+
+    def toggle_pause(self):
+        self.paused = not self.paused
+        if not self.paused:
+            # resume cleanly: don't replay the audio that piled up while paused
+            self._last_read = time.perf_counter()
+            try:
+                if not getattr(self.source, "paced", False):
+                    self.source.read()           # drain the mic backlog
+            except Exception:
+                pass
+        self._update_stats()
 
     def toggle_learning(self):
         self._learn = not self._learn
@@ -392,7 +478,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         elif k == QtCore.Qt.Key.Key_R:
             self.reset()
         elif k == QtCore.Qt.Key.Key_Space:
-            self.paused = not self.paused
+            self.toggle_pause()
         else:
             super().keyPressEvent(ev)
 

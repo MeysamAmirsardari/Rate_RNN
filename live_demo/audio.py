@@ -138,7 +138,11 @@ class MelFrontEnd:
             self._nf = min(peak, self._nf * nf_rise)
             if self._nf < _EPS:
                 self._nf = _EPS
-            gate_open = peak > gate_factor * self._nf
+            # noise gate WITH HYSTERESIS: once open it holds until the peak
+            # falls well below the floor, so the dynamic dips of a continuous
+            # song don't keep snapping it shut.
+            open_thr = gate_factor * self._nf
+            gate_open = peak > (0.5 * open_thr if self._gate_open else open_thr)
 
             # AGC: fast attack toward a louder peak, slow release otherwise.
             if peak > self._ref:
@@ -148,14 +152,15 @@ class MelFrontEnd:
             if self._ref < floor:
                 self._ref = floor
 
-            if gate_open:
-                d_db = 10.0 * np.log10(np.maximum(mel_p, _EPS) / self._ref)
-                d_db = np.maximum(d_db, -cfg.top_db)
-                db[:, i] = d_db
-                drive[:, i] = np.clip((d_db + cfg.top_db) * inv_top, 0.0, 1.0)
-            else:
-                db[:, i] = -cfg.top_db
-                drive[:, i] = 0.0
+            # DISPLAY is ALWAYS continuous: render the dB level every frame so
+            # the gate cannot punch black holes into a continuous input.  Quiet
+            # passages render dark via the dB mapping itself, not by blanking.
+            d_db = 10.0 * np.log10(np.maximum(mel_p, _EPS) / self._ref)
+            d_db = np.maximum(d_db, -cfg.top_db)
+            db[:, i] = d_db
+            # DRIVE is gated, so true silence / room noise still emits nothing.
+            drive[:, i] = (np.clip((d_db + cfg.top_db) * inv_top, 0.0, 1.0)
+                           if gate_open else 0.0)
             self._gate_open = gate_open
 
         drive *= cfg.drive_gain
