@@ -7,6 +7,7 @@ Entry point for the live model0 demo.
     python -m live_demo                              live microphone
     python -m live_demo --preset frozen              plasticity off
     python -m live_demo --preset dynamic             faster learning/forgetting
+    python -m live_demo --preset dynamic2            ~10 s forgetting horizon
     python -m live_demo --inhibition uniform         control inhibition
     python -m live_demo --source synthetic           mic-free tone bursts
     python -m live_demo --source wav --wav a.wav     play a recording
@@ -161,7 +162,7 @@ def run_live(cfg: LiveConfig, args) -> int:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description="Live model0 A1 demo.")
     ap.add_argument("--preset", default="default",
-                    help="config preset: default | uniform | frozen | dynamic")
+                    help="config preset: default | uniform | frozen | dynamic | dynamic2")
     ap.add_argument("--source", default="mic",
                     choices=["mic", "wav", "synthetic"])
     ap.add_argument("--wav", default=None, help="WAV path for --source wav")

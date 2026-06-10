@@ -209,14 +209,24 @@ def dynamic(**kw) -> LiveConfig:
     and ~2x faster forgetting (W_decay 5e-4->1e-3), so recurrent assemblies
     visibly form -- and decay when the sound stops -- during a demo, while
     staying bounded (W_max=0.17)."""
-    return LiveConfig(name="dynamic", W_norm=10.0, W_decay=1e-3, **kw)
+    return LiveConfig(name="dynamic", W_norm=12.0, W_decay=8e-3, **kw)
+
+
+def dynamic2(**kw) -> LiveConfig:
+    """Much more dynamic -- the forgetting time is tau ~ 1 / W_decay, so
+    W_decay=0.1 means a played /s/ that goes silent fades to ~1/e of its
+    learned weight in ~10 s (and to ~5% by ~30 s).  Fast learning (W_norm=6)
+    still builds visible assemblies between the rapid decay, and the strong
+    decay self-stabilises.  Dial the horizon directly: W_decay = 1 / seconds."""
+    return LiveConfig(name="dynamic2", W_norm=6.0, W_decay=0.1, **kw)
 
 
 PRESETS = {
-    "default": default,
-    "uniform": uniform,
-    "frozen":  frozen,
-    "dynamic": dynamic,
+    "default":  default,
+    "uniform":  uniform,
+    "frozen":   frozen,
+    "dynamic":  dynamic,
+    "dynamic2": dynamic2,
 }
 
 
