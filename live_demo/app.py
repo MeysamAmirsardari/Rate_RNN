@@ -175,13 +175,17 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.p_W.setMenuEnabled(False)
         self.p_W.setDefaultPadding(0.0)
         wvb = self.p_W.getViewBox()
-        wvb.setBackgroundColor(_PANEL)
-        # Fill the cell (no aspect lock): the cell is ~square anyway, and
-        # filling leaves no empty bands and keeps the y-axis at 0..N (the
-        # aspect lock was padding the view to -50..255).
+        # app-background (not _PANEL) so the aspect-lock letterbox around the
+        # square blends into the canvas instead of reading as an empty box.
+        wvb.setBackgroundColor(_BG)
+        wvb.setAspectLocked(True)        # 1:1 pixels -> W is always a true square
         for _a in ("left", "bottom"):
             self.p_W.getAxis(_a).setPen(_GRID)
             self.p_W.getAxis(_a).setTextPen(_MUTED)
+            # pin ticks to the data range so the aspect-lock padding can't show
+            # out-of-range labels (the -50 / 250 the fill version avoided).
+            self.p_W.getAxis(_a).setTicks(
+                [[(v, str(v)) for v in range(0, cfg.n_channels + 1, 50)]])
         self.p_W.setRange(xRange=(0, cfg.n_channels),
                           yRange=(0, cfg.n_channels), padding=0)
         self.bar_W = pg.ColorBarItem(values=(0.0, self._W_vmax),
