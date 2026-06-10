@@ -156,11 +156,11 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.p_ctx.setXLink(self.p_in)
 
         # ---- recurrent weights W (E->E), live 180x180 connectivity ----
-        # Right-hand square panel: the learned recurrent matrix, refreshed
-        # every frame.  Off the scrolling time axis on purpose -- it is a
-        # snapshot of connectivity, not a time series -- so it doesn't crowd
-        # the heatmaps.  Watch assemblies (bright off-diagonal blocks) grow
-        # while plasticity is ON.
+        # Right-hand panel aligned with the two heatmaps (rowspan 2): the
+        # learned recurrent matrix, refreshed every frame.  Off the scrolling
+        # time axis on purpose -- it is a snapshot of connectivity, not a time
+        # series.  Watch assemblies (bright off-diagonal blocks) grow while
+        # plasticity is ON.
         w_cmap = pg.colormap.get("inferno", source="matplotlib")
         self.p_W = self.glw.addPlot(row=3, col=2, rowspan=2)
         self.img_W = pg.ImageItem()
@@ -176,7 +176,9 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.p_W.setDefaultPadding(0.0)
         wvb = self.p_W.getViewBox()
         wvb.setBackgroundColor(_PANEL)
-        wvb.setAspectLocked(True)
+        # Fill the cell (no aspect lock): the cell is ~square anyway, and
+        # filling leaves no empty bands and keeps the y-axis at 0..N (the
+        # aspect lock was padding the view to -50..255).
         for _a in ("left", "bottom"):
             self.p_W.getAxis(_a).setPen(_GRID)
             self.p_W.getAxis(_a).setTextPen(_MUTED)
@@ -216,11 +218,12 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             lambda: self.vb_act.setGeometry(
                 self.p_pop.getViewBox().sceneBoundingRect()))
 
-        # layout proportions: heatmaps (col 0) wide, W panel (col 2) ~half.
+        # layout proportions: heatmaps (col 0) wide; W panel (col 2) sized so
+        # its rowspan-2 cell is ~square (it spans the two heatmap rows).
         self.glw.ci.layout.setRowStretchFactor(3, 6)
         self.glw.ci.layout.setRowStretchFactor(4, 6)
         self.glw.ci.layout.setRowStretchFactor(5, 2)
-        self.glw.ci.layout.setColumnStretchFactor(0, 12)
+        self.glw.ci.layout.setColumnStretchFactor(0, 10)
         self.glw.ci.layout.setColumnStretchFactor(2, 6)
         self._refresh_images()
         self._install_shortcuts()
