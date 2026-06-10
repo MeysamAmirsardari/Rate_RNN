@@ -23,9 +23,9 @@ there are no clicks), and the syllable paradigm uses the real recordings in
                          coherent figure (synchronous chords) pops in, then out
 
 Run
-    python -m audio.generate                  # all clips -> audio/
-    python -m audio.generate --sr 44100
-    python -m audio.generate --only sfg roving_syllables
+    python -m audio.generate                  # all clips (mp3) -> audio/
+    python -m audio.generate --format wav     # 16-bit PCM WAV instead
+    python -m audio.generate --only sfg roving_syllables --sr 44100
 """
 from __future__ import annotations
 
@@ -70,14 +70,21 @@ def normalize(x: np.ndarray, peak: float = 0.9) -> np.ndarray:
     return x * (peak / m) if m > 0 else x
 
 
-def write_wav(path: Path, x: np.ndarray, sr: int) -> Path:
-    """Write a mono 16-bit PCM WAV (stdlib only)."""
-    pcm = (np.clip(x, -1.0, 1.0) * 32767.0).astype("<i2")
-    with wave.open(str(path), "wb") as w:
-        w.setnchannels(1)
-        w.setsampwidth(2)
-        w.setframerate(sr)
-        w.writeframes(pcm.tobytes())
+def write_audio(path: Path, x: np.ndarray, sr: int) -> Path:
+    """Write mono audio; the format is chosen by the file suffix:
+    ``.mp3`` via soundfile/libsndfile (libsndfile >= 1.1, no ffmpeg needed),
+    ``.wav`` via the stdlib ``wave`` writer (16-bit PCM)."""
+    x = np.clip(x, -1.0, 1.0).astype(np.float32)
+    if path.suffix.lower() == ".mp3":
+        import soundfile as sf
+        sf.write(str(path), x, sr, format="MP3")
+    else:
+        pcm = (x * 32767.0).astype("<i2")
+        with wave.open(str(path), "wb") as w:
+            w.setnchannels(1)
+            w.setsampwidth(2)
+            w.setframerate(sr)
+            w.writeframes(pcm.tobytes())
     return path
 
 
@@ -143,7 +150,7 @@ _ROVING_FREQS = {"A": 400.0, "B": 600.0, "C": 900.0, "D": 1350.0, "E": 2000.0}
 _ROVING_SYLL = {"A": "ba", "B": "da", "C": "ga", "D": "ka", "E": "ma"}
 
 
-def _roving_words(deviant_pos: int = 1) -> list[str]:
+def _roving_words(deviant_pos: int = 3) -> list[str]:
     """3-tone words: the variable tone (C/D/E) sits at ``deviant_pos`` (1-based),
     A and B fill the other two slots in order -> CAB, DAB, EAB for pos 1."""
     shared_slots = [p for p in (1, 2, 3) if p != deviant_pos]
@@ -158,7 +165,7 @@ def _roving_words(deviant_pos: int = 1) -> list[str]:
 
 
 def make_roving_tones(sr: int, reps_per_block: int = 5,
-                      deviant_pos: int = 1) -> np.ndarray:
+                      deviant_pos: int = 3) -> np.ndarray:
     """Roving oddball: each word repeats ``reps_per_block`` times (a standard),
     then the standard 'roves' to the next word -- the change is the deviant."""
     tone_d, seq_gap = 0.180, 1.000
@@ -244,6 +251,8 @@ def main(argv=None) -> int:
     ap.add_argument("--outdir", default=str(_OUT_DIR), help="output directory")
     ap.add_argument("--only", nargs="+", choices=list(CLIPS), default=list(CLIPS),
                     help="generate only these clips")
+    ap.add_argument("--format", choices=["mp3", "wav"], default="mp3",
+                    help="output audio format (default mp3)")
     args = ap.parse_args(argv)
 
     out = Path(args.outdir)
@@ -254,7 +263,7 @@ def main(argv=None) -> int:
         except Exception as e:                            # e.g. librosa/wavs missing
             print(f"  [skip] {name}: {type(e).__name__}: {e}")
             continue
-        path = write_wav(out / f"{name}.wav", x, args.sr)
+        path = write_audio(out / f"{name}.{args.format}", x, args.sr)
         print(f"  wrote {path.name:22s} {x.size / args.sr:6.1f} s")
     print(f"Done -> {out}")
     return 0
