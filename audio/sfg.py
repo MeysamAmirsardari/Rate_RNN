@@ -9,15 +9,18 @@ Teki et al., *J Neurosci* 2011).
 The SFG stimulus -- exactly as in the paper's Materials & Methods:
 
   * a sequence of **50 ms chords** with **0 ms inter-chord interval**;
-  * each chord is the sum of a **random number of equal-amplitude pure tones**
-    (default average 10, uniformly 5-15), with **random phase**;
+  * each chord is the sum of a **constant number of equal-amplitude, random-
+    phase pure tones** (``tones_per_chord``, default 22) -- constant so the
+    **time marginal is flat** (Teki uses a random 5-15; we don't, on purpose);
   * tone frequencies are drawn from a pool of **129 values spaced 1/24 octave
     apart between 179 and 7246 Hz**;
   * the onset and offset of **each chord** are shaped by a **10 ms raised-cosine
     ramp** (so repeated tones pulse at the chord rate -> the figure "warbles");
-  * a **figure** is a set of ``coherence`` fixed frequencies **repeated across
-    ``duration`` consecutive chords**, added on top of the random background --
-    a temporally coherent object that pops out of the incoherent cloud.
+  * a **figure** is a set of ``coherence`` channels that fire **synchronously**
+    at the **same per-channel rate as the background** (it REPLACES background
+    tones, never adds energy) -- so the **channel marginal stays flat** and the
+    figure is a pure *temporal-coherence* cue, not an energy cue (rate-matched,
+    as in tasks/sfg2; see the rate-matching note in the code).
 
 Rendered at **44.1 kHz** (the paper's rate).  Rather than isolated 2 s trials,
 ``make_sfg`` renders a *long, continuous scene*: an ongoing chord cloud in which
@@ -44,8 +47,10 @@ F_MAX_HZ   = 7246.0         # pool high edge
 OCT_STEP   = 1.0 / 24.0     # 1/24-octave spacing between successive components
 CHORD_MS   = 50.0           # chord duration
 RAMP_MS    = 10.0           # raised-cosine onset/offset ramp per chord
-BG_MIN     = 5              # background tones per chord (min)
-BG_MAX     = 15             # background tones per chord (max; average 10)
+# Teki's background is 5-15 tones/chord (random).  We instead hold the count
+# CONSTANT so the time marginal is flat and the figure can't be heard as a
+# denser interval -- see the rate-matching note below.  K must be >= the
+# largest coherence, and sets the figure rate (gamma = K/N).
 SR_DEFAULT = 44100
 
 
@@ -78,28 +83,53 @@ def _norm(x: np.ndarray, peak: float = 0.9) -> np.ndarray:
 
 
 # =====================================================================
+#  Rate matching  (why the figure must NOT add energy)
+# =====================================================================
+# A figure must be detectable ONLY by temporal coherence, never by energy.
+# Two marginals are therefore held flat:
+#   * time marginal  -- every chord has the SAME number of tones K; the figure
+#     REPLACES background tones, it never adds on top (no denser interval);
+#   * channel marginal -- the figure channels fire at the SAME per-channel rate
+#     as the background, differing only in that they fire SYNCHRONOUSLY.
+# Keeping K tones/chord while the m figure channels co-fire on a fraction gamma
+# of chords forces, for EVERY channel, rate = gamma = K/N (background rate =
+# (K - gamma*m)/(N - m) = gamma  =>  gamma = K/N).  So a figure fires
+# synchronously every ~N/K chords -- exactly the background rate -- and
+# coherence is the only cue.  This matches tasks/sfg2 (rate-matched) and is
+# STRICTER than Teki et al., whose figure is on every chord (an energy
+# confound they balance only across trials).
+
+
+# =====================================================================
 #  One canonical experiment trial  (2 s, 40 chords, one figure)
 # =====================================================================
 def make_sfg_trial(coherence: int, duration: int, sr: int = SR_DEFAULT,
-                   n_chords: int = 40, fig_onset_chords: int | None = None,
+                   n_chords: int = 40, tones_per_chord: int = 22,
+                   fig_onset_chords: int | None = None,
                    seed: int = 0) -> np.ndarray:
-    """One SFG trial exactly as in experiment 1: ``n_chords`` 50 ms chords; a
-    figure of ``coherence`` repeated frequencies spanning ``duration`` chords,
-    onset jittered 15-20 chords (750-1000 ms) post onset unless given."""
+    """One SFG trial: ``n_chords`` 50 ms chords, each with exactly
+    ``tones_per_chord`` tones (flat time marginal).  A figure of ``coherence``
+    channels spans ``duration`` chords, firing SYNCHRONOUSLY at the background
+    per-channel rate gamma=K/N (flat channel marginal) -- so it is detectable
+    only by temporal coherence.  Onset jittered 15-20 chords unless given."""
     rng = np.random.default_rng(seed)
-    pool = freq_pool()
+    pool = freq_pool(); N = len(pool); K = tones_per_chord
+    gamma = K / N
     chord_s, ramp_s = CHORD_MS / 1000.0, RAMP_MS / 1000.0
     if fig_onset_chords is None:
         fig_onset_chords = int(rng.integers(15, 21))
-    fig = rng.choice(pool, size=coherence, replace=False)
-    fig_chords = range(fig_onset_chords, min(n_chords, fig_onset_chords + duration))
+    fig = rng.choice(N, size=coherence, replace=False)
+    non_fig = np.setdiff1d(np.arange(N), fig)
+    fig_win = set(range(fig_onset_chords, min(n_chords, fig_onset_chords + duration)))
     parts = []
     for c in range(n_chords):
-        nbg = int(rng.integers(BG_MIN, BG_MAX + 1))
-        freqs = rng.choice(pool, size=nbg, replace=False)
-        if c in fig_chords:
-            freqs = np.union1d(freqs, fig)
-        parts.append(_chord(freqs, sr, chord_s, ramp_s, rng))
+        if c not in fig_win:                                 # pure background
+            idx = rng.choice(N, K, replace=False)
+        elif rng.random() < gamma:                           # figure fires (synchronous)
+            idx = np.concatenate([fig, rng.choice(non_fig, K - coherence, replace=False)])
+        else:                                                # figure silent this chord
+            idx = rng.choice(non_fig, K, replace=False)
+        parts.append(_chord(pool[idx], sr, chord_s, ramp_s, rng))
     return _norm(np.concatenate(parts))
 
 
@@ -107,43 +137,54 @@ def make_sfg_trial(coherence: int, duration: int, sr: int = SR_DEFAULT,
 #  Long continuous scene  (figures of varied coherence emerging/dissolving)
 # =====================================================================
 def make_sfg(sr: int = SR_DEFAULT, total_s: float = 120.0, seed: int = 0,
-             coherence_cycle: tuple[int, ...] = (12, 10, 8, 6, 5, 4, 3, 2),
-             fig_chords: int = 16, gap_chords: int = 28,
-             lead_s: float = 2.5) -> np.ndarray:
-    """A long ongoing SFG cloud with figures appearing and dissolving.
+             tones_per_chord: int = 22,
+             coherence_cycle: tuple[int, ...] = (12, 9, 6, 4, 3, 2),
+             fig_chords: int = 48, gap_chords: int = 22,
+             lead_s: float = 2.0, return_active: bool = False):
+    """A long ongoing SFG cloud -- every chord exactly ``tones_per_chord``
+    tones -- with RATE-MATCHED coherent figures emerging and dissolving.
 
-    After ``lead_s`` of pure background, figures are inserted on a
-    ``fig_chords`` (default 16 = 800 ms) on / ``gap_chords`` (default 28 =
-    1.4 s) off cycle, their coherence stepping through ``coherence_cycle``
-    (salient -> subtle) and repeating -- so the listener hears the figure pop
-    out clearly at high coherence and only faintly at low coherence, against an
-    unbroken random background.  All other acoustics are the paper's exactly."""
+    After ``lead_s`` of background, figures are inserted on a ``fig_chords``
+    on / ``gap_chords`` off cycle, their coherence stepping through
+    ``coherence_cycle`` (salient -> subtle).  Each figure's channels fire
+    SYNCHRONOUSLY at the background per-channel rate (gamma=K/N, ~every N/K
+    chords), so the channel and time marginals stay flat -- the figure is a
+    pure temporal-coherence cue, not an energy cue (see the note above)."""
     rng = np.random.default_rng(seed)
-    pool = freq_pool()
+    pool = freq_pool(); N = len(pool); K = tones_per_chord
+    gamma = K / N
+    all_idx = np.arange(N)
     chord_s, ramp_s = CHORD_MS / 1000.0, RAMP_MS / 1000.0
     n_total = int(round(total_s / chord_s))
 
-    # per-chord figure plan: None (background only) or the frozen figure freqs
-    plan: list[np.ndarray | None] = [None] * n_total
+    # per-chord figure channel set (None outside figure windows)
+    fig_at: list[np.ndarray | None] = [None] * n_total
     c = int(round(lead_s / chord_s))
     k = 0
     while c < n_total:
-        coh = coherence_cycle[k % len(coherence_cycle)]
+        m = coherence_cycle[k % len(coherence_cycle)]
         k += 1
-        fig = rng.choice(pool, size=coh, replace=False)
-        for j in range(fig_chords):
-            if c + j < n_total:
-                plan[c + j] = fig
+        fig = rng.choice(N, size=m, replace=False)
+        for j in range(min(fig_chords, n_total - c)):
+            fig_at[c + j] = fig
         c += fig_chords + gap_chords
 
+    active = np.zeros((n_total, N), dtype=bool)              # chord x channel
     parts = []
     for ci in range(n_total):
-        nbg = int(rng.integers(BG_MIN, BG_MAX + 1))
-        freqs = rng.choice(pool, size=nbg, replace=False)
-        if plan[ci] is not None:
-            freqs = np.union1d(freqs, plan[ci])
-        parts.append(_chord(freqs, sr, chord_s, ramp_s, rng))
-    return _norm(np.concatenate(parts))
+        fig = fig_at[ci]
+        if fig is None:                                      # pure background
+            idx = rng.choice(N, K, replace=False)
+        else:
+            non_fig = np.setdiff1d(all_idx, fig)
+            if rng.random() < gamma:                         # figure fires (synchronous)
+                idx = np.concatenate([fig, rng.choice(non_fig, K - len(fig), replace=False)])
+            else:                                            # figure silent this chord
+                idx = rng.choice(non_fig, K, replace=False)
+        active[ci, idx] = True
+        parts.append(_chord(pool[idx], sr, chord_s, ramp_s, rng))
+    x = _norm(np.concatenate(parts))
+    return (x, active, fig_at) if return_active else x
 
 
 # =====================================================================
