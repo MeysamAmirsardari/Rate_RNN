@@ -80,6 +80,16 @@ class LiveConfig:
     loop_gain_cap: float = 6.3      # cap on disynaptic inhibition loop gain
                                     # (raise for a sparser cortical code)
 
+    # ---- plasticity (E->E rate-STDP); see model0 for the rule ----
+    # Defaults equal the committed A1Config values, so 'default'/'uniform'/
+    # 'frozen' are unchanged; the 'dynamic' preset bumps W_norm and W_decay.
+    eta_LTP:   float = 0.8          # potentiation rate
+    eta_LTD:   float = 0.10         # depression rate (anti-causal un-learning)
+    W_decay:   float = 5e-4         # passive forgetting toward 0
+    W_norm:    float = 20.0         # rate normaliser; LOWER => faster learning
+                                    # (convergence time ~ W_norm**2)
+    tau_trace: float = 0.030        # eligibility-trace window (s)
+
     # ---- display ----
     history_s: float = 4.0          # seconds of scrolling history shown
     target_fps: int = 60            # display refresh target
@@ -151,7 +161,10 @@ class LiveConfig:
         gain = float(np.max(np.linalg.eigvalsh((G + G.T) / 2)))
 
         repl = dict(W_max=min(cfg.W_max, 0.17),
-                    W_max_self=min(cfg.W_max_self, 0.17))
+                    W_max_self=min(cfg.W_max_self, 0.17),
+                    eta_LTP=self.eta_LTP, eta_LTD=self.eta_LTD,
+                    W_decay=self.W_decay, W_norm=self.W_norm,
+                    tau_trace=self.tau_trace)
         if gain > self.loop_gain_cap > 0:
             s = (self.loop_gain_cap / gain) ** 0.5      # G scales as s**2
             repl.update(w_EI_self=cfg.w_EI_self * s, w_EI_lat=cfg.w_EI_lat * s,
@@ -191,10 +204,19 @@ def frozen(**kw) -> LiveConfig:
     return LiveConfig(name="frozen", learn=False, **kw)
 
 
+def dynamic(**kw) -> LiveConfig:
+    """A little more dynamic: ~4x faster learning (W_norm 20->10, time ~ N^2)
+    and ~2x faster forgetting (W_decay 5e-4->1e-3), so recurrent assemblies
+    visibly form -- and decay when the sound stops -- during a demo, while
+    staying bounded (W_max=0.17)."""
+    return LiveConfig(name="dynamic", W_norm=10.0, W_decay=1e-3, **kw)
+
+
 PRESETS = {
     "default": default,
     "uniform": uniform,
     "frozen":  frozen,
+    "dynamic": dynamic,
 }
 
 
