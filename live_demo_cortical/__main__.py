@@ -31,8 +31,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from live_demo_cortical.config import LiveConfig, get_preset
-from live_demo_cortical.audio import (MelFrontEnd, MicSource, WavSource,
-                                      SyntheticSource, SFGSource)
+from live_demo_cortical.audio import (SpectroFrontEnd, MicSource, WavSource,
+                                      SyntheticSource, SFGSource, TwoStreamSource)
 from live_demo_cortical.engine import LiveEngine
 
 
@@ -48,6 +48,8 @@ def _build_source(cfg: LiveConfig, args):
         return SyntheticSource(cfg)
     if args.source == "sfg":
         return SFGSource(cfg)
+    if args.source == "twostream":
+        return TwoStreamSource(cfg)
     raise SystemExit(f"unknown source {args.source!r}")
 
 
@@ -77,7 +79,7 @@ def run_selftest(cfg: LiveConfig, preview_path: str) -> int:
     print(f"  {cfg.n_channels} channels · sr={cfg.sr} · hop={cfg.hop_length} "
           f"samp ({cfg.hop_ms} ms/frame) · inhibition={cfg.inhibition} · "
           f"learn={cfg.learn}")
-    fe = MelFrontEnd(cfg)
+    fe = SpectroFrontEnd(cfg)
     eng = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
     audio = _pseudo_speech(cfg)
 
@@ -156,7 +158,7 @@ def run_live(cfg: LiveConfig, args) -> int:
     win = LiveDemoApp(cfg, source)
     win.show()
     win.start()
-    print("[ live_demo_cortical ] running — keys: C cortex · L learn · "
+    print("[ live_demo_cortical ] running — keys: L learn · "
           "I inhibition · Space pause · R reset · Q quit")
     return app.exec()
 
@@ -167,7 +169,7 @@ def main(argv=None) -> int:
     ap.add_argument("--preset", default="default",
                     help="config preset: default | uniform | frozen | dynamic | dynamic2")
     ap.add_argument("--source", default="mic",
-                    choices=["mic", "wav", "synthetic", "sfg"])
+                    choices=["mic", "wav", "synthetic", "sfg", "twostream"])
     ap.add_argument("--wav", default=None, help="WAV path for --source wav")
     ap.add_argument("--device", type=int, default=None,
                     help="sounddevice input device index")

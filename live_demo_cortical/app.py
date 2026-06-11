@@ -40,9 +40,9 @@ import numpy as np
 import pyqtgraph as pg
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
-from .audio import MelFrontEnd
+from .audio import SpectroFrontEnd
 from .config import LiveConfig
-from .cortex import CortexFrontEnd
+from .masks import StreamSeparator
 from .engine import LiveEngine
 
 # QShortcut moved between Qt modules across bindings; resolve once.
@@ -72,12 +72,10 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.source = source
         self.paused = False
 
-        self.fe = MelFrontEnd(cfg)
-        self.cortex = CortexFrontEnd(cfg, rate_low=cfg.cortical_rate_low,
-                                     rate_high=cfg.cortical_rate_high,
-                                     mix=cfg.cortical_mix)
-        self._cortical = cfg.cortical          # 'C' toggles the front end live
+        self.fe = SpectroFrontEnd(cfg)
         self.engine = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
+        self.sep = StreamSeparator(cfg.n_channels, n_streams=cfg.n_streams,
+                                   iters=cfg.sep_iters)
         self._inhibition = cfg.inhibition
         self._learn = cfg.learn
 
@@ -87,12 +85,14 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._F = F
         self._in_db = np.full((N, F), -cfg.top_db, dtype=np.float32)
         self._E = np.zeros((N, F), dtype=np.float32)
+        self._drive = np.zeros((N, F), dtype=np.float32)   # input drive (for C)
         self._popE = np.zeros(F, dtype=np.float32)
         self._active = np.zeros(F, dtype=np.float32)
         self._E_vmax = 1.0
         self._W_vmax = 1e-3
         self._C = np.zeros((N, N), dtype=np.float32)   # live coincidence matrix
         self._C_vmax = 1e-2
+        self._masks = np.zeros((N, cfg.n_streams), dtype=np.float32)
         self._coh_tick = 0                              # throttle C re-computation
         self._last_read = None
         self._fps_ema = float(cfg.target_fps)
@@ -124,11 +124,11 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         # ---- header ----
         self.title = self.glw.addLabel(
-            "Acoustic Surprisal — cortical front end", row=0, col=0, colspan=4,
-            color=_FG, size="20pt", bold=True)
+            "Stream Segregation — nPCA of the coincidence matrix", row=0, col=0,
+            colspan=4, color=_FG, size="20pt", bold=True)
         self.subtitle = self.glw.addLabel(
-            "model0 + temporal-rate cortical front end · live coincidence C "
-            "vs learned W · listening in real time",
+            "log-spectrogram → coincidence C → nPCA stream masks "
+            "(normalized spectral clustering) · real time",
             row=1, col=0, colspan=4, color=_MUTED, size="10pt")
         self.stats = self.glw.addLabel("", row=2, col=0, colspan=4,
                                        color=_FG, size="10.5pt")
@@ -164,12 +164,10 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._style_cbar(self.bar_ctx)
         self.p_ctx.setXLink(self.p_in)
 
-        # ---- right column: two square connectivity matrices ----
-        # TOP  coincidence C[i,j] = windowed zero-lag correlation of the
-        #      cortical response E -- the Teki 2013 Fig 3C object, INSTANT:
-        #      a temporally coherent figure is a bright off-diagonal block.
-        # BOTTOM  the learned recurrent map W, which the plastic network grows
-        #      toward C over time.
+        # ---- right column ----
+        # TOP    coincidence C[i,j] = windowed correlation of the response E.
+        # BOTTOM the nPCA stream masks (rank-2 SNMF of C): each coherent source
+        #        is one curve over channels -- the real-time segregation.
         def _mk_matrix(row, title, cmap_name, label):
             cmap = pg.colormap.get(cmap_name, source="matplotlib")
             p = self.glw.addPlot(row=row, col=2)
@@ -197,9 +195,25 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             return p, img, bar
 
         self.p_C, self.img_C, self.bar_C = _mk_matrix(
-            3, "Coincidence  C  (corr of E)", "magma", "corr")
-        self.p_W, self.img_W, self.bar_W = _mk_matrix(
-            4, "Recurrent weights  W (E→E)", "inferno", "weight")
+            3, "Coincidence  C  (corr of input)", "magma", "corr")
+
+        # nPCA stream masks (one curve per stream, over channel = log-frequency)
+        self.p_masks = self.glw.addPlot(row=4, col=2)
+        self.p_masks.setTitle("nPCA stream masks", color=_FG, size="11pt", bold=True)
+        self.p_masks.setLabel("bottom", "channel", color=_MUTED)
+        self.p_masks.setLabel("left", "mask", color=_MUTED)
+        self.p_masks.setMouseEnabled(x=False, y=False)
+        self.p_masks.hideButtons(); self.p_masks.setMenuEnabled(False)
+        self.p_masks.getViewBox().setBackgroundColor(_PANEL)
+        for _a in ("left", "bottom"):
+            self.p_masks.getAxis(_a).setPen(_GRID)
+            self.p_masks.getAxis(_a).setTextPen(_MUTED)
+        self.p_masks.setRange(xRange=(0, cfg.n_channels), yRange=(0, 1.05),
+                              padding=0)
+        _scols = ["#ff8c42", "#58d6ff", "#b072ff", "#3fb950"]
+        self.curve_masks = [
+            self.p_masks.plot(pen=pg.mkPen(_scols[i % len(_scols)], width=2))
+            for i in range(cfg.n_streams)]
 
         # ---- population traces ----
         self.p_pop = self.glw.addPlot(row=5, col=0)
@@ -317,12 +331,11 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         drive, db = self.fe.push(samples)
         k = drive.shape[1]
         if k:
-            if self._cortical:                  # cortical spectral front end
-                drive = self.cortex.process(drive)
             out = self.engine.step_block(drive)
             E = out["E"]
             self._push_cols(self._in_db, db.astype(np.float32))
             self._push_cols(self._E, E.astype(np.float32))
+            self._push_cols(self._drive, drive.astype(np.float32))
             thr = 0.05 * max(self._E_vmax, 1e-6)
             popE = E.sum(axis=0)
             active = (E > thr).sum(axis=0).astype(np.float32)
@@ -382,13 +395,16 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         nb = min(self._F // cs, int(self.cfg.coh_window_s * 1000.0 / self.cfg.coh_bin_ms))
         if nb < 8:
             return
-        rec = self._E[:, -nb * cs:]
+        rec = self._drive[:, -nb * cs:]
         binned = rec.reshape(rec.shape[0], nb, cs).mean(2)     # (N, nb) chord energies
         binned = binned - binned.mean(0, keepdims=True)        # remove common-mode
         x = binned - binned.mean(1, keepdims=True)             # center each channel
         nrm = np.sqrt((x * x).sum(1))
         denom = np.outer(nrm, nrm)
         C = np.where(denom > 1e-9, (x @ x.T) / (denom + 1e-12), 0.0)
+        # nPCA: factor the coincidence matrix (diagonal ~1) into stream masks
+        self.sep.update(np.clip(C, 0.0, 1.0))
+        self._masks = self.sep.masks().astype(np.float32)
         np.fill_diagonal(C, 0.0)                    # drop trivial self-correlation
         self._C = np.clip(C, 0.0, 1.0).astype(np.float32)
         p = float(np.percentile(self._C, 99.7))
@@ -400,15 +416,14 @@ class LiveDemoApp(QtWidgets.QMainWindow):
                              levels=(-self.cfg.top_db, 0.0))
         self.img_ctx.setImage(self._E, autoLevels=False,
                               levels=(0.0, self._E_vmax))
-        self._update_W_scale()
-        self.img_W.setImage(self.engine.W, autoLevels=False,
-                            levels=(0.0, self._W_vmax))
-        self.bar_W.setLevels((0.0, self._W_vmax))
         self._coh_tick += 1
         if self._coh_tick % 6 == 0:                 # ~10 Hz, not every frame
             self._update_coincidence()
         self.img_C.setImage(self._C, autoLevels=False, levels=(0.0, self._C_vmax))
         self.bar_C.setLevels((0.0, self._C_vmax))
+        _x = np.arange(self.cfg.n_channels)
+        for i, cv in enumerate(self.curve_masks):
+            cv.setData(_x, self._masks[:, i])
         # (re)anchor the images into plot coordinates -- setImage on an
         # empty item leaves an identity transform, so apply the rect here.
         self.img_in.setRect(self._img_rect)
@@ -427,7 +442,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         spars = 100.0 * nact / self.cfg.n_channels
         learn_c = _OK if self._learn else _OFF
         gate_c = _OK if gate else _MUTED
-        cort_c = _OK if self._cortical else _OFF
         paused_badge = (f"<b style='color:{_ACT}'>⏸ PAUSED</b> &nbsp;|&nbsp; "
                         if self.paused else "")
         self.stats.setText(
@@ -435,9 +449,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             f"<span style='color:{gate_c}'>●</span> "
             f"<span style='color:{_MUTED}'>input</span> "
             f"<b>{lvl:+5.1f} dB</b> &nbsp;|&nbsp; "
-            f"<span style='color:{_MUTED}'>cortex</span> "
-            f"<b style='color:{cort_c}'>{'ON' if self._cortical else 'OFF'}</b> "
-            f"&nbsp;|&nbsp; <span style='color:{_MUTED}'>inhibition</span> "
+            f"<span style='color:{_MUTED}'>inhibition</span> "
             f"<b style='color:{_E}'>{self._inhibition}</b> &nbsp;|&nbsp; "
             f"<span style='color:{_MUTED}'>plasticity</span> "
             f"<b style='color:{learn_c}'>{'ON' if self._learn else 'OFF'}</b> "
@@ -464,7 +476,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         (e.g. the pyqtgraph view) holds focus -- a plain keyPressEvent on the
         window is easily swallowed by the focused GraphicsView."""
         binds = [("Space", self.toggle_pause), ("L", self.toggle_learning),
-                 ("I", self.toggle_inhibition), ("C", self.toggle_cortical),
+                 ("I", self.toggle_inhibition),
                  ("R", self.reset), ("Q", self.close)]
         self._shortcuts = []
         for seq, fn in binds:
@@ -488,10 +500,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
                 pass
         self._update_stats()
 
-    def toggle_cortical(self):
-        self._cortical = not self._cortical
-        self._update_stats()
-
     def toggle_learning(self):
         self._learn = not self._learn
         self.engine.learn = self._learn
@@ -510,13 +518,15 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.engine = LiveEngine(self.cfg.to_a1_config(), learn=self._learn,
                                  seed=0)
         self.fe.reset()
-        self.cortex.reset()
+        self.sep.reset()
         self._in_db[:] = -self.cfg.top_db
         self._E[:] = 0.0
+        self._drive[:] = 0.0
         self._popE[:] = 0.0
         self._active[:] = 0.0
         self._E_vmax = 1.0
         self._C[:] = 0.0
+        self._masks[:] = 0.0
         self._refresh_images()
 
     def keyPressEvent(self, ev):
@@ -527,8 +537,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self.toggle_learning()
         elif k == QtCore.Qt.Key.Key_I:
             self.toggle_inhibition()
-        elif k == QtCore.Qt.Key.Key_C:
-            self.toggle_cortical()
         elif k == QtCore.Qt.Key.Key_R:
             self.reset()
         elif k == QtCore.Qt.Key.Key_Space:
@@ -556,12 +564,11 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             drive, db = self.fe.push(audio[lo:lo + bs])
             if drive.shape[1] == 0:
                 continue
-            if self._cortical:
-                drive = self.cortex.process(drive)
             out = self.engine.step_block(drive)
             E = out["E"]
             self._push_cols(self._in_db, db.astype(np.float32))
             self._push_cols(self._E, E.astype(np.float32))
+            self._push_cols(self._drive, drive.astype(np.float32))
             thr = 0.05 * max(self._E_vmax, 1e-3)
             self._push_1d(self._popE, E.sum(axis=0).astype(np.float32))
             self._push_1d(self._active, (E > thr).sum(axis=0).astype(np.float32))

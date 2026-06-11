@@ -38,31 +38,38 @@ from .config import LiveConfig
 _EPS = 1e-12
 
 
-# =====================================================================
-#  Streaming mel front end with AGC
-# =====================================================================
-class MelFrontEnd:
-    """Turn a stream of raw audio samples into per-frame model drive.
+def _log_triangular_fb(sr, n_fft, n_bins, fmin, fmax):
+    """Triangular filterbank on a LOG-frequency axis (constant-Q-like) -- NOT
+    mel.  Each of ``n_bins`` channels is a narrow triangle centred on a
+    geometrically-spaced frequency, peak-normalised so a pure tone gives ~unit
+    response at its channel regardless of bin width.  Returns (fb, centers)."""
+    fft_freqs = np.fft.rfftfreq(n_fft, 1.0 / sr)
+    centers = np.geomspace(fmin, fmax, n_bins)
+    step = (fmax / fmin) ** (1.0 / (n_bins - 1))
+    edges = np.concatenate([[centers[0] / step], centers, [centers[-1] * step]])
+    fb = np.zeros((n_bins, fft_freqs.size))
+    for i in range(n_bins):
+        lo, ct, hi = edges[i], edges[i + 1], edges[i + 2]
+        up = (fft_freqs - lo) / (ct - lo)
+        dn = (hi - fft_freqs) / (hi - ct)
+        fb[i] = np.clip(np.minimum(up, dn), 0.0, None)
+    fb /= (fb.max(1, keepdims=True) + 1e-9)
+    return fb, centers
 
-    Parameters
-    ----------
-    cfg : LiveConfig
 
-    Notes
-    -----
-    The mel filterbank and analysis window are precomputed once.  Each
-    call to :meth:`push` consumes the internal buffer in ``hop_length``
-    strides, computing for every stride a Hann-windowed power spectrum,
-    projecting it onto the mel bands (``power=2``, Slaney norm -- the
-    librosa default, matching the offline encoder), then log/AGC mapping
-    to a ``[0, drive_gain]`` drive.
-    """
+# =====================================================================
+#  Streaming LOG-frequency spectrogram front end with AGC (not mel)
+# =====================================================================
+class SpectroFrontEnd:
+    """Turn raw audio into a per-frame, per-channel drive via a Hann-windowed
+    power spectrum projected onto a LOG-frequency triangular filterbank (sharp,
+    constant-Q-like -- so pure tones map cleanly to channels), then AGC/dB
+    mapped to ``[0, drive_gain]``.  Same interface as the old mel front end."""
 
     def __init__(self, cfg: LiveConfig):
         self.cfg = cfg
-        self._mel_fb = librosa.filters.mel(
-            sr=cfg.sr, n_fft=cfg.n_fft, n_mels=cfg.n_channels,
-            fmin=cfg.fmin, fmax=cfg.fmax)                    # (N, n_freqs)
+        self._mel_fb, self._centers = _log_triangular_fb(
+            cfg.sr, cfg.n_fft, cfg.n_channels, cfg.fmin, cfg.fmax)   # (N, n_freqs)
         self._window = np.hanning(cfg.n_fft).astype(np.float64)
         self._buf = np.zeros(0, dtype=np.float64)
         self._ref = float(cfg.ref_floor)                     # running AGC peak
@@ -84,9 +91,9 @@ class MelFrontEnd:
         """True if the last frame passed the noise gate (sound present)."""
         return self._gate_open
 
-    def mel_frequencies(self) -> np.ndarray:
-        return librosa.mel_frequencies(
-            n_mels=self.cfg.n_channels, fmin=self.cfg.fmin, fmax=self.cfg.fmax)
+    def center_freqs(self) -> np.ndarray:
+        return self._centers
+    mel_frequencies = center_freqs          # back-compat alias (app.py)
 
     def reset(self):
         self._buf = np.zeros(0, dtype=np.float64)
@@ -301,6 +308,70 @@ class SFGSource:
         from audio.sfg import make_sfg          # project-root package
         self._y = make_sfg(sr=cfg.sr, total_s=seconds, seed=seed).astype(np.float64)
         self._pos = 0
+
+    def start(self):
+        self._pos = 0
+
+    def read(self, max_samples: int) -> np.ndarray:
+        if self._pos >= self._y.size:
+            self._pos = 0
+        end = min(self._pos + max_samples, self._y.size)
+        out = self._y[self._pos:end]
+        self._pos = end
+        return out
+
+    def stop(self):
+        pass
+
+
+MelFrontEnd = SpectroFrontEnd          # back-compat alias
+
+
+class TwoStreamSource:
+    """TWO simultaneous coherent tone streams -- the clean nPCA test.
+
+    Two disjoint groups of pure tones.  Each 50 ms chord, group A fires (all its
+    tones together) with prob pA and group B with prob pB, INDEPENDENTLY; the
+    rest of a fixed tones-per-chord budget is random background.  The two groups
+    are temporally uncorrelated, so the coincidence matrix has two separate
+    blocks -> nPCA returns two masks (one per stream).  Pure tones, no pitch."""
+
+    paced = True
+
+    def __init__(self, cfg: LiveConfig, n_a: int = 8, n_b: int = 8,
+                 p_bg: float = 0.10, chord_ms: float = 50.0,
+                 rate_a: float = 5.0, rate_b: float = 5.0, seconds: float = 60.0,
+                 fmin: float = 250.0, fmax: float = 6000.0, n_pool: int = 60,
+                 seed: int = 0):
+        rng = np.random.default_rng(seed)
+        sr = cfg.sr
+        pool = np.geomspace(fmin, fmax, n_pool)
+        idx = rng.permutation(n_pool)
+        gA, gB = idx[:n_a], idx[n_a:n_a + n_b]
+        non = idx[n_a + n_b:]
+        nch = int(round(chord_ms / 1000.0 * sr))
+        ramp = int(0.008 * sr)
+        env = np.ones(nch)
+        env[:ramp] = 0.5 * (1 - np.cos(np.pi * np.arange(ramp) / ramp))
+        env[-ramp:] = env[:ramp][::-1]
+        t = np.arange(nch) / sr
+        pa, pb = rate_a * chord_ms / 1000.0, rate_b * chord_ms / 1000.0
+        chords = []
+        for _ in range(int(seconds * 1000.0 / chord_ms)):
+            on = np.zeros(n_pool, dtype=bool)
+            if rng.random() < pa:                       # stream A fires (synchronous)
+                on[gA] = True
+            if rng.random() < pb:                       # stream B fires (independent of A)
+                on[gB] = True
+            on[non] |= rng.random(non.size) < p_bg      # independent random background
+            x = np.zeros(nch)
+            for f in pool[on]:
+                x += np.sin(2 * np.pi * f * t + rng.uniform(0, 2 * np.pi))
+            chords.append(x * env)
+        y = np.concatenate(chords)
+        self._y = (0.9 * y / (np.percentile(np.abs(y), 99.9) + 1e-9)).clip(-1, 1)
+        self._pos = 0
+        self.groups = (gA, gB)               # ground-truth (for validation)
 
     def start(self):
         self._pos = 0

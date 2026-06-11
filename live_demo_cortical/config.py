@@ -43,15 +43,15 @@ class LiveConfig:
 
     name: str = "default"
 
-    # ---- spectral channels (== number of mel bands == model0 N) ----
-    n_channels: int = 180
+    # ---- log-frequency spectrogram channels (== model0 N) ----
+    n_channels: int = 60            # log-spaced channels over [fmin, fmax]
 
-    # ---- audio capture / mel front end ----
+    # ---- audio capture / log-spectrogram front end ----
     sr: int = 16000                 # capture + resample rate (Hz)
-    n_fft: int = 512                # STFT window (samples) -> 32 ms @16 kHz
+    n_fft: int = 1024               # STFT window -> 64 ms @16 kHz (freq res ~16 Hz)
     hop_ms: float = 1.0             # frame hop (ms) -> 1 frame == 1 model step
-    fmin: float = 50.0              # lowest mel edge (Hz)
-    fmax: float = 8000.0            # highest mel edge (Hz)
+    fmin: float = 250.0             # lowest channel centre (Hz)
+    fmax: float = 6000.0            # highest channel centre (Hz)
     blocksize: int = 512            # samples per audio callback (~32 ms)
     in_channels: int = 1            # mono
 
@@ -90,18 +90,16 @@ class LiveConfig:
                                     # (convergence time ~ W_norm**2)
     tau_trace: float = 0.050        # eligibility-trace window (s)
 
-    # ---- cortical temporal-rate front end (Chi/Shamma); 'C' toggles ----
-    cortical: bool = True           # temporal modulation (rate) filter ON
-    cortical_rate_low:  float = 2.0    # modulation band-pass low edge (Hz)
-    cortical_rate_high: float = 32.0   # modulation band-pass high edge (Hz)
-    cortical_mix: float = 1.0       # 0 = raw mel, 1 = full rate-filtered drive
-    coh_window_s: float = 3.0       # coincidence-matrix correlation window (s)
+    # ---- coincidence matrix + nPCA stream separation ----
+    coh_window_s: float = 6.0       # coincidence-matrix correlation window (s)
     coh_bin_ms: float = 50.0        # bin E at the chord timescale before
                                     # correlating (figure = co-occupied chords,
                                     # not the shared within-chord onset)
+    n_streams: int = 2              # number of stream masks to separate
+    sep_iters: int = 15             # k-means iterations per separator update
 
     # ---- display ----
-    history_s: float = 4.0          # seconds of scrolling history shown
+    history_s: float = 8.0          # seconds of scrolling history shown
     target_fps: int = 60            # display refresh target
     input_cmap: str = "magma"       # thalamic-input heatmap colormap
     cortex_cmap: str = "viridis"    # cortical-response heatmap colormap
