@@ -287,3 +287,31 @@ class SyntheticSource:
 
     def stop(self):
         pass
+
+
+class SFGSource:
+    """Rate-matched Stochastic Figure-Ground stream (audio.sfg.make_sfg) -- a
+    chord cloud with coherent figures of stepping coherence emerging and
+    dissolving.  Pre-generated once and looped; the figure shows up as the
+    coherent block in the live coincidence matrix (and in the learned W)."""
+
+    paced = True
+
+    def __init__(self, cfg: LiveConfig, seconds: float = 60.0, seed: int = 0):
+        from audio.sfg import make_sfg          # project-root package
+        self._y = make_sfg(sr=cfg.sr, total_s=seconds, seed=seed).astype(np.float64)
+        self._pos = 0
+
+    def start(self):
+        self._pos = 0
+
+    def read(self, max_samples: int) -> np.ndarray:
+        if self._pos >= self._y.size:
+            self._pos = 0
+        end = min(self._pos + max_samples, self._y.size)
+        out = self._y[self._pos:end]
+        self._pos = end
+        return out
+
+    def stop(self):
+        pass

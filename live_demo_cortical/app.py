@@ -73,7 +73,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.paused = False
 
         self.fe = MelFrontEnd(cfg)
-        self.cortex = CortexFrontEnd(cfg, scales_cyc_oct=cfg.cortical_scales,
+        self.cortex = CortexFrontEnd(cfg, rate_low=cfg.cortical_rate_low,
+                                     rate_high=cfg.cortical_rate_high,
                                      mix=cfg.cortical_mix)
         self._cortical = cfg.cortical          # 'C' toggles the front end live
         self.engine = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
@@ -90,6 +91,9 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._active = np.zeros(F, dtype=np.float32)
         self._E_vmax = 1.0
         self._W_vmax = 1e-3
+        self._C = np.zeros((N, N), dtype=np.float32)   # live coincidence matrix
+        self._C_vmax = 1e-2
+        self._coh_tick = 0                              # throttle C re-computation
         self._last_read = None
         self._fps_ema = float(cfg.target_fps)
         self._last_tick = time.perf_counter()
@@ -123,8 +127,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             "Acoustic Surprisal — cortical front end", row=0, col=0, colspan=4,
             color=_FG, size="20pt", bold=True)
         self.subtitle = self.glw.addLabel(
-            "model0 + multi-scale spectral (Chi/Shamma) cortical analysis · "
-            "listening in real time",
+            "model0 + temporal-rate cortical front end · live coincidence C "
+            "vs learned W · listening in real time",
             row=1, col=0, colspan=4, color=_MUTED, size="10pt")
         self.stats = self.glw.addLabel("", row=2, col=0, colspan=4,
                                        color=_FG, size="10.5pt")
@@ -160,44 +164,42 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._style_cbar(self.bar_ctx)
         self.p_ctx.setXLink(self.p_in)
 
-        # ---- recurrent weights W (E->E), live 180x180 connectivity ----
-        # Right-hand panel aligned with the two heatmaps (rowspan 2): the
-        # learned recurrent matrix, refreshed every frame.  Off the scrolling
-        # time axis on purpose -- it is a snapshot of connectivity, not a time
-        # series.  Watch assemblies (bright off-diagonal blocks) grow while
-        # plasticity is ON.
-        w_cmap = pg.colormap.get("inferno", source="matplotlib")
-        self.p_W = self.glw.addPlot(row=3, col=2, rowspan=2)
-        self.img_W = pg.ImageItem()
-        self.img_W.setColorMap(w_cmap)
-        self.p_W.addItem(self.img_W)
-        self.p_W.setTitle("Recurrent weights  W (E→E)", color=_FG,
-                          size="11pt", bold=True)
-        self.p_W.setLabel("left", "post channel", color=_MUTED)
-        self.p_W.setLabel("bottom", "pre channel", color=_MUTED)
-        self.p_W.setMouseEnabled(x=False, y=False)
-        self.p_W.hideButtons()
-        self.p_W.setMenuEnabled(False)
-        self.p_W.setDefaultPadding(0.0)
-        wvb = self.p_W.getViewBox()
-        # app-background (not _PANEL) so the aspect-lock letterbox around the
-        # square blends into the canvas instead of reading as an empty box.
-        wvb.setBackgroundColor(_BG)
-        wvb.setAspectLocked(True)        # 1:1 pixels -> W is always a true square
-        for _a in ("left", "bottom"):
-            self.p_W.getAxis(_a).setPen(_GRID)
-            self.p_W.getAxis(_a).setTextPen(_MUTED)
-            # pin ticks to the data range so the aspect-lock padding can't show
-            # out-of-range labels (the -50 / 250 the fill version avoided).
-            self.p_W.getAxis(_a).setTicks(
-                [[(v, str(v)) for v in range(0, cfg.n_channels + 1, 50)]])
-        self.p_W.setRange(xRange=(0, cfg.n_channels),
-                          yRange=(0, cfg.n_channels), padding=0)
-        self.bar_W = pg.ColorBarItem(values=(0.0, self._W_vmax),
-                                     colorMap=w_cmap, label="weight", width=14)
-        self.bar_W.setImageItem(self.img_W)
-        self.glw.addItem(self.bar_W, row=3, col=3, rowspan=2)
-        self._style_cbar(self.bar_W)
+        # ---- right column: two square connectivity matrices ----
+        # TOP  coincidence C[i,j] = windowed zero-lag correlation of the
+        #      cortical response E -- the Teki 2013 Fig 3C object, INSTANT:
+        #      a temporally coherent figure is a bright off-diagonal block.
+        # BOTTOM  the learned recurrent map W, which the plastic network grows
+        #      toward C over time.
+        def _mk_matrix(row, title, cmap_name, label):
+            cmap = pg.colormap.get(cmap_name, source="matplotlib")
+            p = self.glw.addPlot(row=row, col=2)
+            img = pg.ImageItem(); img.setColorMap(cmap); p.addItem(img)
+            p.setTitle(title, color=_FG, size="11pt", bold=True)
+            p.setLabel("left", "channel", color=_MUTED)
+            p.setLabel("bottom", "channel", color=_MUTED)
+            p.setMouseEnabled(x=False, y=False)
+            p.hideButtons(); p.setMenuEnabled(False); p.setDefaultPadding(0.0)
+            vb = p.getViewBox()
+            vb.setBackgroundColor(_BG)        # letterbox blends into canvas
+            vb.setAspectLocked(True)          # 1:1 pixels -> true square
+            for _a in ("left", "bottom"):
+                p.getAxis(_a).setPen(_GRID)
+                p.getAxis(_a).setTextPen(_MUTED)
+                p.getAxis(_a).setTicks(
+                    [[(v, str(v)) for v in range(0, cfg.n_channels + 1, 50)]])
+            p.setRange(xRange=(0, cfg.n_channels),
+                       yRange=(0, cfg.n_channels), padding=0)
+            bar = pg.ColorBarItem(values=(0.0, 1.0), colorMap=cmap,
+                                  label=label, width=14)
+            bar.setImageItem(img)
+            self.glw.addItem(bar, row=row, col=3)
+            self._style_cbar(bar)
+            return p, img, bar
+
+        self.p_C, self.img_C, self.bar_C = _mk_matrix(
+            3, "Coincidence  C  (corr of E)", "magma", "corr")
+        self.p_W, self.img_W, self.bar_W = _mk_matrix(
+            4, "Recurrent weights  W (E→E)", "inferno", "weight")
 
         # ---- population traces ----
         self.p_pop = self.glw.addPlot(row=5, col=0)
@@ -370,6 +372,28 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         p = float(np.percentile(w, 99.5)) if w.size else 0.0
         self._W_vmax = max(0.9 * self._W_vmax + 0.1 * p, 1e-3)
 
+    def _update_coincidence(self):
+        """C[i,j] = correlation of the chord-binned cortical response E over the
+        recent window -- the live temporal-coherence matrix.  E is binned at the
+        chord timescale first, so C measures co-occupancy of chords (the figure
+        cue) rather than the shared within-chord onset (which would make
+        everything correlate).  Throttled: the only O(N^2 * bins) step."""
+        cs = max(1, int(round(self.cfg.coh_bin_ms / self.cfg.frame_ms)))   # frames/chord
+        nb = min(self._F // cs, int(self.cfg.coh_window_s * 1000.0 / self.cfg.coh_bin_ms))
+        if nb < 8:
+            return
+        rec = self._E[:, -nb * cs:]
+        binned = rec.reshape(rec.shape[0], nb, cs).mean(2)     # (N, nb) chord energies
+        binned = binned - binned.mean(0, keepdims=True)        # remove common-mode
+        x = binned - binned.mean(1, keepdims=True)             # center each channel
+        nrm = np.sqrt((x * x).sum(1))
+        denom = np.outer(nrm, nrm)
+        C = np.where(denom > 1e-9, (x @ x.T) / (denom + 1e-12), 0.0)
+        np.fill_diagonal(C, 0.0)                    # drop trivial self-correlation
+        self._C = np.clip(C, 0.0, 1.0).astype(np.float32)
+        p = float(np.percentile(self._C, 99.7))
+        self._C_vmax = max(0.85 * self._C_vmax + 0.15 * p, 0.05)
+
     def _refresh_images(self):
         self._update_cortex_scale()
         self.img_in.setImage(self._in_db, autoLevels=False,
@@ -380,6 +404,11 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.img_W.setImage(self.engine.W, autoLevels=False,
                             levels=(0.0, self._W_vmax))
         self.bar_W.setLevels((0.0, self._W_vmax))
+        self._coh_tick += 1
+        if self._coh_tick % 6 == 0:                 # ~10 Hz, not every frame
+            self._update_coincidence()
+        self.img_C.setImage(self._C, autoLevels=False, levels=(0.0, self._C_vmax))
+        self.bar_C.setLevels((0.0, self._C_vmax))
         # (re)anchor the images into plot coordinates -- setImage on an
         # empty item leaves an identity transform, so apply the rect here.
         self.img_in.setRect(self._img_rect)
@@ -481,11 +510,13 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.engine = LiveEngine(self.cfg.to_a1_config(), learn=self._learn,
                                  seed=0)
         self.fe.reset()
+        self.cortex.reset()
         self._in_db[:] = -self.cfg.top_db
         self._E[:] = 0.0
         self._popE[:] = 0.0
         self._active[:] = 0.0
         self._E_vmax = 1.0
+        self._C[:] = 0.0
         self._refresh_images()
 
     def keyPressEvent(self, ev):
@@ -536,6 +567,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self._push_1d(self._active, (E > thr).sum(axis=0).astype(np.float32))
         for _ in range(30):          # converge the smoothed colour ceiling
             self._update_cortex_scale()
+        self._update_coincidence()   # not throttled here (single offline refresh)
         self._refresh_images()
         self._update_stats()
 

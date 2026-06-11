@@ -90,11 +90,15 @@ class LiveConfig:
                                     # (convergence time ~ W_norm**2)
     tau_trace: float = 0.050        # eligibility-trace window (s)
 
-    # ---- cortical spectro-temporal front end (Chi/Shamma 2005) ----
-    cortical: bool = True           # multi-scale spectral wavelet analysis ON
-    cortical_scales: tuple = (2.0, 4.0, 8.0)   # spectral scales (cyc/oct);
-                                    # finer => less spread, sharper tonotopy
-    cortical_mix: float = 1.0       # 0 = raw mel, 1 = full cortical (live 'C')
+    # ---- cortical temporal-rate front end (Chi/Shamma); 'C' toggles ----
+    cortical: bool = True           # temporal modulation (rate) filter ON
+    cortical_rate_low:  float = 2.0    # modulation band-pass low edge (Hz)
+    cortical_rate_high: float = 32.0   # modulation band-pass high edge (Hz)
+    cortical_mix: float = 1.0       # 0 = raw mel, 1 = full rate-filtered drive
+    coh_window_s: float = 3.0       # coincidence-matrix correlation window (s)
+    coh_bin_ms: float = 50.0        # bin E at the chord timescale before
+                                    # correlating (figure = co-occupied chords,
+                                    # not the shared within-chord onset)
 
     # ---- display ----
     history_s: float = 4.0          # seconds of scrolling history shown

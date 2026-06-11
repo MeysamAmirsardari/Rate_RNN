@@ -31,7 +31,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from live_demo_cortical.config import LiveConfig, get_preset
-from live_demo_cortical.audio import MelFrontEnd, MicSource, WavSource, SyntheticSource
+from live_demo_cortical.audio import (MelFrontEnd, MicSource, WavSource,
+                                      SyntheticSource, SFGSource)
 from live_demo_cortical.engine import LiveEngine
 
 
@@ -45,6 +46,8 @@ def _build_source(cfg: LiveConfig, args):
         return WavSource(cfg, args.wav, loop=True)
     if args.source == "synthetic":
         return SyntheticSource(cfg)
+    if args.source == "sfg":
+        return SFGSource(cfg)
     raise SystemExit(f"unknown source {args.source!r}")
 
 
@@ -164,7 +167,7 @@ def main(argv=None) -> int:
     ap.add_argument("--preset", default="default",
                     help="config preset: default | uniform | frozen | dynamic | dynamic2")
     ap.add_argument("--source", default="mic",
-                    choices=["mic", "wav", "synthetic"])
+                    choices=["mic", "wav", "synthetic", "sfg"])
     ap.add_argument("--wav", default=None, help="WAV path for --source wav")
     ap.add_argument("--device", type=int, default=None,
                     help="sounddevice input device index")

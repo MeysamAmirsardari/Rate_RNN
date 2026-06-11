@@ -2,79 +2,63 @@
 live_demo_cortical.cortex
 =========================
 
-Cortical spectro-temporal **front end** (Chi, Ru & Shamma, JASA 2005;
-the same stage used by the temporal-coherence model of Teki 2013 /
-Krishnan 2014).
+Cortical **temporal rate** front end -- the half of the Chi/Shamma cortical
+model that actually matters for temporal coherence (and that the first cut got
+wrong by using a spectral *scale* filter, which just smears along frequency).
 
-Stage 1 of the cortical model is a **multi-scale spectral wavelet analysis**:
-every cochleo-mel frame is filtered along the (log-)frequency axis by a bank
-of Gabor wavelets at several *scales* (cycles/octave).  Coarse scales pool
-energy across many neighbouring channels, fine scales keep near-tone
-resolution; the magnitude responses are combined into a single "cortically
-spread" drive.  Because a single tone now activates a *band* of channels,
-neighbouring channels co-activate -> the off-diagonal / diagonal-stripe
-structure of cortical coincidence matrices (Teki 2013, Fig 3C) appears in the
-model's learned recurrent map W.
+Each channel's envelope is band-pass filtered in TIME (modulation rates ~2-32
+Hz) by a causal difference-of-exponentials, then half-wave rectified.  This
+emphasises onsets / the modulation rate and discards the sustained level, so
+channels that turn on and off TOGETHER (a temporally coherent figure) produce
+correlated, onset-locked drive, while incoherent background does not -- without
+touching the frequency axis (no spectral blur, tonotopy preserved).
 
-Efficiency
-----------
-The whole ``(N, k)`` block is convolved along frequency **once per scale**
-(``scipy.ndimage.convolve1d``) -- no Python per-sample loops; a handful of
-small-kernel convolutions per tick (microseconds for N=180).  A future stage 2
-(temporal *rate* filters, 2-32 Hz) can be added the same way along time.
+Stateful and causal (keeps the two leaky integrators across audio blocks),
+vectorised over channels.
 """
 from __future__ import annotations
 
 import numpy as np
 
-try:
-    from scipy.ndimage import convolve1d
-except ImportError as exc:                                   # pragma: no cover
-    raise ImportError(
-        "live_demo_cortical.cortex requires scipy (scipy.ndimage). "
-        "Install with `pip install scipy`.") from exc
-
 
 class CortexFrontEnd:
-    """Multi-scale spectral wavelet front end; maps a mel drive to a
-    cortically spread drive of the same shape."""
+    """Per-channel temporal band-pass (modulation) filter on the mel drive."""
 
-    def __init__(self, cfg, scales_cyc_oct=(0.5, 1.0, 2.0, 4.0),
-                 weights=None, mix: float = 1.0):
+    def __init__(self, cfg, rate_low: float = 2.0, rate_high: float = 32.0,
+                 mix: float = 1.0):
         self.cfg = cfg
+        self.mix = float(mix)                  # 0 = raw mel, 1 = full rate-filtered
+        dt = cfg.dt
         N = cfg.n_channels
-        # bins per octave of the mel frequency axis
-        self.bins_per_oct = N / np.log2(cfg.fmax / cfg.fmin)
-        self.scales = tuple(scales_cyc_oct)
-        w = np.ones(len(self.scales)) if weights is None else np.asarray(weights, float)
-        self.weights = w / w.sum()
-        self.mix = float(mix)                      # 0 = raw mel, 1 = full cortical
-        self._kernels = [self._gabor(s) for s in self.scales]
+        # leaky-integrator coefficients for the fast (high-rate) and slow
+        # (low-rate) envelopes; their difference is a 2..32 Hz band-pass.
+        self.a_fast = float(np.clip(dt * 2 * np.pi * rate_high, 0.0, 1.0))
+        self.a_slow = float(np.clip(dt * 2 * np.pi * rate_low, 0.0, 1.0))
+        self.s_fast = np.zeros(N)
+        self.s_slow = np.zeros(N)
 
-    def _gabor(self, scale: float):
-        """Zero-mean complex Gabor wavelet (cos, sin) along frequency for a
-        given spectral scale (cyc/oct)."""
-        period = self.bins_per_oct / scale         # bins per cycle
-        half = max(1, int(round(1.5 * period)))
-        d = np.arange(-half, half + 1)
-        env = np.exp(-0.5 * (d / (0.5 * period)) ** 2)
-        cos = np.cos(2 * np.pi * d / period) * env
-        sin = np.sin(2 * np.pi * d / period) * env
-        return cos - cos.mean(), sin - sin.mean()  # band-pass (drop DC)
+    def reset(self):
+        self.s_fast[:] = 0.0
+        self.s_slow[:] = 0.0
 
     def process(self, drive: np.ndarray) -> np.ndarray:
-        """``(N, k)`` mel drive -> ``(N, k)`` cortically spread drive.
-
-        ``mix`` blends raw and cortical so the change is tunable live."""
-        if drive.shape[1] == 0:
+        """``(N, k)`` mel drive -> ``(N, k)`` onset/modulation-emphasised drive."""
+        k = drive.shape[1]
+        if k == 0:
             return drive
-        cort = np.zeros_like(drive)
-        for (cos, sin), w in zip(self._kernels, self.weights):
-            c = convolve1d(drive, cos, axis=0, mode="reflect")
-            s = convolve1d(drive, sin, axis=0, mode="reflect")
-            cort += w * np.sqrt(c * c + s * s)     # scale magnitude (envelope)
-        # keep the cortical drive on the same scale as the input
-        cort *= (drive.max() + 1e-9) / (cort.max() + 1e-9)
+        out = np.empty_like(drive)
+        sf, ss = self.s_fast, self.s_slow
+        af, as_ = self.a_fast, self.a_slow
+        for t in range(k):
+            x = drive[:, t]
+            sf += af * (x - sf)
+            ss += as_ * (x - ss)
+            out[:, t] = np.maximum(sf - ss, 0.0)   # band-pass, half-wave rectified
+        self.s_fast, self.s_slow = sf, ss
+        # keep the rate-filtered drive on roughly the same scale as the input
+        mo = out.max()
+        if mo > 1e-9:
+            out *= (drive.max() + 1e-9) / mo
         if self.mix >= 1.0:
-            return cort
-        return (1.0 - self.mix) * drive + self.mix * cort
+            return out
+        return (1.0 - self.mix) * drive + self.mix * out
