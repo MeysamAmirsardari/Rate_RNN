@@ -4,18 +4,24 @@ live_demo_cortical.audio
 
 Streaming cochleo-thalamic front end + audio sources for the live demo.
 
-``MelFrontEnd``
-    Causal, frame-by-frame log-mel encoder with automatic gain control.
-    Buffers raw samples and emits one mel frame per ``hop_length`` samples
-    (one model step).  The dB mapping mirrors ``tasks.auditory.audio`` but
-    replaces the fixed global reference with a running AGC peak tracker
-    (fast attack, slow release, absolute floor).  Output ``drive`` is the
-    per-channel thalamo-cortical input in ``[0, drive_gain]``.
+``SpectroFrontEnd``  (alias ``MelFrontEnd``)
+    Causal, frame-by-frame LOG-frequency spectrogram encoder (constant-Q-like
+    triangular filterbank, not mel) with automatic gain control.  Buffers raw
+    samples and emits one frame per ``hop_length`` samples.  The dB mapping
+    replaces a fixed global reference with a running AGC peak tracker (fast
+    attack, slow release, absolute floor).  Output ``drive`` is the per-channel
+    input in ``[0, drive_gain]``.
+``PitchGram``
+    Subharmonic-summation pitch saliency map (a pitch-gram) over the
+    spectrogram -- one fixed mat-mul per frame.
 
 Sources (all expose ``read(max_samples) -> np.ndarray``)
-    ``MicSource``        live microphone via ``sounddevice``.
-    ``WavSource``        a WAV file, optionally looping (for headless tests).
-    ``SyntheticSource``  tone bursts / sweeps (no mic, no files).
+    ``MicSource``         live microphone via ``sounddevice``.
+    ``WavSource``         a WAV file, optionally looping (for headless tests).
+    ``SyntheticSource``   tone bursts / sweeps (no mic, no files).
+    ``SFGSource``         rate-matched Stochastic Figure-Ground cloud.
+    ``TwoStreamSource``   two independent coherent tone streams (nPCA test);
+                          synthesis is :func:`synth_two_stream`.
 """
 
 from __future__ import annotations
@@ -180,6 +186,54 @@ class SpectroFrontEnd:
 
 
 # =====================================================================
+#  Pitch-gram  (subharmonic-summation pitch saliency)
+# =====================================================================
+class PitchGram:
+    """Real-time pitch saliency map -- a *pitch-gram* -- by subharmonic
+    summation (Hermes 1988; Schroeder 1968) over the log-spectrogram.
+
+    For each candidate F0 the saliency is the harmonic-decay-weighted sum of
+    spectral magnitude at that F0's harmonics ``h*F0``; a true periodicity at
+    F0 lights all of its harmonics and scores high, so a sustained tone or a
+    voiced sound shows up as a horizontal band at its pitch (a pure tone also
+    casts weaker subharmonic ghosts at ``f/2, f/3, ...``).  This is the pitch
+    estimate Krishnan, Elhilali & Shamma (2014) append to the spectrogram
+    before temporal-coherence analysis.
+
+    Implemented as a fixed ``(n_pitch x n_channels)`` harmonic projection
+    matrix, so a whole frame block is one mat-mul: ``pitch = P @ mag``.  Each
+    harmonic is splatted onto the channel axis with a narrow Gaussian in
+    log-frequency (so a tone landing between two channels still contributes)."""
+
+    def __init__(self, centers: np.ndarray, n_pitch: int = 64,
+                 fmin: float = 80.0, fmax: float = 800.0,
+                 n_harm: int = 8, decay: float = 0.83):
+        centers = np.asarray(centers, dtype=np.float64)
+        self.pitches = np.geomspace(fmin, fmax, n_pitch)
+        log_c = np.log(centers)
+        sigma = 0.6 * float(np.median(np.diff(log_c)))      # ~channel spacing
+        P = np.zeros((n_pitch, centers.size))
+        hi = centers[-1] * 1.02
+        for p, f0 in enumerate(self.pitches):
+            for h in range(1, n_harm + 1):
+                fh = h * f0
+                if fh > hi:
+                    break
+                P[p] += (decay ** (h - 1)) * np.exp(
+                    -0.5 * ((log_c - np.log(fh)) / sigma) ** 2)
+        self.P = P.astype(np.float64)
+
+    def pitch_freqs(self) -> np.ndarray:
+        return self.pitches
+
+    def push(self, mag: np.ndarray) -> np.ndarray:
+        """``mag`` (n_channels, k) spectral magnitude -> (n_pitch, k) saliency."""
+        if mag.shape[1] == 0:
+            return np.empty((self.P.shape[0], 0))
+        return self.P @ mag
+
+
+# =====================================================================
 #  Audio sources
 # =====================================================================
 class MicSource:
@@ -327,51 +381,95 @@ class SFGSource:
 MelFrontEnd = SpectroFrontEnd          # back-compat alias
 
 
-class TwoStreamSource:
-    """TWO simultaneous coherent tone streams -- the clean nPCA test.
+def _place_tones(rng, n_pool, n_a, n_b, layout, min_gap):
+    """Choose ``n_a + n_b`` pool indices with a minimum channel gap (so no two
+    tones collide in the spectrogram), then split them into groups A and B by
+    ``layout``: 'bands' (A low / B high), 'interleave' (A,B alternate across the
+    whole band -> overlapping ranges, separable ONLY by temporal coherence) or
+    'random'."""
+    need = n_a + n_b
+    chosen = []
+    for i in rng.permutation(n_pool):
+        if all(abs(int(i) - j) >= min_gap for j in chosen):
+            chosen.append(int(i))
+        if len(chosen) == need:
+            break
+    chosen = np.array(sorted(chosen))
+    if layout == "bands":
+        gA, gB = chosen[:n_a], chosen[n_a:need]
+    elif layout == "random":
+        perm = rng.permutation(len(chosen))
+        gA, gB = chosen[perm[:n_a]], chosen[perm[n_a:need]]
+    else:                                            # "interleave" (default)
+        gA, gB = chosen[0::2][:n_a], chosen[1::2][:n_b]
+    return gA, gB
 
-    Two disjoint groups of pure tones.  Each 50 ms chord, group A fires (all its
-    tones together) with prob pA and group B with prob pB, INDEPENDENTLY; the
-    rest of a fixed tones-per-chord budget is random background.  The two groups
-    are temporally uncorrelated, so the coincidence matrix has two separate
-    blocks -> nPCA returns two masks (one per stream).  Pure tones, no pitch."""
+
+def synth_two_stream(sr: int, *, n_a: int = 8, n_b: int = 8, p_bg: float = 0.08,
+                     chord_ms: float = 50.0, rate_a: float = 5.0,
+                     rate_b: float = 5.0, seconds: float = 60.0,
+                     fmin: float = 500.0, fmax: float = 6000.0,
+                     n_pool: int = 60, layout: str = "interleave",
+                     min_gap: int = 3, seed: int = 0):
+    """Synthesise a TWO-coherent-stream tone mixture (the clean nPCA test).
+
+    Two groups A and B are drawn from a log-spaced tone pool with a minimum
+    channel gap (no spectrogram collisions) and arranged by ``layout`` (see
+    :func:`_place_tones`).  Every ``chord_ms`` chord, group A fires (all its
+    tones synchronously) with prob ``rate_a*chord_ms`` and group B with prob
+    ``rate_b*chord_ms``, INDEPENDENTLY of A; the remaining pool channels each
+    fire at ``p_bg`` as incoherent background.  A and B are temporally
+    uncorrelated, so the coincidence matrix splits into two blocks and nPCA
+    returns one mask per stream.  Pure tones (no harmonics) -> segregation is by
+    temporal coherence alone, not by pitch or by frequency band.
+
+    Returns ``(y, sr, (gA, gB))``: the mono signal in [-1, 1], the sample
+    rate, and the ground-truth pool indices of each group (for validation)."""
+    rng = np.random.default_rng(seed)
+    pool = np.geomspace(fmin, fmax, n_pool)
+    gA, gB = _place_tones(rng, n_pool, n_a, n_b, layout, min_gap)
+    grp = set(gA.tolist()) | set(gB.tolist())
+    non = np.array([i for i in range(n_pool) if i not in grp])
+    nch = int(round(chord_ms / 1000.0 * sr))
+    ramp = max(1, int(0.008 * sr))
+    env = np.ones(nch)
+    env[:ramp] = 0.5 * (1 - np.cos(np.pi * np.arange(ramp) / ramp))
+    env[-ramp:] = env[:ramp][::-1]
+    t = np.arange(nch) / sr
+    pa, pb = rate_a * chord_ms / 1000.0, rate_b * chord_ms / 1000.0
+    chords = []
+    for _ in range(int(seconds * 1000.0 / chord_ms)):
+        on = np.zeros(n_pool, dtype=bool)
+        if rng.random() < pa:                       # stream A fires (synchronous)
+            on[gA] = True
+        if rng.random() < pb:                       # stream B fires (independent of A)
+            on[gB] = True
+        if non.size:
+            on[non] |= rng.random(non.size) < p_bg  # incoherent random background
+        x = np.zeros(nch)
+        for f in pool[on]:
+            x += np.sin(2 * np.pi * f * t + rng.uniform(0, 2 * np.pi))
+        chords.append(x * env)
+    y = np.concatenate(chords)
+    y = (0.9 * y / (np.percentile(np.abs(y), 99.9) + 1e-9)).clip(-1, 1)
+    return y, sr, (gA, gB)
+
+
+class TwoStreamSource:
+    """Stream wrapper around :func:`synth_two_stream` -- pre-renders one mixture
+    and loops it, exposing ``read``/``start``/``stop`` like the other sources
+    and ``groups`` (the ground-truth tone groups)."""
 
     paced = True
 
-    def __init__(self, cfg: LiveConfig, n_a: int = 8, n_b: int = 8,
-                 p_bg: float = 0.10, chord_ms: float = 50.0,
-                 rate_a: float = 5.0, rate_b: float = 5.0, seconds: float = 60.0,
-                 fmin: float = 250.0, fmax: float = 6000.0, n_pool: int = 60,
-                 seed: int = 0):
-        rng = np.random.default_rng(seed)
-        sr = cfg.sr
-        pool = np.geomspace(fmin, fmax, n_pool)
-        idx = rng.permutation(n_pool)
-        gA, gB = idx[:n_a], idx[n_a:n_a + n_b]
-        non = idx[n_a + n_b:]
-        nch = int(round(chord_ms / 1000.0 * sr))
-        ramp = int(0.008 * sr)
-        env = np.ones(nch)
-        env[:ramp] = 0.5 * (1 - np.cos(np.pi * np.arange(ramp) / ramp))
-        env[-ramp:] = env[:ramp][::-1]
-        t = np.arange(nch) / sr
-        pa, pb = rate_a * chord_ms / 1000.0, rate_b * chord_ms / 1000.0
-        chords = []
-        for _ in range(int(seconds * 1000.0 / chord_ms)):
-            on = np.zeros(n_pool, dtype=bool)
-            if rng.random() < pa:                       # stream A fires (synchronous)
-                on[gA] = True
-            if rng.random() < pb:                       # stream B fires (independent of A)
-                on[gB] = True
-            on[non] |= rng.random(non.size) < p_bg      # independent random background
-            x = np.zeros(nch)
-            for f in pool[on]:
-                x += np.sin(2 * np.pi * f * t + rng.uniform(0, 2 * np.pi))
-            chords.append(x * env)
-        y = np.concatenate(chords)
-        self._y = (0.9 * y / (np.percentile(np.abs(y), 99.9) + 1e-9)).clip(-1, 1)
+    def __init__(self, cfg: LiveConfig, *, seconds: float = 60.0, seed: int = 0,
+                 **kw):
+        kw.setdefault("fmin", cfg.fmin)         # draw tones from the channel band
+        kw.setdefault("fmax", cfg.fmax)         # so tone i lands on channel i
+        kw.setdefault("n_pool", cfg.n_channels)
+        self._y, _, self.groups = synth_two_stream(
+            cfg.sr, seconds=seconds, seed=seed, **kw)
         self._pos = 0
-        self.groups = (gA, gB)               # ground-truth (for validation)
 
     def start(self):
         self._pos = 0

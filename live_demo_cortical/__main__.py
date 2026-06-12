@@ -2,18 +2,17 @@
 live_demo_cortical.__main__
 ==================
 
-Entry point for the live model0 demo.
+Entry point for the live stream-segregation demo.
 
     python -m live_demo_cortical                              live microphone
-    python -m live_demo_cortical --preset frozen              plasticity off
-    python -m live_demo_cortical --preset dynamic             faster learning/forgetting
-    python -m live_demo_cortical --preset dynamic2            ~10 s forgetting horizon
-    python -m live_demo_cortical --inhibition uniform         control inhibition
+    python -m live_demo_cortical --source twostream           two coherent tone streams
+    python -m live_demo_cortical --source sfg                 stochastic figure-ground
     python -m live_demo_cortical --source synthetic           mic-free tone bursts
     python -m live_demo_cortical --source wav --wav a.wav     play a recording
     python -m live_demo_cortical --selftest                   headless validation
-    python -m live_demo_cortical --snapshot out.png --source wav --wav a.wav
+    python -m live_demo_cortical --snapshot out.png --source twostream
                                                      headless GUI screenshot
+    python -m live_demo_cortical.export                       render two-stream MP3s
 """
 
 from __future__ import annotations
@@ -31,9 +30,8 @@ if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
 from live_demo_cortical.config import LiveConfig, get_preset
-from live_demo_cortical.audio import (SpectroFrontEnd, MicSource, WavSource,
-                                      SyntheticSource, SFGSource, TwoStreamSource)
-from live_demo_cortical.engine import LiveEngine
+from live_demo_cortical.audio import (MicSource, WavSource, SyntheticSource,
+                                      SFGSource, TwoStreamSource)
 
 
 # ---------------------------------------------------------------------
@@ -74,36 +72,48 @@ def _pseudo_speech(cfg: LiveConfig) -> np.ndarray:
 
 # ---------------------------------------------------------------------
 def run_selftest(cfg: LiveConfig, preview_path: str) -> int:
-    """Drive the full pipeline headlessly on pseudo-speech and validate."""
-    print("[ live_demo_cortical self-test ]")
-    print(f"  {cfg.n_channels} channels · sr={cfg.sr} · hop={cfg.hop_length} "
-          f"samp ({cfg.hop_ms} ms/frame) · inhibition={cfg.inhibition} · "
-          f"learn={cfg.learn}")
-    fe = SpectroFrontEnd(cfg)
-    eng = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
-    audio = _pseudo_speech(cfg)
-
+    """Drive the segregation pipeline headlessly on a two-stream scene and
+    validate that the two coherent streams are recovered (and save the GUI)."""
     import time
-    bs = cfg.blocksize
-    db_cols, E_cols = [], []
-    n_open = n_tot = 0
-    t0 = time.perf_counter()
-    for lo in range(0, audio.size, bs):
-        drive, db = fe.push(audio[lo:lo + bs])
-        if drive.shape[1] == 0:
-            continue
-        out = eng.step_block(drive)
-        db_cols.append(db)
-        E_cols.append(out["E"])
-        n_tot += drive.shape[1]
-        n_open += int((drive.max(axis=0) > 0).sum())
-    rt = time.perf_counter() - t0
-    db = np.concatenate(db_cols, axis=1)
-    E = np.concatenate(E_cols, axis=1)
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+    from pyqtgraph.Qt import QtWidgets
+    from live_demo_cortical.app import LiveDemoApp
 
-    speed = (n_tot / 1000.0) / rt if rt > 0 else float("inf")
-    act = E[:, E.sum(0) > 0]
-    spars = 100.0 * (act > 0.05 * E.max()).mean() if act.size else 0.0
+    print("[ live_demo_cortical self-test — stream segregation ]")
+    print(f"  {cfg.n_channels} channels · sr={cfg.sr} · "
+          f"{cfg.fmin:.0f}–{cfg.fmax:.0f} Hz · {cfg.coh_window_s:.0f}s "
+          f"coincidence window · {cfg.n_streams} streams")
+
+    app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
+    secs = max(cfg.history_s, cfg.coh_window_s + 4.0)
+    src = TwoStreamSource(cfg, seconds=secs + 2.0, seed=0)
+    win = LiveDemoApp(cfg, src)
+    win.show()
+    src.start()
+    audio = src.read(int(secs * cfg.sr))
+    t0 = time.perf_counter()
+    win.feed_offline(audio)
+    rt = time.perf_counter() - t0
+    speed = secs / rt if rt > 0 else float("inf")
+
+    # tone-level separation score vs the known groups: each tone's main channel
+    # should be claimed by one mask, with group A in one mask and B in the other.
+    M = win._masks
+    pool = np.geomspace(cfg.fmin, cfg.fmax, cfg.n_channels)
+    wfft, fb = np.hanning(cfg.n_fft), win.fe._mel_fb
+    def tone_chan(f):
+        x = np.sin(2 * np.pi * f * np.arange(cfg.n_fft) / cfg.sr) * wfft
+        return int((fb @ (np.abs(np.fft.rfft(x)) ** 2)).argmax())
+    def label(c):
+        k = int(M[c].argmax())
+        return k if M[c, k] > 0.5 else -1
+    gA = [int(i) for i in src.groups[0]]
+    gB = [int(i) for i in src.groups[1]]
+    lA = [label(tone_chan(pool[i])) for i in gA]
+    lB = [label(tone_chan(pool[i])) for i in gB]
+    best = max(sum(l == a for l in lA) + sum(l == b for l in lB)
+               for a, b in ((0, 1), (1, 0)))
+    score = best / (len(gA) + len(gB))
 
     ok = True
     def check(name, cond, detail=""):
@@ -111,18 +121,15 @@ def run_selftest(cfg: LiveConfig, preview_path: str) -> int:
         ok = ok and cond
         print(f"  [{'OK' if cond else 'FAIL'}] {name} {detail}")
 
-    check("finite outputs", bool(np.isfinite(E).all() and np.isfinite(db).all()))
+    check("finite outputs",
+          bool(np.isfinite(M).all() and np.isfinite(win._C).all()))
     check("real-time capable", speed > 1.0, f"({speed:.1f}x real time)")
-    check("noise gate engaged", 0 < n_open < n_tot,
-          f"({100 * n_open / n_tot:.0f}% frames open)")
-    check("model bounded", 0 < E.max() < 50.0, f"(peak E={E.max():.2f})")
-    check("sparse cortical code", spars < 40.0,
-          f"({spars:.1f}% channels active)")
+    check("coincidence populated", win._C.max() > 0.1,
+          f"(max C={win._C.max():.2f})")
+    check("streams separated", score >= 0.8,
+          f"({score * 100:.0f}% tones correctly grouped)")
 
-    from live_demo_cortical.preview import render_static
-    render_static(cfg, db, E, fe, preview_path,
-                  title=f"Artificial auditory cortex — model0 "
-                        f"[{cfg.inhibition} inhibition, learn={cfg.learn}]")
+    win.grab_image(preview_path)
     print(f"  preview saved -> {preview_path}")
     print("  RESULT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
@@ -138,10 +145,16 @@ def run_snapshot(cfg: LiveConfig, args) -> int:
     src = SyntheticSource(cfg)            # source unused; we feed offline
     win = LiveDemoApp(cfg, src)
     win.show()
-    audio = (_pseudo_speech(cfg) if args.source != "synthetic"
-             else SyntheticSource(cfg).read(int(cfg.history_s * cfg.sr)))
-    # keep only the most recent history window so the frame is full
     keep = int(cfg.history_s * cfg.sr)
+    # feed the chosen source (mic falls back to pseudo-speech for a static frame)
+    if args.source in ("twostream", "sfg", "synthetic", "wav"):
+        feed_src = _build_source(cfg, args)
+        if hasattr(feed_src, "start"):
+            feed_src.start()
+        audio = feed_src.read(keep)
+    else:
+        audio = _pseudo_speech(cfg)
+    # keep only the most recent history window so the frame is full
     win.feed_offline(audio[-keep:] if audio.size > keep else audio)
     app.processEvents()
     win.grab_image(args.snapshot)
@@ -158,8 +171,8 @@ def run_live(cfg: LiveConfig, args) -> int:
     win = LiveDemoApp(cfg, source)
     win.show()
     win.start()
-    print("[ live_demo_cortical ] running — keys: L learn · "
-          "I inhibition · Space pause · R reset · Q quit")
+    print("[ live_demo_cortical ] running — keys: "
+          "Space pause · R reset · Q quit")
     return app.exec()
 
 

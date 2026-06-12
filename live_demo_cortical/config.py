@@ -50,7 +50,10 @@ class LiveConfig:
     sr: int = 16000                 # capture + resample rate (Hz)
     n_fft: int = 1024               # STFT window -> 64 ms @16 kHz (freq res ~16 Hz)
     hop_ms: float = 1.0             # frame hop (ms) -> 1 frame == 1 model step
-    fmin: float = 250.0             # lowest channel centre (Hz)
+    fmin: float = 500.0             # lowest channel centre (Hz); >= ~500 so the
+                                    # n_fft window resolves adjacent log-channels
+                                    # (below it they collapse into shared FFT
+                                    # bins -> a spurious low-frequency block)
     fmax: float = 6000.0            # highest channel centre (Hz)
     blocksize: int = 512            # samples per audio callback (~32 ms)
     in_channels: int = 1            # mono
@@ -95,14 +98,33 @@ class LiveConfig:
     coh_bin_ms: float = 50.0        # bin E at the chord timescale before
                                     # correlating (figure = co-occupied chords,
                                     # not the shared within-chord onset)
+    coh_floor_z: float = 0.5        # soft-subtract a floor of median + z*MAD of
+                                    # the off-diagonal C -- the incoherent
+                                    # background is rectified sampling noise
+                                    # (~1/sqrt(n_chords)); subtracting it leaves
+                                    # the within-stream blocks so nPCA can split
+                                    # them (small z: keep both groups, even a
+                                    # weak one; large z fragments the weaker)
     n_streams: int = 2              # number of stream masks to separate
     sep_iters: int = 15             # k-means iterations per separator update
+
+    # ---- pitch-gram (subharmonic-summation pitch saliency) ----
+    # A real-time pitch saliency map (Hermes 1988, SHS; Schroeder 1968): for
+    # every candidate F0 the saliency is the harmonic-decay-weighted sum of
+    # log-spectrogram magnitude at that F0's harmonics, so a periodicity lights
+    # all its harmonics and scores high.  Krishnan et al. (2014) append exactly
+    # such pitch channels to the spectrogram before temporal-coherence analysis.
+    pitch_fmin: float = 80.0        # lowest candidate F0 (Hz)
+    pitch_fmax: float = 800.0       # highest candidate F0 (Hz)
+    n_pitch: int = 64               # pitch-axis resolution (log-spaced F0 bins)
+    pitch_harmonics: int = 8        # harmonics summed per F0 template
+    pitch_decay: float = 0.83       # per-harmonic weight decay (w**(h-1))
 
     # ---- display ----
     history_s: float = 8.0          # seconds of scrolling history shown
     target_fps: int = 60            # display refresh target
-    input_cmap: str = "magma"       # thalamic-input heatmap colormap
-    cortex_cmap: str = "viridis"    # cortical-response heatmap colormap
+    input_cmap: str = "magma"       # input + segregated-stream heatmaps
+    pitch_cmap: str = "viridis"     # pitch-gram heatmap colormap
 
     # ============ derived ============
     @property
