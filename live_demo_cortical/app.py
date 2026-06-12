@@ -89,7 +89,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._popE = np.zeros(F, dtype=np.float32)
         self._active = np.zeros(F, dtype=np.float32)
         self._E_vmax = 1.0
-        self._W_vmax = 1e-3
         self._C = np.zeros((N, N), dtype=np.float32)   # live coincidence matrix
         self._C_vmax = 1e-2
         self._masks = np.zeros((N, cfg.n_streams), dtype=np.float32)
@@ -377,13 +376,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self._E_vmax = max(0.85 * self._E_vmax + 0.15 * target, 0.05)
         else:
             self._E_vmax = max(0.97 * self._E_vmax, 0.05)
-
-    def _update_W_scale(self):
-        """Track the W colour ceiling toward the 99.5th percentile so the
-        forming assemblies bloom vividly as the weights grow from ~0."""
-        w = self.engine.W
-        p = float(np.percentile(w, 99.5)) if w.size else 0.0
-        self._W_vmax = max(0.9 * self._W_vmax + 0.1 * p, 1e-3)
 
     def _update_coincidence(self):
         """C[i,j] = correlation of the chord-binned cortical response E over the
