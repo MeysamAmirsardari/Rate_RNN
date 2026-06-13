@@ -92,30 +92,15 @@ class LiveConfig:
                                     # (convergence time ~ W_norm**2)
     tau_trace: float = 0.050        # eligibility-trace window (s)
 
-    # ---- coincidence matrix + nPCA stream separation ----
-    # Speech binds by COMMON AMPLITUDE MODULATION of the channel envelopes (the
-    # syllabic/voicing rhythm), not by discrete chords.  The coincidence is the
-    # correlation of the channel envelopes over a sliding window, computed at
-    # several temporal RATES (``coh_rates_s`` -- the cortical modulation-rate
-    # filterbank, Chi & Shamma 2005) and summed: slow rates catch the syllabic
-    # envelope, fast rates the finer structure.  This is the "multiple
-    # replications with different dynamics" idea.
-    coh_window_s: float = 6.0       # envelope-correlation window (s) -- long
-                                    # enough to estimate each talker's envelope
-                                    # statistics (two continuous voices)
-    coh_rates_s: tuple = (0.05, 0.15, 0.4)   # modulation-rate time constants (s)
-    coh_floor_z: float = 0.5        # soft-subtract a floor of median + z*MAD of
-                                    # the off-diagonal C (drops the shared
-                                    # "speechiness" common mode + sampling noise)
+    # ---- pitch / periodicity segregation (the cue that separates voices) ----
+    # Concurrent voices are separated by HARMONICITY / common F0: each cochlear
+    # channel's autocorrelation (brainstem periodicity) peaks at the pitch
+    # period of whichever talker dominates it; the summary autocorrelation shows
+    # one peak per voice; routing each channel, each moment, to the F0 it is
+    # periodic at gives a time-frequency mask (Licklider 1951; Meddis & Hewitt
+    # 1992).  Envelope-coherence grouping alone fails here (the shared speech
+    # envelope is a common mode) -- periodicity is what works.
     n_streams: int = 2              # number of talker streams to separate
-    sep_iters: int = 15             # k-means iterations per separator update
-
-    # ---- pitch-gram (subharmonic-summation pitch saliency) ----
-    # A real-time pitch saliency map (Hermes 1988, SHS; Schroeder 1968): for
-    # every candidate F0 the saliency is the harmonic-decay-weighted sum of
-    # cochleagram magnitude at that F0's harmonics.  DISPLAYED here (the two
-    # talkers' F0 tracks); feeding it into the coincidence did not help the
-    # grouping in tests, so it is a read-out, not a feature (yet).
     pitch_fmin: float = 80.0        # lowest candidate F0 (Hz)
     pitch_fmax: float = 400.0       # highest candidate F0 (Hz) -- speech range
     n_pitch: int = 32               # pitch-axis resolution (log-spaced F0 bins)

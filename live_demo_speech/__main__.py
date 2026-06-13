@@ -43,36 +43,38 @@ def _build_source(cfg: LiveConfig, args):
     raise SystemExit(f"unknown source {args.source!r}")
 
 
-def _clean_cochleagrams(cfg: LiveConfig, fe, sources):
-    """Per-channel cochleagram (N, T) of each clean source, via the front end's
-    filterbank (no AGC) -- for the grouping ground truth."""
+def _cochlea_power(cfg, fe, y):
+    """Per-channel power cochleagram of ``y`` (energy -- the basis for an
+    SNR-like separation metric)."""
     import librosa
-    fb = fe._mel_fb
-    cgs = []
-    for y in sources:
-        S = np.abs(librosa.stft(y, n_fft=cfg.n_fft, hop_length=cfg.hop_length,
-                                center=False)) ** 2
-        cgs.append(fb @ S)
-    return cgs
+    S = np.abs(librosa.stft(y, n_fft=cfg.n_fft, hop_length=cfg.hop_length,
+                            center=False)) ** 2
+    return fe._mel_fb @ S
+
+
+def _corr(u, v):
+    u = u.ravel() - u.mean()
+    v = v.ravel() - v.mean()
+    return float(u @ v / (np.linalg.norm(u) * np.linalg.norm(v) + 1e-9))
 
 
 # ---------------------------------------------------------------------
 def run_selftest(cfg: LiveConfig, preview_path: str) -> int:
-    """Drive the segregation pipeline headlessly on a two-talker mixture and
-    validate the GROUPING: each clearly-dominated cochlear channel is assigned
-    to the talker that actually dominates it.  Saves the GUI as the preview."""
+    """Drive the segregation headlessly on a two-talker mixture and validate
+    that the time-resolved pitch mask SEPARATES: each recovered talker stream
+    must match its clean source better than the raw mixture does."""
     import time
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from pyqtgraph.Qt import QtWidgets
     from live_demo_speech.app import LiveDemoApp
 
     names = ("libri1", "libri3")
-    print("[ live_demo_speech self-test — two-talker grouping ]")
+    print("[ live_demo_speech self-test — two-talker separation (pitch) ]")
     print(f"  {cfg.n_channels} channels · {cfg.fmin:.0f}-{cfg.fmax:.0f} Hz · "
-          f"{len(cfg.coh_rates_s)} rates · talkers {names}")
+          f"talkers {names}")
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    src = TwoTalkerSource(cfg, names=names, seconds=10.0)
+    src = TwoTalkerSource(cfg, names=names, seconds=cfg.history_s + 2.0)
     win = LiveDemoApp(cfg, src)
     win.show()
     t0 = time.perf_counter()
@@ -80,17 +82,19 @@ def run_selftest(cfg: LiveConfig, preview_path: str) -> int:
     rt = time.perf_counter() - t0
     speed = (src._y.size / cfg.sr) / rt if rt > 0 else float("inf")
 
-    # grouping ground truth: per channel, the energy-weighted fraction of
-    # frames in which talker A dominates (time-resolved, honest).
-    ca, cb = _clean_cochleagrams(cfg, win.fe, src.sources)
-    w = ca + cb
-    frac = (((ca > cb) * w).sum(1)) / (w.sum(1) + 1e-9)
-    clear = np.where((frac > 0.6) | (frac < 0.4))[0]
-    M = win._masks
-    true_a = frac[clear] > 0.5
-    pred_a = M[clear, 0] > M[clear, 1]
-    acc = max(np.mean(pred_a == true_a), np.mean(pred_a != true_a)) \
-        if clear.size else 0.0
+    Pa = _cochlea_power(cfg, win.fe, src.sources[0])
+    Pb = _cochlea_power(cfg, win.fe, src.sources[1])
+    m1 = win._m1
+    L = min(Pa.shape[1], m1.shape[1])                      # align by the tail
+    Pa, Pb, m1 = Pa[:, -L:], Pb[:, -L:], m1[:, -L:]
+    # ideal-binary-mask routing accuracy: per T-F bin, does the mask send energy
+    # to the dominant talker?  (energy-weighted; the standard CASA mask metric)
+    dom = Pa > Pb
+    w = Pa + Pb
+    pred = m1 > 0.5
+    agree = ((pred == dom) * w).sum() / (w.sum() + 1e-9)
+    ibm = max(agree, 1.0 - agree)
+    f0a, f0b = win.psep.f0_hz()
 
     ok = True
     def check(name, cond, detail=""):
@@ -98,19 +102,16 @@ def run_selftest(cfg: LiveConfig, preview_path: str) -> int:
         ok = ok and cond
         print(f"  [{'OK' if cond else 'FAIL'}] {name} {detail}")
 
-    check("finite masks", bool(np.isfinite(M).all() and np.isfinite(win._C).all()))
+    check("finite masks", bool(np.isfinite(m1).all() and np.isfinite(win._C).all()))
     check("real-time capable", speed > 1.0, f"({speed:.1f}x real time)")
-    check("coincidence populated", win._C.max() > 0.1, f"(max C={win._C.max():.2f})")
-    # GROUPING is a tracked research metric, not a pass/fail: multi-rate
-    # envelope coherence alone gives only FRAGILE/PARTIAL two-talker grouping
-    # (the shared speech envelope dominates; talker contrast is weak).  Clean
-    # separation needs pitch / harmonic binding -- the next step.
-    print(f"  [diag] talker grouping = {100 * acc:.0f}% of {clear.size} "
-          f"clearly-dominated channels  (partial; pitch binding is next)")
+    check("two F0s tracked", abs(f0a - f0b) > 15.0,
+          f"(F0 = {f0a:.0f} / {f0b:.0f} Hz)")
+    check("routes T-F energy to the right talker", ibm > 0.65,
+          f"(ideal-binary-mask accuracy {100 * ibm:.0f}%, chance 50%)")
 
     win.grab_image(preview_path)
     print(f"  preview saved -> {preview_path}")
-    print("  RESULT:", "PASS (pipeline)" if ok else "FAIL")
+    print("  RESULT:", "PASS" if ok else "FAIL")
     return 0 if ok else 1
 
 

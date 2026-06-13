@@ -2,34 +2,29 @@
 live_demo_speech.app
 ====================
 
-Real-time **two-talker speech segregation** with the model0 A1 rate RNN, by
-temporal coherence (Shamma, Elhilali & Micheyl 2011; Krishnan, Elhilali &
-Shamma 2014).
+Real-time **two-talker speech segregation** by pitch / periodicity (Licklider
+1951; Meddis & Hewitt 1992; Wang & Brown CASA) -- the cue that actually
+separates concurrent voices.
 
 Pipeline
 --------
-    mixture → log-frequency cochleagram → A1 RNN (E activations)
-            → multi-rate envelope coincidence  C[i,j]
-            → nPCA (normalized spectral clustering) → talker masks
-            → masked cochleagram = each talker's channel group
+    mixture → log-frequency cochleagram                (display)
+            → cochlear band-pass + rectify + low-pass
+            → per-channel autocorrelation              (brainstem periodicity)
+            → summary autocorrelation → two F0 tracks
+            → route each channel, each moment, to the F0 it is periodic at
+            → time-frequency talker masks
 
-The binding cue for speech is **common amplitude modulation** of the channel
-envelopes (the syllabic/voicing rhythm).  ``C`` is the correlation of the A1
-**activation** envelopes over a sliding window, summed across several temporal
-**rates** (the cortical modulation-rate filterbank) — the "multiple replications
-with different dynamics".  Factoring ``C`` groups channels by talker.
+The shared slow envelope of two talkers is a common mode that defeats
+envelope-coherence grouping; **periodicity** (harmonicity / common F0) is what
+binds each voice.  The mask is time-resolved: a channel is routed to whichever
+of the two fundamentals its *local* autocorrelation supports right now.
 
-This is temporal-coherence **grouping** (which channels belong to which talker),
-the regime the model is built for — not reconstruction-grade source separation
-(two talkers share channels over time; only an oracle per-bin mask could do
-that).  The masks track each talker's spectral group.
+Six panels: input cochleagram, pitch (summary autocorrelation, two F0 tracks),
+Talker 1, Talker 2, periodicity coincidence (channels sharing F0), per-channel
+talker assignment.
 
-Six panels: input cochleagram, pitch (F0 salience), Talker 1, Talker 2,
-coincidence C, nPCA masks.
-
-Keyboard
---------
-    Space  pause / resume      R  reset      Q/Esc  quit
+Keyboard:  Space pause · R reset · Q/Esc quit
 """
 
 from __future__ import annotations
@@ -38,13 +33,11 @@ import time
 
 import numpy as np
 import pyqtgraph as pg
-from scipy.signal import lfilter
 from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 
-from .audio import SpectroFrontEnd, PitchGram
+from .audio import SpectroFrontEnd
 from .config import LiveConfig
-from .masks import StreamSeparator
-from .engine import LiveEngine
+from .periodicity import PeriodicitySeparator
 
 try:
     _QShortcut = QtGui.QShortcut
@@ -56,14 +49,13 @@ _PANEL = "#161b22"
 _FG = "#c9d1d9"
 _MUTED = "#8b949e"
 _GRID = "#30363d"
-_T1 = "#ff8c42"          # talker 1 (orange)
-_T2 = "#58d6ff"          # talker 2 (cyan)
+_T1 = "#ff8c42"          # talker 1 (orange, lower F0)
+_T2 = "#58d6ff"          # talker 2 (cyan, higher F0)
 _OK = "#3fb950"
-_TALKER_COLORS = [_T1, _T2, "#b072ff", "#3fb950"]
 
 
 class LiveDemoApp(QtWidgets.QMainWindow):
-    """Scrolling two-talker speech segregation view."""
+    """Scrolling two-talker speech segregation by periodicity."""
 
     def __init__(self, cfg: LiveConfig, source, parent=None):
         super().__init__(parent)
@@ -72,31 +64,25 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.paused = False
 
         self.fe = SpectroFrontEnd(cfg)
-        self.engine = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
-        self.pitch = PitchGram(self.fe.center_freqs(), n_pitch=cfg.n_pitch,
-                               fmin=cfg.pitch_fmin, fmax=cfg.pitch_fmax,
-                               n_harm=cfg.pitch_harmonics, decay=cfg.pitch_decay)
-        self.sep = StreamSeparator(cfg.n_channels, n_streams=cfg.n_streams,
-                                   iters=cfg.sep_iters)
+        self.psep = PeriodicitySeparator(cfg, n_streams=cfg.n_streams)
 
         F = cfg.history_frames
         N = cfg.n_channels
         self._F = F
+        self._nlags = self.psep._lags.size
+        self._f0_axis = self.psep.fs2 / self.psep._lags        # Hz per lag bin
         self._in_db = np.full((N, F), -cfg.top_db, dtype=np.float32)
-        self._E = np.zeros((N, F), dtype=np.float32)          # cortex activations
-        self._pitch = np.zeros((cfg.n_pitch, F), dtype=np.float32)
+        self._m1 = np.full((N, F), 0.5, dtype=np.float32)      # talker-1 soft mask
+        self._sacf = np.zeros((self._nlags, F), dtype=np.float32)
         self._C = np.zeros((N, N), dtype=np.float32)
-        self._masks = np.zeros((N, cfg.n_streams), dtype=np.float32)
+        self._cur_m1 = np.full(N, 0.5, dtype=np.float32)
+        self._cur_sacf = np.zeros(self._nlags, dtype=np.float32)
         self._C_vmax = 1e-2
-        self._pitch_vmax = 1e-2
-        self._coh_tick = 0
+        self._sacf_vmax = 1e-2
+        self._tick_i = 0
         self._last_read = None
         self._fps_ema = float(cfg.target_fps)
         self._last_tick = time.perf_counter()
-        # per-frame leak coefficients for the modulation-rate filterbank
-        dt = cfg.dt
-        self._rate_alphas = [float(np.exp(-dt / max(t, 1e-3)))
-                             for t in cfg.coh_rates_s]
 
         self._build_ui()
         self.timer = QtCore.QTimer(self)
@@ -118,15 +104,15 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         self._img_rect = QtCore.QRectF(-cfg.history_s, 0.0, cfg.history_s,
                                        cfg.n_channels)
-        self._pitch_rect = QtCore.QRectF(-cfg.history_s, 0.0, cfg.history_s,
-                                         cfg.n_pitch)
+        self._sacf_rect = QtCore.QRectF(-cfg.history_s, 0.0, cfg.history_s,
+                                        self._nlags)
 
         self.title = self.glw.addLabel(
-            "Speech Stream Segregation — temporal coherence in the A1 model",
+            "Speech Stream Segregation — pitch / periodicity (concurrent voices)",
             row=0, col=0, colspan=4, color=_FG, size="19pt", bold=True)
         self.subtitle = self.glw.addLabel(
-            "two-talker mixture → cochlea → A1 RNN → multi-rate envelope "
-            "coincidence → nPCA talker masks · real time",
+            "cochlea → per-channel autocorrelation → two F0 tracks → route each "
+            "channel to its fundamental · real time",
             row=1, col=0, colspan=4, color=_MUTED, size="10pt")
         self.stats = self.glw.addLabel("", row=2, col=0, colspan=4, color=_FG,
                                        size="10.5pt")
@@ -134,7 +120,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         spec_cmap = pg.colormap.get(cfg.input_cmap, source="matplotlib")
         pitch_cmap = pg.colormap.get(cfg.pitch_cmap, source="matplotlib")
         centers = self.fe.center_freqs()
-        pfreqs = self.pitch.pitch_freqs()
         dbl = (-cfg.top_db, 0.0)
 
         # left column (shared time axis)
@@ -148,21 +133,22 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         self.p_pitch = self.glw.addPlot(row=4, col=0)
         self.img_pitch = pg.ImageItem(); self.img_pitch.setColorMap(pitch_cmap)
-        self._heat(self.p_pitch, self.img_pitch, "Pitch  (F0 salience)",
-                   pfreqs, cfg.n_pitch, left="pitch F0")
-        self.bar_pitch = self._add_cbar(self.img_pitch, (0.0, self._pitch_vmax),
+        self._heat(self.p_pitch, self.img_pitch,
+                   "Pitch  (summary autocorrelation: two F0 tracks)",
+                   self._f0_axis, self._nlags, left="F0")
+        self.bar_pitch = self._add_cbar(self.img_pitch, (0.0, self._sacf_vmax),
                                         pitch_cmap, "salience", row=4)
 
         self.p_t1 = self.glw.addPlot(row=5, col=0)
         self.img_t1 = pg.ImageItem(); self.img_t1.setColorMap(spec_cmap)
-        self._heat(self.p_t1, self.img_t1, "Talker 1", centers, cfg.n_channels,
-                   title_color=_T1)
+        self._heat(self.p_t1, self.img_t1, "Talker 1  (lower F0)", centers,
+                   cfg.n_channels, title_color=_T1)
         self.img_t1.setLevels(dbl)
 
         self.p_t2 = self.glw.addPlot(row=6, col=0)
         self.img_t2 = pg.ImageItem(); self.img_t2.setColorMap(spec_cmap)
-        self._heat(self.p_t2, self.img_t2, "Talker 2", centers, cfg.n_channels,
-                   title_color=_T2, xlabel="time (s)")
+        self._heat(self.p_t2, self.img_t2, "Talker 2  (higher F0)", centers,
+                   cfg.n_channels, title_color=_T2, xlabel="time (s)")
         self.img_t2.setLevels(dbl)
 
         for p in (self.p_pitch, self.p_t1, self.p_t2):
@@ -170,13 +156,13 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         # right column (channel axis)
         self.p_C, self.img_C, self.bar_C = self._mk_matrix(
-            3, "Coincidence  C  (envelope coherence)", "magma", "corr")
+            3, "Periodicity coincidence  (channels sharing F0)", "magma", "corr")
 
         self.p_masks = self.glw.addPlot(row=5, col=2, rowspan=2)
-        self.p_masks.setTitle("nPCA talker masks", color=_FG, size="11pt",
-                              bold=True)
+        self.p_masks.setTitle("talker assignment  (per channel, now)",
+                              color=_FG, size="11pt", bold=True)
         self.p_masks.setLabel("bottom", "channel", color=_MUTED)
-        self.p_masks.setLabel("left", "mask", color=_MUTED)
+        self.p_masks.setLabel("left", "P(talker)", color=_MUTED)
         self.p_masks.setMouseEnabled(x=False, y=False)
         self.p_masks.hideButtons(); self.p_masks.setMenuEnabled(False)
         self.p_masks.getViewBox().setBackgroundColor(_PANEL)
@@ -185,12 +171,10 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self.p_masks.getAxis(_a).setTextPen(_MUTED)
         self.p_masks.setRange(xRange=(0, cfg.n_channels), yRange=(0, 1.05),
                               padding=0)
-        self.curve_masks = [
-            self.p_masks.plot(
-                pen=pg.mkPen(_TALKER_COLORS[i % len(_TALKER_COLORS)], width=2),
-                fillLevel=0.0,
-                brush=pg.mkBrush(_TALKER_COLORS[i % len(_TALKER_COLORS)] + "40"))
-            for i in range(cfg.n_streams)]
+        self.curve_m1 = self.p_masks.plot(pen=pg.mkPen(_T1, width=2),
+                                          fillLevel=0.0,
+                                          brush=pg.mkBrush(_T1 + "40"))
+        self.curve_m2 = self.p_masks.plot(pen=pg.mkPen(_T2, width=2))
 
         for r in (3, 4, 5, 6):
             self.glw.ci.layout.setRowStretchFactor(r, 4)
@@ -224,8 +208,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         plot.showAxis("right")
 
     def _add_cbar(self, img, values, cmap, label, row):
-        bar = pg.ColorBarItem(values=values, colorMap=cmap, label=label,
-                              width=14)
+        bar = pg.ColorBarItem(values=values, colorMap=cmap, label=label, width=14)
         bar.setImageItem(img)
         self.glw.addItem(bar, row=row, col=1)
         self._style_cbar(bar)
@@ -241,9 +224,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         p.setLabel("bottom", "channel", color=_MUTED)
         p.setMouseEnabled(x=False, y=False)
         p.hideButtons(); p.setMenuEnabled(False); p.setDefaultPadding(0.0)
-        vb = p.getViewBox()
-        vb.setBackgroundColor(_BG)
-        vb.setAspectLocked(True)
+        vb = p.getViewBox(); vb.setBackgroundColor(_BG); vb.setAspectLocked(True)
         for _a in ("left", "bottom"):
             p.getAxis(_a).setPen(_GRID)
             p.getAxis(_a).setTextPen(_MUTED)
@@ -286,18 +267,34 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._last_read = now
         return self.source.read()
 
+    def _ingest(self, samples):
+        """Push one audio chunk through the cochleagram + periodicity analyzer
+        and append the (time-resolved) result to the scrolling buffers."""
+        drive, db = self.fe.push(samples)
+        self.psep.push(samples)
+        k = db.shape[1]
+        if k == 0:
+            return
+        self._tick_i += 1
+        if self._tick_i % 2 == 0:                       # re-solve periodicity often
+            _, sacf, C = self.psep.compute()
+            self._cur_m1 = self.psep.masks[:, 0].copy()
+            self._cur_sacf = sacf
+            self._C = C
+            p = float(np.percentile(C, 99.5))
+            self._C_vmax = max(0.85 * self._C_vmax + 0.15 * p, 0.05)
+            ps = float(np.percentile(sacf, 99.0)) if sacf.any() else 0.0
+            self._sacf_vmax = max(0.8 * self._sacf_vmax + 0.2 * ps, 1e-2)
+        self._push_cols(self._in_db, db.astype(np.float32))
+        self._push_cols(self._m1, np.repeat(self._cur_m1[:, None], k, axis=1))
+        self._push_cols(self._sacf,
+                        np.repeat(self._cur_sacf[:, None], k, axis=1))
+
     def _tick(self):
         if self.paused:
             return
-        samples = self._read_samples()
-        drive, db = self.fe.push(samples)
-        if drive.shape[1]:
-            out = self.engine.step_block(drive)
-            self._push_cols(self._in_db, db.astype(np.float32))
-            self._push_cols(self._E, out["E"].astype(np.float32))
-            inten = np.clip((db + self.cfg.top_db) / self.cfg.top_db, 0.0, 1.0)
-            self._push_cols(self._pitch, self.pitch.push(inten).astype(np.float32))
-            self._refresh_images()
+        self._ingest(self._read_samples())
+        self._refresh_images()
         now = time.perf_counter()
         dt = now - self._last_tick
         self._last_tick = now
@@ -314,101 +311,52 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             buf[:, -k:] = new
 
     # -----------------------------------------------------------------
-    #  Multi-rate envelope coincidence on the A1 activations
+    #  Refresh
     # -----------------------------------------------------------------
-    def _update_coincidence(self):
-        """C[i,j] = correlation of the A1 activation envelopes over the recent
-        window, summed across temporal rates (the modulation-rate filterbank).
-        A robust floor (median + z*MAD) is subtracted to drop the shared
-        common mode, then nPCA factors C into talker masks."""
-        cfg = self.cfg
-        nwin = min(self._F, int(cfg.coh_window_s * 1000.0 / cfg.hop_ms))
-        if nwin < 200:
-            return
-        rec = self._E[:, -nwin:]
-        N = rec.shape[0]
-        C = np.zeros((N, N))
-        for al in self._rate_alphas:                 # each rate = one replication
-            s = lfilter([1.0 - al], [1.0, -al], rec, axis=1)   # causal EMA
-            x = s - s.mean(1, keepdims=True)
-            nrm = np.sqrt((x * x).sum(1))
-            C += (x @ x.T) / (np.outer(nrm, nrm) + 1e-9)
-        C /= len(self._rate_alphas)
-        C = np.maximum(C, 0.0)
-        np.fill_diagonal(C, 0.0)
-        # deflate the common mode: both talkers share the overall speech
-        # on/off envelope, which is the (all-positive) leading eigenvector of C.
-        # Removing it stops the clustering from splitting speech-vs-silence and
-        # exposes the talker-vs-talker contrast underneath.
-        w, V = np.linalg.eigh(C)
-        C = C - w[-1] * np.outer(V[:, -1], V[:, -1])
-        C = np.maximum(C, 0.0)
-        np.fill_diagonal(C, 0.0)
-        iu = np.triu_indices(N, 1)
-        off = C[iu]
-        med = float(np.median(off))
-        mad = float(np.median(np.abs(off - med))) + 1e-9
-        C = np.clip(C - (med + cfg.coh_floor_z * 1.4826 * mad), 0.0, 1.0)
-        self.sep.update(C)
-        self._masks = self.sep.masks().astype(np.float32)
-        self._C = C.astype(np.float32)
-        p = float(np.percentile(self._C, 99.5))
-        self._C_vmax = max(0.85 * self._C_vmax + 0.15 * p, 0.05)
-
-    def _talker_db(self, k):
-        """Talker k = the cochleagram soft-gated by its channel mask."""
-        m = self._masks[:, k][:, None]
+    def _talker_db(self, m):
+        """Cochleagram soft-gated by the time-resolved mask m (N, F)."""
         return (self._in_db * m - self.cfg.top_db * (1.0 - m)).astype(np.float32)
 
     def _refresh_images(self):
         dbl = (-self.cfg.top_db, 0.0)
         self.img_in.setImage(self._in_db, autoLevels=False, levels=dbl)
-        self._coh_tick += 1
-        if self._coh_tick % 6 == 0:
-            self._update_coincidence()
-        # pitch: subtract per-frame floor so the F0 tracks stand out
-        disp = np.maximum(self._pitch - np.median(self._pitch, axis=0,
-                                                  keepdims=True), 0.0)
-        pmax = float(np.percentile(disp, 99.5)) if disp.any() else 0.0
-        self._pitch_vmax = max(0.8 * self._pitch_vmax + 0.2 * pmax, 1e-2)
+        # SACF pitchgram: subtract per-frame floor so the F0 tracks stand out
+        disp = np.maximum(self._sacf - np.median(self._sacf, axis=0,
+                                                 keepdims=True), 0.0)
         self.img_pitch.setImage(disp, autoLevels=False,
-                                levels=(0.0, self._pitch_vmax))
-        self.bar_pitch.setLevels((0.0, self._pitch_vmax))
-        self.img_t1.setImage(self._talker_db(0), autoLevels=False, levels=dbl)
-        self.img_t2.setImage(self._talker_db(1), autoLevels=False, levels=dbl)
+                                levels=(0.0, self._sacf_vmax))
+        self.bar_pitch.setLevels((0.0, self._sacf_vmax))
+        self.img_t1.setImage(self._talker_db(self._m1), autoLevels=False,
+                             levels=dbl)
+        self.img_t2.setImage(self._talker_db(1.0 - self._m1), autoLevels=False,
+                             levels=dbl)
         self.img_C.setImage(self._C, autoLevels=False, levels=(0.0, self._C_vmax))
         self.bar_C.setLevels((0.0, self._C_vmax))
         _x = np.arange(self.cfg.n_channels)
-        for i, cv in enumerate(self.curve_masks):
-            cv.setData(_x, self._masks[:, i])
+        self.curve_m1.setData(_x, self._cur_m1)
+        self.curve_m2.setData(_x, 1.0 - self._cur_m1)
         for im in (self.img_in, self.img_t1, self.img_t2):
             im.setRect(self._img_rect)
-        self.img_pitch.setRect(self._pitch_rect)
+        self.img_pitch.setRect(self._sacf_rect)
 
     def _update_stats(self):
         cfg = self.cfg
         lvl = self.fe.level_db
         gate = self.fe.gate_open
         gate_c = _OK if gate else _MUTED
-        t1 = int((self._masks[:, 0] > 0.5).sum())
-        t2 = int((self._masks[:, 1] > 0.5).sum()) if cfg.n_streams > 1 else 0
-        m1, m2 = self._masks[:, 0], self._masks[:, min(1, cfg.n_streams - 1)]
-        denom = float(np.linalg.norm(m1) * np.linalg.norm(m2))
-        overlap = float(m1 @ m2) / denom if denom > 1e-9 else 0.0
-        grp = 100.0 * (1.0 - overlap)
+        f0a, f0b = self.psep.f0_hz()
+        t1 = int((self._cur_m1 > 0.5).sum())
         paused = (f"<b style='color:{_T1}'>⏸ PAUSED</b> &nbsp;|&nbsp; "
                   if self.paused else "")
         self.stats.setText(
             paused +
             f"<span style='color:{gate_c}'>●</span> "
             f"<span style='color:{_MUTED}'>input</span> <b>{lvl:+5.1f} dB</b>"
-            f" &nbsp;|&nbsp; <span style='color:{_MUTED}'>talker groups</span> "
-            f"<b style='color:{_T1}'>{t1}</b> / "
-            f"<b style='color:{_T2}'>{t2}</b> ch &nbsp;|&nbsp; "
-            f"<span style='color:{_MUTED}'>distinctness</span> "
-            f"<b style='color:{_OK}'>{grp:3.0f}%</b> &nbsp;|&nbsp; "
-            f"<span style='color:{_MUTED}'>rates</span> "
-            f"<b>{len(cfg.coh_rates_s)}</b> &nbsp;|&nbsp; "
+            f" &nbsp;|&nbsp; <span style='color:{_MUTED}'>F0</span> "
+            f"<b style='color:{_T1}'>{f0a:3.0f}</b> / "
+            f"<b style='color:{_T2}'>{f0b:3.0f}</b> Hz &nbsp;|&nbsp; "
+            f"<span style='color:{_MUTED}'>talker-1 channels</span> "
+            f"<b style='color:{_T1}'>{t1}</b>/{cfg.n_channels} &nbsp;|&nbsp; "
             f"<span style='color:{_MUTED}'>{self._fps_ema:.0f} fps</span>")
 
     # -----------------------------------------------------------------
@@ -440,15 +388,13 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
     def reset(self):
         self.fe.reset()
-        self.engine = LiveEngine(self.cfg.to_a1_config(), learn=self.cfg.learn,
-                                 seed=0)
-        self.sep.reset()
+        self.psep.reset()
         self._in_db[:] = -self.cfg.top_db
-        self._E[:] = 0.0
-        self._pitch[:] = 0.0
+        self._m1[:] = 0.5
+        self._sacf[:] = 0.0
         self._C[:] = 0.0
-        self._masks[:] = 0.0
-        self._pitch_vmax = 1e-2
+        self._cur_m1[:] = 0.5
+        self._cur_sacf[:] = 0.0
         self._refresh_images()
 
     def keyPressEvent(self, ev):
@@ -476,15 +422,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
     def feed_offline(self, audio: np.ndarray):
         bs = self.cfg.blocksize
         for lo in range(0, audio.size, bs):
-            drive, db = self.fe.push(audio[lo:lo + bs])
-            if drive.shape[1] == 0:
-                continue
-            out = self.engine.step_block(drive)
-            self._push_cols(self._in_db, db.astype(np.float32))
-            self._push_cols(self._E, out["E"].astype(np.float32))
-            inten = np.clip((db + self.cfg.top_db) / self.cfg.top_db, 0.0, 1.0)
-            self._push_cols(self._pitch, self.pitch.push(inten).astype(np.float32))
-        self._update_coincidence()
+            self._ingest(audio[lo:lo + bs])
         self._refresh_images()
         self._update_stats()
 
