@@ -108,6 +108,19 @@ class LiveConfig:
     n_streams: int = 2              # number of stream masks to separate
     sep_iters: int = 15             # k-means iterations per separator update
 
+    # ---- segregation mode ----
+    # 'coherence'   : symmetric coincidence of the INPUT drive -> frequency
+    #                 streams (simultaneous coherent groups; order-blind).
+    # 'directional' : DIRECTED coincidence of the model's ACTIVATIONS,
+    #                 D[i,j] = <E_i(t) tr_j(t)> (the model's own Hebbian
+    #                 post x pre-trace operator).  Asymmetric -> resolves
+    #                 temporal ORDER, e.g. AB (standard) vs BA (deviant).
+    mode: str = "coherence"
+    forget_s: float = 3.0           # directed-coincidence forgetting horizon (s):
+                                    # the leaky integrator's time constant -- low
+                                    # => the connection map tracks the recent
+                                    # scene and forgets fast (the dynamic knob)
+
     # ---- pitch-gram (subharmonic-summation pitch saliency) ----
     # A real-time pitch saliency map (Hermes 1988, SHS; Schroeder 1968): for
     # every candidate F0 the saliency is the harmonic-decay-weighted sum of
@@ -214,6 +227,10 @@ class LiveConfig:
             raise ValueError(
                 f"inhibition must be 'selective' or 'uniform'; "
                 f"got {self.inhibition!r}")
+        if self.mode not in ("coherence", "directional"):
+            raise ValueError(
+                f"mode must be 'coherence' or 'directional'; "
+                f"got {self.mode!r}")
 
 
 # =====================================================================
@@ -251,12 +268,21 @@ def dynamic2(**kw) -> LiveConfig:
     return LiveConfig(name="dynamic2", W_norm=6.0, W_decay=0.1, **kw)
 
 
+def directional(**kw) -> LiveConfig:
+    """Directional segregation: coincidence on the model's ACTIVATIONS via the
+    directed operator D[i,j]=<E_i tr_j>, which resolves temporal ORDER (AB vs
+    BA).  Pair with ``--source abba``.  ``forget_s`` sets how fast the connection
+    map forgets the recent scene."""
+    return LiveConfig(name="directional", mode="directional", **kw)
+
+
 PRESETS = {
-    "default":  default,
-    "uniform":  uniform,
-    "frozen":   frozen,
-    "dynamic":  dynamic,
-    "dynamic2": dynamic2,
+    "default":     default,
+    "uniform":     uniform,
+    "frozen":      frozen,
+    "dynamic":     dynamic,
+    "dynamic2":    dynamic2,
+    "directional": directional,
 }
 
 

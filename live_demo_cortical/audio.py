@@ -484,3 +484,82 @@ class TwoStreamSource:
 
     def stop(self):
         pass
+
+
+# =====================================================================
+#  AB-BA directional stream (order matters)
+# =====================================================================
+def _ramped_tone(f, dur_s, sr):
+    n = int(round(dur_s * sr))
+    t = np.arange(n) / sr
+    x = np.sin(2 * np.pi * f * t)
+    r = max(1, int(0.006 * sr))
+    env = 0.5 * (1 - np.cos(np.pi * np.arange(r) / r))
+    x[:r] *= env
+    x[-r:] *= env[::-1]
+    return x
+
+
+def synth_ab_ba(sr: int, *, fA: float = 800.0, fB: float = 3000.0,
+                tone_ms: float = 50.0, intra_ms: float = 30.0,
+                inter_ms: float = 320.0, p_ba: float = 0.2,
+                seconds: float = 60.0, seed: int = 0):
+    """A two-tone **AB-BA** stream: a run of tone PAIRS, mostly A-then-B (the
+    'standard' temporal order) with a fraction ``p_ba`` reversed to B-then-A
+    (the 'deviant').  A and B are fixed pure tones (50 ms, 30 ms intra-pair gap,
+    ~320 ms between pairs) -- only their ORDER varies between standard and
+    deviant.  Standard and deviant are therefore identical to any *symmetric*
+    coincidence and separable only by a *directed* coincidence (which the model
+    supplies on its activations).
+
+    Returns ``(y, sr, info)``, ``info = {fA, fB, period_s, pairs: [(is_ba,
+    onset_s), ...]}`` -- the per-pair ground truth for validation."""
+    rng = np.random.default_rng(seed)
+    A = _ramped_tone(fA, tone_ms / 1000.0, sr)
+    B = _ramped_tone(fB, tone_ms / 1000.0, sr)
+    g_in = np.zeros(int(round(intra_ms / 1000.0 * sr)))
+    g_out = np.zeros(int(round(inter_ms / 1000.0 * sr)))
+    period = (2 * tone_ms + intra_ms + inter_ms) / 1000.0
+    n_pairs = max(20, int(round(seconds / period)))
+    parts = [np.zeros(int(0.3 * sr))]
+    pairs = []
+    t_cur = 0.3
+    for _ in range(n_pairs):
+        is_ba = rng.random() < p_ba
+        pairs.append((is_ba, t_cur))
+        first, second = (B, A) if is_ba else (A, B)
+        parts += [first, g_in, second, g_out]
+        t_cur += period
+    y = np.concatenate(parts)
+    y = (0.9 * y / (np.max(np.abs(y)) + 1e-9)).clip(-1.0, 1.0)
+    return y, sr, dict(fA=fA, fB=fB, period_s=period, pairs=pairs)
+
+
+class ABBASource:
+    """Stream wrapper around :func:`synth_ab_ba` -- the directional test.  Tones
+    default to two well-separated, FFT-resolvable frequencies inside the channel
+    band; ``info`` carries the per-pair standard/deviant ground truth."""
+
+    paced = True
+
+    def __init__(self, cfg: LiveConfig, *, seconds: float = 60.0, seed: int = 0,
+                 fA: float | None = None, fB: float | None = None, **kw):
+        fA = fA if fA else cfg.fmin * 1.6           # ~800 Hz for fmin=500
+        fB = fB if fB else cfg.fmax * 0.5           # ~3000 Hz for fmax=6000
+        self._y, _, self.info = synth_ab_ba(
+            cfg.sr, fA=fA, fB=fB, seconds=seconds, seed=seed, **kw)
+        self._pos = 0
+
+    def start(self):
+        self._pos = 0
+
+    def read(self, max_samples: int) -> np.ndarray:
+        if self._pos >= self._y.size:
+            self._pos = 0
+        end = min(self._pos + max_samples, self._y.size)
+        out = self._y[self._pos:end]
+        self._pos = end
+        return out
+
+    def stop(self):
+        pass

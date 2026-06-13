@@ -5,28 +5,24 @@ live_demo_cortical.app
 Real-time **stream segregation** visualiser (temporal-coherence framework;
 Krishnan, Elhilali & Shamma, PLoS Comp Biol 2014; Teki et al., eLife 2013).
 
-A mixture of overlapping sounds enters as a log-frequency spectrogram.  A
-channel x channel **coincidence matrix** C accumulates which channels are
-co-active over a short window -- the temporal-coherence cue.  Factoring C
-(nPCA, here normalized spectral clustering) yields one **mask** per stream;
-applying each mask back to the spectrogram recovers the **segregated streams**.
+Two modes (``cfg.mode``):
 
-Six panels (no model / no "surprise" -- this view is segregation only):
+``coherence``  -- the **symmetric** coincidence of the INPUT drive factored by
+    nPCA into frequency streams (simultaneous coherent groups).  Panels: input
+    log-spectrogram, pitch, stream 1, stream 2, coincidence C, nPCA masks.
 
-    input log-spectrogram   the mixture (dB)
-    pitch                   subharmonic-summation pitch-gram
-    stream 1                mixture x mask_1   (orange)
-    stream 2                mixture x mask_2   (cyan)
-    connections  (C)        the coincidence matrix
-    masks                   the nPCA per-channel stream masks
-
-Built on pyqtgraph for smooth scrolling; the coincidence matrix and masks
-re-solve at ~10 Hz while the heatmaps scroll every frame.
+``directional`` -- the **directed** coincidence of the model's ACTIVATIONS,
+    ``D[i,j] = <E_i(t)·tr_j(t)>`` (the model's own Hebbian post-rate x pre-trace
+    operator, leak-integrated).  D is asymmetric, so it resolves temporal ORDER:
+    it tells A→B (standard) from B→A (deviant) -- which a symmetric coincidence
+    cannot.  Panels: input, temporal-flow trace (forward AB / reverse BA),
+    Stream AB, Stream BA, the directed connection map D, and per-channel
+    lead→lag.  Streams are time-gated by the sign of the local flow.
 
 Keyboard
 --------
     Space  pause / resume
-    R      reset coincidence + display
+    R      reset
     Q/Esc  quit
 """
 
@@ -41,6 +37,7 @@ from pyqtgraph.Qt import QtCore, QtGui, QtWidgets
 from .audio import SpectroFrontEnd, PitchGram
 from .config import LiveConfig
 from .masks import StreamSeparator
+from .engine import LiveEngine
 
 # QShortcut moved between Qt modules across bindings; resolve once.
 try:
@@ -48,55 +45,64 @@ try:
 except AttributeError:                      # PyQt5 keeps it in QtWidgets
     _QShortcut = QtWidgets.QShortcut
 
-# ---- palette (matches preview.py) ----
+# ---- palette ----
 _BG = "#0e1117"
 _PANEL = "#161b22"
 _FG = "#c9d1d9"
 _MUTED = "#8b949e"
 _GRID = "#30363d"
-_S1 = "#ff8c42"          # stream 1 accent (orange)
+_S1 = "#ff8c42"          # stream 1 / lead accent (orange)
 _S2 = "#58d6ff"          # stream 2 accent (cyan)
-_OK = "#3fb950"
-_OFF = "#f85149"
+_FWD = "#3fb950"         # forward / standard (green)
+_REV = "#f85149"         # reverse / deviant (red)
 _STREAM_COLORS = [_S1, _S2, "#b072ff", "#3fb950"]
 
 
 class LiveDemoApp(QtWidgets.QMainWindow):
-    """Main window: input + pitch + two segregated streams, beside the live
-    coincidence matrix and its nPCA stream masks."""
+    """Scrolling segregation view; ``coherence`` (frequency) or ``directional``
+    (temporal order) per ``cfg.mode``."""
 
     def __init__(self, cfg: LiveConfig, source, parent=None):
         super().__init__(parent)
         self.cfg = cfg
         self.source = source
         self.paused = False
+        self.directional = (cfg.mode == "directional")
 
         self.fe = SpectroFrontEnd(cfg)
-        self.pitch = PitchGram(self.fe.center_freqs(), n_pitch=cfg.n_pitch,
-                               fmin=cfg.pitch_fmin, fmax=cfg.pitch_fmax,
-                               n_harm=cfg.pitch_harmonics, decay=cfg.pitch_decay)
-        self.sep = StreamSeparator(cfg.n_channels, n_streams=cfg.n_streams,
-                                   iters=cfg.sep_iters)
 
-        # ---- scrolling ring buffers ----
         F = cfg.history_frames
         N = cfg.n_channels
-        P = cfg.n_pitch
         self._F = F
+        self._t = np.linspace(-cfg.history_s, 0.0, F)
         self._in_db = np.full((N, F), -cfg.top_db, dtype=np.float32)
-        self._drive = np.zeros((N, F), dtype=np.float32)   # gated input (for C)
-        self._pitch = np.zeros((P, F), dtype=np.float32)   # pitch-gram
-        self._C = np.zeros((N, N), dtype=np.float32)       # coincidence matrix
-        self._masks = np.zeros((N, cfg.n_streams), dtype=np.float32)
-        self._C_vmax = 1e-2
-        self._pitch_vmax = 1e-2
-        self._coh_tick = 0                                  # throttle C re-solve
         self._last_read = None
         self._fps_ema = float(cfg.target_fps)
         self._last_tick = time.perf_counter()
 
-        self._build_ui()
+        if self.directional:
+            self.engine = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
+            self._D = np.zeros((N, N))                 # leaky directed coincidence
+            self._gamma = float(np.exp(-cfg.dt / max(cfg.forget_s, 1e-3)))
+            self._flow = np.zeros(F, dtype=np.float32)  # +forward(AB) / -reverse(BA)
+            self._lead = np.zeros(N, dtype=np.float32)  # per-channel lead score
+            self._D_vmax = 1e-4
+            self._flow_scale = 1e-6
+        else:
+            self.pitch = PitchGram(self.fe.center_freqs(), n_pitch=cfg.n_pitch,
+                                   fmin=cfg.pitch_fmin, fmax=cfg.pitch_fmax,
+                                   n_harm=cfg.pitch_harmonics, decay=cfg.pitch_decay)
+            self.sep = StreamSeparator(cfg.n_channels, n_streams=cfg.n_streams,
+                                       iters=cfg.sep_iters)
+            self._drive = np.zeros((N, F), dtype=np.float32)
+            self._pitch = np.zeros((cfg.n_pitch, F), dtype=np.float32)
+            self._C = np.zeros((N, N), dtype=np.float32)
+            self._masks = np.zeros((N, cfg.n_streams), dtype=np.float32)
+            self._C_vmax = 1e-2
+            self._pitch_vmax = 1e-2
+            self._coh_tick = 0
 
+        self._build_ui()
         self.timer = QtCore.QTimer(self)
         self.timer.timeout.connect(self._tick)
         self.timer.setInterval(int(1000 / max(1, cfg.target_fps)))
@@ -115,40 +121,61 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.glw.setBackground(_BG)
         self.setCentralWidget(self.glw)
 
-        # image -> plot rects: x in [-history, 0] s; y in [0, N] or [0, n_pitch]
         self._img_rect = QtCore.QRectF(-cfg.history_s, 0.0, cfg.history_s,
                                        cfg.n_channels)
-        self._pitch_rect = QtCore.QRectF(-cfg.history_s, 0.0, cfg.history_s,
-                                         cfg.n_pitch)
 
-        # ---- header ----
-        self.title = self.glw.addLabel(
-            "Stream Segregation — temporal coherence (nPCA of the "
-            "coincidence matrix)", row=0, col=0, colspan=4, color=_FG,
-            size="20pt", bold=True)
-        self.subtitle = self.glw.addLabel(
-            "log-spectrogram → coincidence C → nPCA masks → segregated "
-            "streams · real time", row=1, col=0, colspan=4, color=_MUTED,
-            size="10pt")
+        if self.directional:
+            title = ("Directional Segregation — directed coincidence of "
+                     "cortical activations")
+            sub = ("model activations E → directed coincidence "
+                   "D[i,j]=⟨E_i·tr_j⟩ → temporal order:  A→B (standard) vs "
+                   "B→A (deviant) · real time")
+        else:
+            title = ("Stream Segregation — temporal coherence (nPCA of the "
+                     "coincidence matrix)")
+            sub = ("log-spectrogram → coincidence C → nPCA masks → segregated "
+                   "streams · real time")
+        self.title = self.glw.addLabel(title, row=0, col=0, colspan=4,
+                                       color=_FG, size="20pt", bold=True)
+        self.subtitle = self.glw.addLabel(sub, row=1, col=0, colspan=4,
+                                          color=_MUTED, size="10pt")
         self.stats = self.glw.addLabel("", row=2, col=0, colspan=4,
                                        color=_FG, size="10.5pt")
 
         spec_cmap = pg.colormap.get(cfg.input_cmap, source="matplotlib")
-        pitch_cmap = pg.colormap.get(cfg.pitch_cmap, source="matplotlib")
         centers = self.fe.center_freqs()
-        pfreqs = self.pitch.pitch_freqs()
         dbl = (-cfg.top_db, 0.0)
 
-        # ---- LEFT COLUMN: time-domain heatmaps (shared time axis) ----
-        # input log-spectrogram
+        # ---- panel 1: input log-spectrogram (both modes) ----
         self.p_in = self.glw.addPlot(row=3, col=0)
         self.img_in = pg.ImageItem(); self.img_in.setColorMap(spec_cmap)
-        self._heat(self.p_in, self.img_in, "Input log-spectrogram  (mixture)",
-                   centers, cfg.n_channels)
+        in_title = ("Input — AB / BA tone sequence" if self.directional
+                    else "Input log-spectrogram  (mixture)")
+        self._heat(self.p_in, self.img_in, in_title, centers, cfg.n_channels)
         self.img_in.setLevels(dbl)
         self._add_cbar(self.img_in, dbl, spec_cmap, "dB", row=3)
 
-        # pitch-gram
+        if self.directional:
+            self._build_directional(centers, spec_cmap, dbl)
+        else:
+            self._build_coherence(centers, spec_cmap, dbl)
+
+        for r in (3, 4, 5, 6):
+            self.glw.ci.layout.setRowStretchFactor(r, 4)
+        self.glw.ci.layout.setColumnStretchFactor(0, 10)
+        self.glw.ci.layout.setColumnStretchFactor(2, 7)
+
+        self._refresh_images()
+        self._install_shortcuts()
+
+    # ---- coherence-mode panels (frequency streams) ----
+    def _build_coherence(self, centers, spec_cmap, dbl):
+        cfg = self.cfg
+        pitch_cmap = pg.colormap.get(cfg.pitch_cmap, source="matplotlib")
+        pfreqs = self.pitch.pitch_freqs()
+        self._pitch_rect = QtCore.QRectF(-cfg.history_s, 0.0, cfg.history_s,
+                                         cfg.n_pitch)
+
         self.p_pitch = self.glw.addPlot(row=4, col=0)
         self.img_pitch = pg.ImageItem(); self.img_pitch.setColorMap(pitch_cmap)
         self._heat(self.p_pitch, self.img_pitch, "Pitch  (subharmonic summation)",
@@ -156,14 +183,12 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.bar_pitch = self._add_cbar(self.img_pitch, (0.0, self._pitch_vmax),
                                         pitch_cmap, "salience", row=4)
 
-        # segregated stream 1
         self.p_str1 = self.glw.addPlot(row=5, col=0)
         self.img_str1 = pg.ImageItem(); self.img_str1.setColorMap(spec_cmap)
         self._heat(self.p_str1, self.img_str1, "Stream 1", centers,
                    cfg.n_channels, title_color=_S1)
         self.img_str1.setLevels(dbl)
 
-        # segregated stream 2
         self.p_str2 = self.glw.addPlot(row=6, col=0)
         self.img_str2 = pg.ImageItem(); self.img_str2.setColorMap(spec_cmap)
         self._heat(self.p_str2, self.img_str2, "Stream 2", centers,
@@ -173,24 +198,15 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         for p in (self.p_pitch, self.p_str1, self.p_str2):
             p.setXLink(self.p_in)
 
-        # ---- RIGHT COLUMN: channel-domain panels ----
-        # coincidence matrix C (square), spanning the input+pitch rows
         self.p_C, self.img_C, self.bar_C = self._mk_matrix(
             3, "Connections   C   (coincidence)", "magma", "corr")
 
-        # nPCA stream masks (one curve per stream, over channel = log-frequency),
-        # spanning the two stream rows
         self.p_masks = self.glw.addPlot(row=5, col=2, rowspan=2)
         self.p_masks.setTitle("nPCA stream masks", color=_FG, size="11pt",
                               bold=True)
         self.p_masks.setLabel("bottom", "channel", color=_MUTED)
         self.p_masks.setLabel("left", "mask", color=_MUTED)
-        self.p_masks.setMouseEnabled(x=False, y=False)
-        self.p_masks.hideButtons(); self.p_masks.setMenuEnabled(False)
-        self.p_masks.getViewBox().setBackgroundColor(_PANEL)
-        for _a in ("left", "bottom"):
-            self.p_masks.getAxis(_a).setPen(_GRID)
-            self.p_masks.getAxis(_a).setTextPen(_MUTED)
+        self._style_curve_plot(self.p_masks)
         self.p_masks.setRange(xRange=(0, cfg.n_channels), yRange=(0, 1.05),
                               padding=0)
         self.curve_masks = [
@@ -200,21 +216,63 @@ class LiveDemoApp(QtWidgets.QMainWindow):
                 brush=pg.mkBrush(_STREAM_COLORS[i % len(_STREAM_COLORS)] + "40"))
             for i in range(cfg.n_streams)]
 
-        # layout proportions: the four time heatmaps (col 0) take most width;
-        # the square matrix + masks (col 2) a narrower right column.
-        for r in (3, 4, 5, 6):
-            self.glw.ci.layout.setRowStretchFactor(r, 4)
-        self.glw.ci.layout.setColumnStretchFactor(0, 10)
-        self.glw.ci.layout.setColumnStretchFactor(2, 7)
+    # ---- directional-mode panels (temporal order) ----
+    def _build_directional(self, centers, spec_cmap, dbl):
+        cfg = self.cfg
 
-        self._refresh_images()
-        self._install_shortcuts()
+        # temporal-flow trace: forward (AB, green) above 0, reverse (BA, red) below
+        self.p_flow = self.glw.addPlot(row=4, col=0)
+        self.p_flow.setTitle("Temporal flow   forward A→B (std) / reverse "
+                             "B→A (dev)", color=_FG, size="11pt", bold=True)
+        self.p_flow.setLabel("left", "flow", color=_MUTED)
+        self._style_curve_plot(self.p_flow)
+        self.p_flow.setRange(xRange=(-cfg.history_s, 0.0), yRange=(-1.05, 1.05),
+                             padding=0)
+        self.p_flow.addLine(y=0.0, pen=pg.mkPen(_GRID, width=1))
+        self.curve_flow_pos = self.p_flow.plot(
+            pen=pg.mkPen(_FWD, width=1.2), fillLevel=0.0,
+            brush=pg.mkBrush(_FWD + "55"))
+        self.curve_flow_neg = self.p_flow.plot(
+            pen=pg.mkPen(_REV, width=1.2), fillLevel=0.0,
+            brush=pg.mkBrush(_REV + "55"))
 
-    # ---- small UI helpers ----
+        self.p_str1 = self.glw.addPlot(row=5, col=0)
+        self.img_str1 = pg.ImageItem(); self.img_str1.setColorMap(spec_cmap)
+        self._heat(self.p_str1, self.img_str1, "Stream AB — forward (standard)",
+                   centers, cfg.n_channels, title_color=_FWD)
+        self.img_str1.setLevels(dbl)
+
+        self.p_str2 = self.glw.addPlot(row=6, col=0)
+        self.img_str2 = pg.ImageItem(); self.img_str2.setColorMap(spec_cmap)
+        self._heat(self.p_str2, self.img_str2, "Stream BA — reverse (deviant)",
+                   centers, cfg.n_channels, title_color=_REV, xlabel="time (s)")
+        self.img_str2.setLevels(dbl)
+
+        for p in (self.p_flow, self.p_str1, self.p_str2):
+            p.setXLink(self.p_in)
+
+        # directed connection map D (asymmetric): row=post (follower), col=pre (leader)
+        self.p_C, self.img_C, self.bar_C = self._mk_matrix(
+            3, "Connections — directed  ⟨E·tr⟩", "magma", "⟨E·tr⟩",
+            xlabel="channel (leads →)", ylabel="channel (follows)")
+
+        # per-channel lead→lag score (col-sum − row-sum of D): + leads, − follows
+        self.p_lead = self.glw.addPlot(row=5, col=2, rowspan=2)
+        self.p_lead.setTitle("lead → lag   (per channel)", color=_FG,
+                             size="11pt", bold=True)
+        self.p_lead.setLabel("bottom", "channel", color=_MUTED)
+        self.p_lead.setLabel("left", "leads (+) / follows (−)", color=_MUTED)
+        self._style_curve_plot(self.p_lead)
+        self.p_lead.setRange(xRange=(0, cfg.n_channels), yRange=(-1.05, 1.05),
+                             padding=0)
+        self.p_lead.addLine(y=0.0, pen=pg.mkPen(_GRID, width=1))
+        self.curve_lead = self.p_lead.plot(
+            pen=pg.mkPen(_S1, width=2), fillLevel=0.0,
+            brush=pg.mkBrush(_S1 + "40"))
+
+    # ---- small UI helpers (shared) ----
     def _heat(self, plot, img, title, right_freqs, ny, *, left="channel",
               xlabel="", title_color=_FG):
-        """Configure a scrolling time x channel heatmap with a tonotopic
-        (kHz) right axis."""
         cfg = self.cfg
         plot.addItem(img)
         plot.setMouseEnabled(x=False, y=False)
@@ -229,7 +287,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         for a in ("left", "bottom"):
             plot.getAxis(a).setPen(_GRID)
             plot.getAxis(a).setTextPen(_MUTED)
-        # right axis: tonotopic centre frequency in kHz
         fmt = "%.2f" if float(np.max(right_freqs)) < 1000.0 else "%.1f"
         idx = np.linspace(0, ny - 1, 6).astype(int)
         rax = plot.getAxis("right")
@@ -237,6 +294,14 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         rax.setLabel("kHz", color=_MUTED)
         rax.setPen(_GRID); rax.setTextPen(_MUTED)
         plot.showAxis("right")
+
+    def _style_curve_plot(self, plot):
+        plot.setMouseEnabled(x=False, y=False)
+        plot.hideButtons(); plot.setMenuEnabled(False)
+        plot.getViewBox().setBackgroundColor(_PANEL)
+        for a in ("left", "bottom"):
+            plot.getAxis(a).setPen(_GRID)
+            plot.getAxis(a).setTextPen(_MUTED)
 
     def _add_cbar(self, img, values, cmap, label, row):
         bar = pg.ColorBarItem(values=values, colorMap=cmap, label=label,
@@ -246,19 +311,20 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._style_cbar(bar)
         return bar
 
-    def _mk_matrix(self, row, title, cmap_name, label):
+    def _mk_matrix(self, row, title, cmap_name, label, *, xlabel="channel",
+                   ylabel="channel"):
         cfg = self.cfg
         cmap = pg.colormap.get(cmap_name, source="matplotlib")
         p = self.glw.addPlot(row=row, col=2, rowspan=2)
         img = pg.ImageItem(); img.setColorMap(cmap); p.addItem(img)
         p.setTitle(title, color=_FG, size="11pt", bold=True)
-        p.setLabel("left", "channel", color=_MUTED)
-        p.setLabel("bottom", "channel", color=_MUTED)
+        p.setLabel("left", ylabel, color=_MUTED)
+        p.setLabel("bottom", xlabel, color=_MUTED)
         p.setMouseEnabled(x=False, y=False)
         p.hideButtons(); p.setMenuEnabled(False); p.setDefaultPadding(0.0)
         vb = p.getViewBox()
-        vb.setBackgroundColor(_BG)          # letterbox blends into canvas
-        vb.setAspectLocked(True)            # 1:1 pixels -> true square
+        vb.setBackgroundColor(_BG)
+        vb.setAspectLocked(True)
         for _a in ("left", "bottom"):
             p.getAxis(_a).setPen(_GRID)
             p.getAxis(_a).setTextPen(_MUTED)
@@ -298,7 +364,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             if n <= 0:
                 return np.empty(0)
             return self.source.read(n)
-        # unpaced (mic): drain whatever the callback queued
         self._last_read = now
         return self.source.read()
 
@@ -309,9 +374,13 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         drive, db = self.fe.push(samples)
         if drive.shape[1]:
             self._push_cols(self._in_db, db.astype(np.float32))
-            self._push_cols(self._drive, drive.astype(np.float32))
-            self._push_cols(self._pitch,
-                            self.pitch.push(drive).astype(np.float32))
+            if self.directional:
+                out = self.engine.step_block(drive)
+                self._update_directed(out["E"], out["tr"])
+            else:
+                self._push_cols(self._drive, drive.astype(np.float32))
+                self._push_cols(self._pitch,
+                                self.pitch.push(drive).astype(np.float32))
             self._refresh_images()
 
         now = time.perf_counter()
@@ -329,39 +398,38 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             buf[:, :-k] = buf[:, k:]
             buf[:, -k:] = new
 
+    def _push_1d(self, buf, new):
+        k = new.shape[0]
+        if k >= buf.shape[0]:
+            buf[:] = new[-buf.shape[0]:]
+        else:
+            buf[:-k] = buf[k:]
+            buf[-k:] = new
+
+    # -----------------------------------------------------------------
+    #  coherence compute (frequency streams)
+    # -----------------------------------------------------------------
     def _update_coincidence(self):
-        """C[i,j] = correlation of the chord-binned input over the recent
-        window -- the live temporal-coherence matrix.  The drive is binned at
-        the chord timescale first (so C measures co-occupancy of chords, the
-        figure cue, not the shared within-chord onset), the common mode is
-        removed, then nPCA factors C into stream masks.  The only O(N^2*bins)
-        step -- throttled to ~10 Hz."""
         cfg = self.cfg
-        cs = max(1, int(round(cfg.coh_bin_ms / cfg.frame_ms)))       # frames/chord
+        cs = max(1, int(round(cfg.coh_bin_ms / cfg.frame_ms)))
         nb = min(self._F // cs,
                  int(cfg.coh_window_s * 1000.0 / cfg.coh_bin_ms))
         if nb < 8:
             return
         rec = self._drive[:, -nb * cs:]
-        binned = rec.reshape(rec.shape[0], nb, cs).mean(2)           # (N, nb)
-        binned = binned - binned.mean(0, keepdims=True)              # common-mode
-        x = binned - binned.mean(1, keepdims=True)                  # center channels
+        binned = rec.reshape(rec.shape[0], nb, cs).mean(2)
+        binned = binned - binned.mean(0, keepdims=True)
+        x = binned - binned.mean(1, keepdims=True)
         nrm = np.sqrt((x * x).sum(1))
         denom = np.outer(nrm, nrm)
         C = np.where(denom > 1e-9, (x @ x.T) / (denom + 1e-12), 0.0)
-        np.fill_diagonal(C, 0.0)                    # drop trivial self-correlation
-        # denoise: the incoherent background fills C with a floor of rectified
-        # sampling noise (~1/sqrt(n_chords)) that otherwise gets absorbed into a
-        # stream.  Cut every edge at/below a robust floor (median + z*MAD of the
-        # off-diagonal); only the coherent within-stream blocks survive, so nPCA
-        # splits A vs B instead of coherent-vs-background.
+        np.fill_diagonal(C, 0.0)
         iu = np.triu_indices(C.shape[0], 1)
         off = C[iu]
         med = float(np.median(off))
         mad = float(np.median(np.abs(off - med))) + 1e-9
         theta = med + cfg.coh_floor_z * 1.4826 * mad
-        C = np.clip(C - theta, 0.0, 1.0)        # soft floor-subtraction
-        # nPCA: factor the cleaned coincidence matrix into non-negative masks
+        C = np.clip(C - theta, 0.0, 1.0)
         self.sep.update(C)
         self._masks = self.sep.masks().astype(np.float32)
         self._C = C.astype(np.float32)
@@ -369,24 +437,52 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._C_vmax = max(0.85 * self._C_vmax + 0.15 * p, 0.05)
 
     def _stream_db(self, k):
-        """Stream k = the spectrogram soft-gated by mask k: member channels keep
-        their dB, non-members fall to the floor (so each stream looks like the
-        mixture restricted to its own channels)."""
         m = self._masks[:, k][:, None]
         return (self._in_db * m - self.cfg.top_db * (1.0 - m)).astype(np.float32)
 
+    # -----------------------------------------------------------------
+    #  directional compute (temporal order)
+    # -----------------------------------------------------------------
+    def _update_directed(self, E, tr):
+        """Leak-integrate the directed coincidence D[i,j]=<E_i(t) tr_j(t)> (the
+        model's Hebbian post x pre-trace), then read off the directional flow
+        (a forward/reverse signal over time) and a per-channel lead→lag score
+        from its antisymmetric part."""
+        g, k = self._gamma, E.shape[1]
+        w = (1.0 - g) * g ** (k - 1 - np.arange(k))     # leaky-integration weights
+        self._D = (g ** k) * self._D + (E * w) @ tr.T
+        Dz = self._D.copy()
+        np.fill_diagonal(Dz, 0.0)
+        Delta = Dz - Dz.T                               # skew part = direction
+        Dhat = Delta / (np.linalg.norm(Delta) + 1e-9)
+        # local flow: >0 when current activity flows in the accumulated (standard)
+        # direction, <0 when reversed (deviant).  f(t) = E(:,t)ᵀ Δ̂ tr(:,t)
+        f = (E * (Dhat @ tr)).sum(0)
+        self._push_1d(self._flow, f.astype(np.float32))
+        # lead score: col-sum − row-sum of D.  D[i,j] large ⟺ i follows j, so
+        # col j (others follow j) − row j (j follows others) = net "j leads".
+        self._lead = (Dz.sum(0) - Dz.sum(1)).astype(np.float32)
+        self._D_vmax = max(0.85 * self._D_vmax
+                           + 0.15 * float(np.percentile(Dz, 99.7)), 1e-4)
+        self._flow_scale = max(
+            0.85 * self._flow_scale
+            + 0.15 * float(np.percentile(np.abs(self._flow), 97)), 1e-6)
+
+    # -----------------------------------------------------------------
+    #  refresh
+    # -----------------------------------------------------------------
     def _refresh_images(self):
+        if self.directional:
+            self._refresh_directional()
+        else:
+            self._refresh_coherence()
+
+    def _refresh_coherence(self):
         dbl = (-self.cfg.top_db, 0.0)
         self.img_in.setImage(self._in_db, autoLevels=False, levels=dbl)
-
         self._coh_tick += 1
-        if self._coh_tick % 6 == 0:                 # ~10 Hz, not every frame
+        if self._coh_tick % 6 == 0:
             self._update_coincidence()
-
-        # pitch-gram: subtract the per-frame broadband floor (the median over
-        # F0) so a dense tone cloud doesn't wash the panel out -- only F0s that
-        # stand ABOVE the background periodicity survive -- then scale to a
-        # running ceiling.
         disp = np.maximum(self._pitch - np.median(self._pitch, axis=0,
                                                    keepdims=True), 0.0)
         pmax = float(np.percentile(disp, 99.5)) if disp.any() else 0.0
@@ -394,58 +490,94 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.img_pitch.setImage(disp, autoLevels=False,
                                 levels=(0.0, self._pitch_vmax))
         self.bar_pitch.setLevels((0.0, self._pitch_vmax))
-
-        # segregated streams = masked spectrogram
         self.img_str1.setImage(self._stream_db(0), autoLevels=False, levels=dbl)
         self.img_str2.setImage(self._stream_db(1), autoLevels=False, levels=dbl)
-
-        # coincidence matrix + masks
         self.img_C.setImage(self._C, autoLevels=False, levels=(0.0, self._C_vmax))
         self.bar_C.setLevels((0.0, self._C_vmax))
         _x = np.arange(self.cfg.n_channels)
         for i, cv in enumerate(self.curve_masks):
             cv.setData(_x, self._masks[:, i])
-
-        # (re)anchor images into plot coordinates
         for im in (self.img_in, self.img_str1, self.img_str2):
             im.setRect(self._img_rect)
         self.img_pitch.setRect(self._pitch_rect)
+
+    def _refresh_directional(self):
+        cfg = self.cfg
+        dbl = (-cfg.top_db, 0.0)
+        self.img_in.setImage(self._in_db, autoLevels=False, levels=dbl)
+        # normalised flow in [-1, 1]; gate the spectrogram into AB / BA streams
+        g = np.clip(self._flow / (self._flow_scale + 1e-9), -1.0, 1.0)
+        gp = np.clip(g, 0.0, 1.0)        # forward (AB) gate
+        gn = np.clip(-g, 0.0, 1.0)       # reverse (BA) gate
+        floor = -cfg.top_db
+        ab = self._in_db * gp[None, :] + floor * (1.0 - gp[None, :])
+        ba = self._in_db * gn[None, :] + floor * (1.0 - gn[None, :])
+        self.img_str1.setImage(ab.astype(np.float32), autoLevels=False, levels=dbl)
+        self.img_str2.setImage(ba.astype(np.float32), autoLevels=False, levels=dbl)
+        # directed connection map (asymmetric)
+        Dz = self._D.copy(); np.fill_diagonal(Dz, 0.0)
+        self.img_C.setImage(Dz.astype(np.float32), autoLevels=False,
+                            levels=(0.0, self._D_vmax))
+        self.bar_C.setLevels((0.0, self._D_vmax))
+        # flow trace (green forward / red reverse) and per-channel lead score
+        self.curve_flow_pos.setData(self._t, gp)
+        self.curve_flow_neg.setData(self._t, -gn)
+        lead = self._lead / (np.abs(self._lead).max() + 1e-9)
+        self.curve_lead.setData(np.arange(cfg.n_channels), lead)
+        for im in (self.img_in, self.img_str1, self.img_str2):
+            im.setRect(self._img_rect)
 
     def _update_stats(self):
         cfg = self.cfg
         lvl = self.fe.level_db
         gate = self.fe.gate_open
-        gate_c = _OK if gate else _MUTED
+        gate_c = _FWD if gate else _MUTED
+        paused = (f"<b style='color:{_S1}'>⏸ PAUSED</b> &nbsp;|&nbsp; "
+                  if self.paused else "")
+        if self.directional:
+            fnow = float(self._flow[-1]) if self._F else 0.0
+            sc = self._flow_scale + 1e-9
+            rev_frac = 100.0 * float(np.mean(self._flow < -0.3 * sc))
+            dirn = (f"<b style='color:{_FWD}'>A→B</b>" if fnow >= 0
+                    else f"<b style='color:{_REV}'>B→A</b>")
+            self.stats.setText(
+                paused +
+                f"<span style='color:{gate_c}'>●</span> "
+                f"<span style='color:{_MUTED}'>input</span> <b>{lvl:+5.1f} dB</b>"
+                f" &nbsp;|&nbsp; <span style='color:{_MUTED}'>flow now</span> "
+                f"{dirn} &nbsp;|&nbsp; "
+                f"<span style='color:{_MUTED}'>reverse</span> "
+                f"<b style='color:{_REV}'>{rev_frac:3.0f}%</b> &nbsp;|&nbsp; "
+                f"<span style='color:{_MUTED}'>forget</span> "
+                f"<b>{cfg.forget_s:.1f} s</b> &nbsp;|&nbsp; "
+                f"<span style='color:{_MUTED}'>|D| peak</span> "
+                f"<b>{self._D_vmax:.3f}</b> &nbsp;|&nbsp; "
+                f"<span style='color:{_MUTED}'>{self._fps_ema:.0f} fps</span>")
+            return
         nact = int((self._drive[:, -1] > 0.02).sum()) if self._F else 0
         s1 = int((self._masks[:, 0] > 0.5).sum())
         s2 = int((self._masks[:, 1] > 0.5).sum()) if cfg.n_streams > 1 else 0
-        # separation index: 1 - cosine overlap of the two masks (1 = disjoint)
         m1, m2 = self._masks[:, 0], self._masks[:, min(1, cfg.n_streams - 1)]
         denom = float(np.linalg.norm(m1) * np.linalg.norm(m2))
         overlap = float(m1 @ m2) / denom if denom > 1e-9 else 0.0
         sep = 100.0 * (1.0 - overlap)
-        paused_badge = (f"<b style='color:{_S1}'>⏸ PAUSED</b> &nbsp;|&nbsp; "
-                        if self.paused else "")
         self.stats.setText(
-            paused_badge +
+            paused +
             f"<span style='color:{gate_c}'>●</span> "
-            f"<span style='color:{_MUTED}'>input</span> "
-            f"<b>{lvl:+5.1f} dB</b> &nbsp;|&nbsp; "
-            f"<span style='color:{_MUTED}'>active</span> "
+            f"<span style='color:{_MUTED}'>input</span> <b>{lvl:+5.1f} dB</b>"
+            f" &nbsp;|&nbsp; <span style='color:{_MUTED}'>active</span> "
             f"<b>{nact}/{cfg.n_channels}</b> &nbsp;|&nbsp; "
             f"<span style='color:{_MUTED}'>stream sizes</span> "
             f"<b style='color:{_S1}'>{s1}</b> / "
             f"<b style='color:{_S2}'>{s2}</b> ch &nbsp;|&nbsp; "
             f"<span style='color:{_MUTED}'>separation</span> "
-            f"<b style='color:{_OK}'>{sep:3.0f}%</b> &nbsp;|&nbsp; "
+            f"<b style='color:{_FWD}'>{sep:3.0f}%</b> &nbsp;|&nbsp; "
             f"<span style='color:{_MUTED}'>{self._fps_ema:.0f} fps</span>")
 
     # -----------------------------------------------------------------
     #  Controls
     # -----------------------------------------------------------------
     def _install_shortcuts(self):
-        """App-level shortcuts so the keys work no matter which child widget
-        holds focus."""
         binds = [("Space", self.toggle_pause), ("R", self.reset),
                  ("Q", self.close)]
         self._shortcuts = []
@@ -453,7 +585,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             sc = _QShortcut(QtGui.QKeySequence(seq), self)
             try:
                 sc.setContext(QtCore.Qt.ShortcutContext.ApplicationShortcut)
-            except AttributeError:               # PyQt5 enum location
+            except AttributeError:
                 sc.setContext(QtCore.Qt.ApplicationShortcut)
             sc.activated.connect(fn)
             self._shortcuts.append(sc)
@@ -464,20 +596,29 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self._last_read = time.perf_counter()
             try:
                 if not getattr(self.source, "paced", False):
-                    self.source.read()           # drain the mic backlog
+                    self.source.read()
             except Exception:
                 pass
         self._update_stats()
 
     def reset(self):
         self.fe.reset()
-        self.sep.reset()
         self._in_db[:] = -self.cfg.top_db
-        self._drive[:] = 0.0
-        self._pitch[:] = 0.0
-        self._C[:] = 0.0
-        self._masks[:] = 0.0
-        self._pitch_vmax = 1e-2
+        if self.directional:
+            self.engine = LiveEngine(self.cfg.to_a1_config(),
+                                     learn=self.cfg.learn, seed=0)
+            self._D[:] = 0.0
+            self._flow[:] = 0.0
+            self._lead[:] = 0.0
+            self._D_vmax = 1e-4
+            self._flow_scale = 1e-6
+        else:
+            self.sep.reset()
+            self._drive[:] = 0.0
+            self._pitch[:] = 0.0
+            self._C[:] = 0.0
+            self._masks[:] = 0.0
+            self._pitch_vmax = 1e-2
         self._refresh_images()
 
     def keyPressEvent(self, ev):
@@ -503,25 +644,25 @@ class LiveDemoApp(QtWidgets.QMainWindow):
     #  Offline driving (for headless snapshot / validation)
     # -----------------------------------------------------------------
     def feed_offline(self, audio: np.ndarray):
-        """Synchronously push a whole audio array through the pipeline and
-        refresh once (no timer / no real-time pacing) -- for a headless GUI
-        screenshot."""
         bs = self.cfg.blocksize
         for lo in range(0, audio.size, bs):
             drive, db = self.fe.push(audio[lo:lo + bs])
             if drive.shape[1] == 0:
                 continue
             self._push_cols(self._in_db, db.astype(np.float32))
-            self._push_cols(self._drive, drive.astype(np.float32))
-            self._push_cols(self._pitch,
-                            self.pitch.push(drive).astype(np.float32))
-        self._update_coincidence()   # not throttled here (single offline refresh)
+            if self.directional:
+                out = self.engine.step_block(drive)
+                self._update_directed(out["E"], out["tr"])
+            else:
+                self._push_cols(self._drive, drive.astype(np.float32))
+                self._push_cols(self._pitch,
+                                self.pitch.push(drive).astype(np.float32))
+        if not self.directional:
+            self._update_coincidence()
         self._refresh_images()
         self._update_stats()
 
     def grab_image(self, path: str):
-        """Save a screenshot of the window (works with the offscreen Qt
-        platform for headless rendering)."""
         QtWidgets.QApplication.processEvents()
         self.glw.grab().save(path)
         return path
