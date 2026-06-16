@@ -9,6 +9,10 @@ Entry point for the live stream-segregation demo.
     python -m live_demo_cortical --source abba                AB-BA directional (order)
     python -m live_demo_cortical --source abcacb              ABC-ACB directional (order)
     python -m live_demo_cortical --source abcacb --tau-trace 0.15   longer-timescale trace
+    python -m live_demo_cortical --source abc_cab            ABC vs CAB  (rotation)
+    python -m live_demo_cortical --source abc_cba            ABC vs CBA  (reversal)
+    python -m live_demo_cortical --source ab_ac              AB vs AC    (feature swap)
+    python -m live_demo_cortical --source ac_bc              AC vs BC    (feature swap)
     python -m live_demo_cortical --source sfg                 stochastic figure-ground
     python -m live_demo_cortical --source synthetic           mic-free tone bursts
     python -m live_demo_cortical --source wav --wav a.wav     play a recording
@@ -35,7 +39,30 @@ if str(_ROOT) not in sys.path:
 from live_demo_cortical.config import LiveConfig, get_preset
 from live_demo_cortical.audio import (MicSource, WavSource, SyntheticSource,
                                       SFGSource, TwoStreamSource, ABBASource,
-                                      ABCACBSource)
+                                      ABCACBSource, SequenceSource)
+
+# Directional ordered-sequence paradigms: source name -> (standard, deviant)
+# index tuples into the (3-tone) pool.  ORDER manipulations (CAB/CBA rotations
+# and reversals) are flagged by the order-violation read-out; the last two swap
+# a tone for a DIFFERENT one (a feature change, not an order change).
+_SEQ_PARADIGMS = {
+    "abc_cab": ((0, 1, 2), (2, 0, 1)),   # ABC vs CAB (cyclic rotation)
+    "abc_cba": ((0, 1, 2), (2, 1, 0)),   # ABC vs CBA (full reversal)
+    "ab_ac":   ((0, 1), (0, 2)),         # AB vs AC  (2nd tone swapped: feature)
+    "ac_bc":   ((0, 2), (1, 2)),         # AC vs BC  (1st tone swapped: feature)
+}
+# every directional paradigm auto-selects the 'directional' preset
+_DIRECTIONAL_SOURCES = ("abba", "abcacb", *_SEQ_PARADIGMS)
+
+
+def _directional_source(cfg: LiveConfig, name: str, **kw):
+    """Build a directional stimulus source by name."""
+    if name == "abba":
+        return ABBASource(cfg, **kw)
+    if name == "abcacb":
+        return ABCACBSource(cfg, **kw)
+    std, dev = _SEQ_PARADIGMS[name]
+    return SequenceSource(cfg, std, dev, **kw)
 
 
 # ---------------------------------------------------------------------
@@ -52,10 +79,8 @@ def _build_source(cfg: LiveConfig, args):
         return SFGSource(cfg)
     if args.source == "twostream":
         return TwoStreamSource(cfg)
-    if args.source == "abba":
-        return ABBASource(cfg)
-    if args.source == "abcacb":
-        return ABCACBSource(cfg)
+    if args.source in _DIRECTIONAL_SOURCES:
+        return _directional_source(cfg, args.source)
     raise SystemExit(f"unknown source {args.source!r}")
 
 
@@ -92,14 +117,12 @@ def run_selftest_directional(cfg: LiveConfig, preview_path: str,
     from live_demo_cortical.audio import SpectroFrontEnd
     from live_demo_cortical.engine import LiveEngine
 
-    abc = (source == "abcacb")
-    tag = "ABC-ACB" if abc else "AB-BA"
+    tag = source.upper().replace("_", "-")
     print(f"[ live_demo_cortical self-test — directional ({tag}) ]")
     print(f"  {cfg.n_channels} channels · sr={cfg.sr} · forget={cfg.forget_s:.1f}s"
           f" · order-violation energy of D=⟨E·tr⟩ on activations")
     secs = max(cfg.history_s + 8.0, 30.0)
-    src = (ABCACBSource(cfg, seconds=secs, seed=0) if abc
-           else ABBASource(cfg, seconds=secs, seed=0))
+    src = _directional_source(cfg, source, seconds=secs, seed=0)
     info, y = src.info, src._y
 
     # standalone pass -> per-event forward / violation energy (mirrors the app)
@@ -134,11 +157,13 @@ def run_selftest_directional(cfg: LiveConfig, preview_path: str,
         if b >= rev.size:
             continue
         peaks.append(float(rev[a:b].max())); labs.append(bool(is_dev))
-    peaks = np.asarray(peaks); labs = np.asarray(labs)
+    peaks = np.asarray(peaks); labs = np.asarray(labs, dtype=bool)
     med = float(np.median(peaks))
     mad = float(np.median(np.abs(peaks - med))) + 1e-9
     pred = peaks > med + 3.0 * 1.4826 * mad         # deviant = violation outlier
-    acc = float(np.mean(pred == labs)) if peaks.size else 0.0
+    tp = float(np.mean(pred[labs])) if labs.any() else 0.0        # deviants caught
+    tn = float(np.mean(~pred[~labs])) if (~labs).any() else 0.0   # standards kept
+    bal = 0.5 * (tp + tn)                            # balanced accuracy (honest)
     tot = int(peaks.size)
 
     ok = True
@@ -149,8 +174,9 @@ def run_selftest_directional(cfg: LiveConfig, preview_path: str,
 
     check("finite energies", bool(np.isfinite(rev).all() and np.isfinite(peaks).all()))
     check("real-time capable", speed > 1.0, f"({speed:.1f}x real time)")
-    check("deviant detected by violation energy", acc >= 0.85,
-          f"({100 * acc:.0f}% of {tot} {'triplets' if abc else 'pairs'} correct)")
+    check("deviant detected (order violation)", bal >= 0.8,
+          f"(balanced {100 * bal:.0f}%: {100 * tp:.0f}% deviants caught, "
+          f"{100 * (1 - tn):.0f}% false alarms; N={tot})")
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
     win = LiveDemoApp(cfg, src)
@@ -244,7 +270,7 @@ def run_snapshot(cfg: LiveConfig, args) -> int:
     # feed the chosen source (mic falls back to pseudo-speech for a static frame).
     # In directional mode, feed extra lead-in so the directed map D is warm
     # before the displayed window.
-    if args.source in ("twostream", "sfg", "synthetic", "wav", "abba", "abcacb"):
+    if args.source != "mic":
         feed_src = _build_source(cfg, args)
         if hasattr(feed_src, "start"):
             feed_src.start()
@@ -281,7 +307,8 @@ def main(argv=None) -> int:
                          "dynamic2 | directional")
     ap.add_argument("--source", default="mic",
                     choices=["mic", "wav", "synthetic", "sfg", "twostream",
-                             "abba", "abcacb"])
+                             "abba", "abcacb", "abc_cab", "abc_cba",
+                             "ab_ac", "ac_bc"])
     ap.add_argument("--wav", default=None, help="WAV path for --source wav")
     ap.add_argument("--device", type=int, default=None,
                     help="sounddevice input device index")
@@ -307,7 +334,7 @@ def main(argv=None) -> int:
     args = ap.parse_args(argv)
 
     # the AB-BA / ABC-ACB stimuli are directional paradigms -> default preset
-    if args.source in ("abba", "abcacb") and args.preset == "default":
+    if args.source in _DIRECTIONAL_SOURCES and args.preset == "default":
         args.preset = "directional"
 
     overrides = {}

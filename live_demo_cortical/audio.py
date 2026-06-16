@@ -637,3 +637,71 @@ class ABCACBSource:
 
     def stop(self):
         pass
+
+
+# =====================================================================
+#  General ordered-sequence directional stream (any standard vs deviant)
+# =====================================================================
+def synth_sequence(sr: int, freqs, standard, deviant, *, tone_ms: float = 50.0,
+                   gap_ms: float = 30.0, inter_ms: float = 300.0,
+                   p_dev: float = 0.2, seconds: float = 60.0, seed: int = 0):
+    """A directional stream of tone SEQUENCES: mostly the ``standard`` order,
+    with a fraction ``p_dev`` replaced by the ``deviant``.  ``standard`` and
+    ``deviant`` are tuples of indices into ``freqs`` (same length), e.g.
+    ABC vs CAB = ``(0,1,2)`` vs ``(2,0,1)``.  This subsumes AB-BA, ABC-ACB,
+    ABC-CAB, ABC-CBA (order manipulations) and AB-AC, AC-BC (a tone swapped for
+    a different one -- a feature change, NOT an order change).  Returns
+    ``(y, sr, info)`` with ``info['events'] = [(is_dev, onset_s), ...]``."""
+    rng = np.random.default_rng(seed)
+    tones = [_ramped_tone(f, tone_ms / 1000.0, sr) for f in freqs]
+    g = np.zeros(int(round(gap_ms / 1000.0 * sr)))
+    it = np.zeros(int(round(inter_ms / 1000.0 * sr)))
+    nt = len(standard)
+    period = (nt * tone_ms + (nt - 1) * gap_ms + inter_ms) / 1000.0
+    n = max(20, int(round(seconds / period)))
+    parts = [np.zeros(int(0.3 * sr))]
+    events = []
+    t_cur = 0.3
+    for _ in range(n):
+        is_dev = rng.random() < p_dev
+        events.append((is_dev, t_cur))
+        seq = deviant if is_dev else standard
+        for j, k in enumerate(seq):
+            parts.append(tones[k])
+            parts.append(it if j == len(seq) - 1 else g)
+        t_cur += period
+    y = np.concatenate(parts)
+    y = (0.9 * y / (np.max(np.abs(y)) + 1e-9)).clip(-1.0, 1.0)
+    return y, sr, dict(freqs=tuple(freqs), period_s=period, events=events,
+                       lead_s=(tone_ms + gap_ms) / 1000.0,
+                       active_s=(nt * tone_ms + (nt - 1) * gap_ms) / 1000.0)
+
+
+class SequenceSource:
+    """Stream wrapper around :func:`synth_sequence`.  ``standard``/``deviant``
+    are index tuples into ``freqs`` (defaults to three FFT-resolvable tones in
+    the channel band)."""
+
+    paced = True
+
+    def __init__(self, cfg: LiveConfig, standard, deviant, *, freqs=None,
+                 seconds: float = 60.0, seed: int = 0, **kw):
+        if freqs is None:
+            freqs = (cfg.fmin * 1.6, cfg.fmin * 3.0, cfg.fmax * 0.7)
+        self._y, _, self.info = synth_sequence(
+            cfg.sr, freqs, standard, deviant, seconds=seconds, seed=seed, **kw)
+        self._pos = 0
+
+    def start(self):
+        self._pos = 0
+
+    def read(self, max_samples: int) -> np.ndarray:
+        if self._pos >= self._y.size:
+            self._pos = 0
+        end = min(self._pos + max_samples, self._y.size)
+        out = self._y[self._pos:end]
+        self._pos = end
+        return out
+
+    def stop(self):
+        pass
