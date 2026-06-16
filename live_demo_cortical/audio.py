@@ -532,7 +532,9 @@ def synth_ab_ba(sr: int, *, fA: float = 800.0, fB: float = 3000.0,
         t_cur += period
     y = np.concatenate(parts)
     y = (0.9 * y / (np.max(np.abs(y)) + 1e-9)).clip(-1.0, 1.0)
-    return y, sr, dict(fA=fA, fB=fB, period_s=period, pairs=pairs)
+    return y, sr, dict(fA=fA, fB=fB, period_s=period, pairs=pairs, events=pairs,
+                       lead_s=(tone_ms + intra_ms) / 1000.0,
+                       active_s=(2 * tone_ms + intra_ms) / 1000.0)
 
 
 class ABBASource:
@@ -548,6 +550,78 @@ class ABBASource:
         fB = fB if fB else cfg.fmax * 0.5           # ~3000 Hz for fmax=6000
         self._y, _, self.info = synth_ab_ba(
             cfg.sr, fA=fA, fB=fB, seconds=seconds, seed=seed, **kw)
+        self._pos = 0
+
+    def start(self):
+        self._pos = 0
+
+    def read(self, max_samples: int) -> np.ndarray:
+        if self._pos >= self._y.size:
+            self._pos = 0
+        end = min(self._pos + max_samples, self._y.size)
+        out = self._y[self._pos:end]
+        self._pos = end
+        return out
+
+    def stop(self):
+        pass
+
+
+# =====================================================================
+#  ABC-ACB directional stream (order of a 3-tone sequence)
+# =====================================================================
+def synth_abc_acb(sr: int, *, fA: float = 700.0, fB: float = 1700.0,
+                  fC: float = 4200.0, tone_ms: float = 50.0, gap_ms: float = 30.0,
+                  inter_ms: float = 300.0, p_dev: float = 0.2,
+                  seconds: float = 60.0, seed: int = 0):
+    """A three-tone **ABC-ACB** stream: triplets, mostly A→B→C (the 'standard'
+    order) with a fraction ``p_dev`` transposed to A→C→B (the 'deviant').
+
+    Standard and deviant share the A→B and A→C orderings and differ ONLY in the
+    B↔C order, so they are indistinguishable to a symmetric coincidence AND to
+    the *net* directed flow (the common A-leads dominate) -- they separate only
+    by the order-VIOLATION energy (activity that runs against the established
+    order).  Returns ``(y, sr, info)`` with ``info['events'] = [(is_dev,
+    onset_s), ...]`` -- the per-triplet ground truth."""
+    rng = np.random.default_rng(seed)
+    A = _ramped_tone(fA, tone_ms / 1000.0, sr)
+    B = _ramped_tone(fB, tone_ms / 1000.0, sr)
+    C = _ramped_tone(fC, tone_ms / 1000.0, sr)
+    g = np.zeros(int(round(gap_ms / 1000.0 * sr)))
+    it = np.zeros(int(round(inter_ms / 1000.0 * sr)))
+    period = (3 * tone_ms + 2 * gap_ms + inter_ms) / 1000.0
+    n = max(20, int(round(seconds / period)))
+    parts = [np.zeros(int(0.3 * sr))]
+    events = []
+    t_cur = 0.3
+    for _ in range(n):
+        is_dev = rng.random() < p_dev
+        events.append((is_dev, t_cur))
+        seq = [A, g, C, g, B, it] if is_dev else [A, g, B, g, C, it]
+        parts += seq
+        t_cur += period
+    y = np.concatenate(parts)
+    y = (0.9 * y / (np.max(np.abs(y)) + 1e-9)).clip(-1.0, 1.0)
+    return y, sr, dict(freqs=(fA, fB, fC), period_s=period, events=events,
+                       lead_s=(tone_ms + gap_ms) / 1000.0,
+                       active_s=(3 * tone_ms + 2 * gap_ms) / 1000.0)
+
+
+class ABCACBSource:
+    """Stream wrapper around :func:`synth_abc_acb` -- the 3-tone directional
+    test (ABC standard vs ACB deviant).  Three well-separated, FFT-resolvable
+    tones; ``info['events']`` carries the per-triplet ground truth."""
+
+    paced = True
+
+    def __init__(self, cfg: LiveConfig, *, seconds: float = 60.0, seed: int = 0,
+                 fA: float | None = None, fB: float | None = None,
+                 fC: float | None = None, **kw):
+        fA = fA if fA else cfg.fmin * 1.6           # ~800 Hz
+        fB = fB if fB else cfg.fmin * 3.0           # ~1500 Hz
+        fC = fC if fC else cfg.fmax * 0.7           # ~4200 Hz
+        self._y, _, self.info = synth_abc_acb(
+            cfg.sr, fA=fA, fB=fB, fC=fC, seconds=seconds, seed=seed, **kw)
         self._pos = 0
 
     def start(self):

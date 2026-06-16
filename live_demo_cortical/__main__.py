@@ -7,6 +7,7 @@ Entry point for the live stream-segregation demo.
     python -m live_demo_cortical                              live microphone
     python -m live_demo_cortical --source twostream           two coherent tone streams
     python -m live_demo_cortical --source abba                AB-BA directional (order)
+    python -m live_demo_cortical --source abcacb              ABC-ACB directional (order)
     python -m live_demo_cortical --source sfg                 stochastic figure-ground
     python -m live_demo_cortical --source synthetic           mic-free tone bursts
     python -m live_demo_cortical --source wav --wav a.wav     play a recording
@@ -32,7 +33,8 @@ if str(_ROOT) not in sys.path:
 
 from live_demo_cortical.config import LiveConfig, get_preset
 from live_demo_cortical.audio import (MicSource, WavSource, SyntheticSource,
-                                      SFGSource, TwoStreamSource, ABBASource)
+                                      SFGSource, TwoStreamSource, ABBASource,
+                                      ABCACBSource)
 
 
 # ---------------------------------------------------------------------
@@ -51,6 +53,8 @@ def _build_source(cfg: LiveConfig, args):
         return TwoStreamSource(cfg)
     if args.source == "abba":
         return ABBASource(cfg)
+    if args.source == "abcacb":
+        return ABCACBSource(cfg)
     raise SystemExit(f"unknown source {args.source!r}")
 
 
@@ -74,9 +78,12 @@ def _pseudo_speech(cfg: LiveConfig) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------
-def run_selftest_directional(cfg: LiveConfig, preview_path: str) -> int:
-    """Validate the DIRECTIONAL mode: the directed coincidence of the model's
-    activations must tell A→B (standard) from B→A (deviant), per pair."""
+def run_selftest_directional(cfg: LiveConfig, preview_path: str,
+                             source: str = "abba") -> int:
+    """Validate the DIRECTIONAL mode: the order-VIOLATION energy must flag each
+    deviant -- B→A among AB-BA pairs, or A→C→B among ABC-ACB triplets.  The
+    discriminator is the reverse (against-template) coincidence energy, not the
+    net flow (which the common leads dominate)."""
     import time
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from pyqtgraph.Qt import QtWidgets
@@ -84,18 +91,21 @@ def run_selftest_directional(cfg: LiveConfig, preview_path: str) -> int:
     from live_demo_cortical.audio import SpectroFrontEnd
     from live_demo_cortical.engine import LiveEngine
 
-    print("[ live_demo_cortical self-test — directional (AB-BA) ]")
+    abc = (source == "abcacb")
+    tag = "ABC-ACB" if abc else "AB-BA"
+    print(f"[ live_demo_cortical self-test — directional ({tag}) ]")
     print(f"  {cfg.n_channels} channels · sr={cfg.sr} · forget={cfg.forget_s:.1f}s"
-          f" · directed coincidence D=⟨E·tr⟩ on activations")
+          f" · order-violation energy of D=⟨E·tr⟩ on activations")
     secs = max(cfg.history_s + 8.0, 30.0)
-    src = ABBASource(cfg, seconds=secs, seed=0)
+    src = (ABCACBSource(cfg, seconds=secs, seed=0) if abc
+           else ABBASource(cfg, seconds=secs, seed=0))
     info, y = src.info, src._y
 
-    # standalone directed-coincidence pass -> per-pair AB/BA classification
+    # standalone pass -> per-event forward / violation energy (mirrors the app)
     fe = SpectroFrontEnd(cfg)
     eng = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
     g, N = float(np.exp(-cfg.dt / max(cfg.forget_s, 1e-3))), cfg.n_channels
-    D = np.zeros((N, N)); flow = []; bs = cfg.blocksize
+    D = np.zeros((N, N)); rev = []; bs = cfg.blocksize
     t0 = time.perf_counter()
     for lo in range(0, y.size, bs):
         d, _ = fe.push(y[lo:lo + bs])
@@ -105,22 +115,30 @@ def run_selftest_directional(cfg: LiveConfig, preview_path: str) -> int:
         w = (1.0 - g) * g ** (k - 1 - np.arange(k))
         D = g ** k * D + (E * w) @ tr.T
         Dz = D.copy(); np.fill_diagonal(Dz, 0.0)
+        idx = np.arange(N)
+        Dz[np.abs(idx[:, None] - idx[None, :]) <= 3] = 0.0   # cross-tone only
         Dl = Dz - Dz.T; Dhat = Dl / (np.linalg.norm(Dl) + 1e-9)
-        flow.extend((E * (Dhat @ tr)).sum(0).tolist())
+        Dm = np.maximum(-Dhat, 0.0)
+        rev.extend((E * (Dm @ tr)).sum(0).tolist())
     rt = time.perf_counter() - t0
     speed = (y.size / cfg.sr) / rt if rt > 0 else float("inf")
-    flow = np.asarray(flow)
-    correct = tot = 0
-    for is_ba, ts in info["pairs"]:
-        a = int(ts * 1000); b = a + int(info["period_s"] * 1000)
-        if b >= flow.size:
+    rev = np.asarray(rev)
+    # peak violation energy in each event's NON-first-tone region (where an
+    # order swap shows); deviants are the outliers above the standard baseline.
+    lead_s = info.get("lead_s", 0.07)
+    active_s = info.get("active_s", info["period_s"])
+    peaks, labs = [], []
+    for is_dev, ts in info["events"]:
+        a = int((ts + lead_s) * 1000); b = int((ts + active_s) * 1000)
+        if b >= rev.size:
             continue
-        seg = flow[a:b]
-        if np.max(np.abs(seg)) < 1e-9:
-            continue
-        pred_ba = seg[np.argmax(np.abs(seg))] < 0      # dominant flow spike sign
-        correct += int(pred_ba == is_ba); tot += 1
-    acc = correct / max(tot, 1)
+        peaks.append(float(rev[a:b].max())); labs.append(bool(is_dev))
+    peaks = np.asarray(peaks); labs = np.asarray(labs)
+    med = float(np.median(peaks))
+    mad = float(np.median(np.abs(peaks - med))) + 1e-9
+    pred = peaks > med + 3.0 * 1.4826 * mad         # deviant = violation outlier
+    acc = float(np.mean(pred == labs)) if peaks.size else 0.0
+    tot = int(peaks.size)
 
     ok = True
     def check(name, cond, detail=""):
@@ -128,13 +146,13 @@ def run_selftest_directional(cfg: LiveConfig, preview_path: str) -> int:
         ok = ok and cond
         print(f"  [{'OK' if cond else 'FAIL'}] {name} {detail}")
 
-    check("finite flow", bool(np.isfinite(flow).all()))
+    check("finite energies", bool(np.isfinite(rev).all() and np.isfinite(peaks).all()))
     check("real-time capable", speed > 1.0, f"({speed:.1f}x real time)")
-    check("directional split", acc >= 0.85,
-          f"({100 * acc:.0f}% of {tot} pairs assigned AB/BA correctly)")
+    check("deviant detected by violation energy", acc >= 0.85,
+          f"({100 * acc:.0f}% of {tot} {'triplets' if abc else 'pairs'} correct)")
 
     app = QtWidgets.QApplication.instance() or QtWidgets.QApplication([])
-    win = LiveDemoApp(cfg, ABBASource(cfg, seconds=secs, seed=0))
+    win = LiveDemoApp(cfg, src)
     win.show()
     keep = int((cfg.history_s + 8.0) * cfg.sr)
     win.feed_offline(y[-keep:] if y.size > keep else y)
@@ -144,12 +162,12 @@ def run_selftest_directional(cfg: LiveConfig, preview_path: str) -> int:
     return 0 if ok else 1
 
 
-def run_selftest(cfg: LiveConfig, preview_path: str) -> int:
+def run_selftest(cfg: LiveConfig, preview_path: str, source: str = "abba") -> int:
     """Drive the segregation pipeline headlessly and validate it: the two
-    coherent streams are recovered (coherence mode), or AB is told from BA
-    (directional mode).  Saves the GUI as the preview PNG."""
+    coherent streams are recovered (coherence mode), or the deviant order is
+    flagged (directional mode).  Saves the GUI as the preview PNG."""
     if cfg.mode == "directional":
-        return run_selftest_directional(cfg, preview_path)
+        return run_selftest_directional(cfg, preview_path, source)
     import time
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from pyqtgraph.Qt import QtWidgets
@@ -225,7 +243,7 @@ def run_snapshot(cfg: LiveConfig, args) -> int:
     # feed the chosen source (mic falls back to pseudo-speech for a static frame).
     # In directional mode, feed extra lead-in so the directed map D is warm
     # before the displayed window.
-    if args.source in ("twostream", "sfg", "synthetic", "wav", "abba"):
+    if args.source in ("twostream", "sfg", "synthetic", "wav", "abba", "abcacb"):
         feed_src = _build_source(cfg, args)
         if hasattr(feed_src, "start"):
             feed_src.start()
@@ -262,7 +280,7 @@ def main(argv=None) -> int:
                          "dynamic2 | directional")
     ap.add_argument("--source", default="mic",
                     choices=["mic", "wav", "synthetic", "sfg", "twostream",
-                             "abba"])
+                             "abba", "abcacb"])
     ap.add_argument("--wav", default=None, help="WAV path for --source wav")
     ap.add_argument("--device", type=int, default=None,
                     help="sounddevice input device index")
@@ -280,8 +298,8 @@ def main(argv=None) -> int:
                     help="preview PNG path for --selftest")
     args = ap.parse_args(argv)
 
-    # the AB-BA stimulus is a directional paradigm -> default to that preset
-    if args.source == "abba" and args.preset == "default":
+    # the AB-BA / ABC-ACB stimuli are directional paradigms -> default preset
+    if args.source in ("abba", "abcacb") and args.preset == "default":
         args.preset = "directional"
 
     overrides = {}
@@ -294,7 +312,7 @@ def main(argv=None) -> int:
     cfg = get_preset(args.preset, **overrides)
 
     if args.selftest:
-        return run_selftest(cfg, args.preview)
+        return run_selftest(cfg, args.preview, args.source)
     if args.snapshot:
         return run_snapshot(cfg, args)
     return run_live(cfg, args)

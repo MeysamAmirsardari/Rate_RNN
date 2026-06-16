@@ -84,7 +84,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self.engine = LiveEngine(cfg.to_a1_config(), learn=cfg.learn, seed=0)
             self._D = np.zeros((N, N))                 # leaky directed coincidence
             self._gamma = float(np.exp(-cfg.dt / max(cfg.forget_s, 1e-3)))
-            self._flow = np.zeros(F, dtype=np.float32)  # +forward(AB) / -reverse(BA)
+            self._fwd = np.zeros(F, dtype=np.float32)   # consistent-order energy
+            self._rev = np.zeros(F, dtype=np.float32)   # order-VIOLATION energy (deviant)
             self._lead = np.zeros(N, dtype=np.float32)  # per-channel lead score
             self._D_vmax = 1e-4
             self._flow_scale = 1e-6
@@ -125,16 +126,14 @@ class LiveDemoApp(QtWidgets.QMainWindow):
                                        cfg.n_channels)
 
         if self.directional:
-            title = ("Directional Segregation — directed coincidence of "
-                     "cortical activations")
-            sub = ("model activations E → directed coincidence "
-                   "D[i,j]=⟨E_i·tr_j⟩ → temporal order:  A→B (standard) vs "
-                   "B→A (deviant) · real time")
+            title = ("Directional Segregation")
+            sub = ("model activations E -> directed coincidence "
+                   "D[i,j]=⟨E_i·tr_j⟩")
         else:
-            title = ("Stream Segregation — temporal coherence (nPCA of the "
+            title = ("Stream Segregation; temporal coherence (nPCA of the "
                      "coincidence matrix)")
-            sub = ("log-spectrogram → coincidence C → nPCA masks → segregated "
-                   "streams · real time")
+            sub = ("log-spectrogram -> coincidence C -> nPCA masks -> segregated "
+                   "streams . real time")
         self.title = self.glw.addLabel(title, row=0, col=0, colspan=4,
                                        color=_FG, size="20pt", bold=True)
         self.subtitle = self.glw.addLabel(sub, row=1, col=0, colspan=4,
@@ -149,8 +148,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         # ---- panel 1: input log-spectrogram (both modes) ----
         self.p_in = self.glw.addPlot(row=3, col=0)
         self.img_in = pg.ImageItem(); self.img_in.setColorMap(spec_cmap)
-        in_title = ("Input — AB / BA tone sequence" if self.directional
-                    else "Input log-spectrogram  (mixture)")
+        in_title = ("Input sequence" if self.directional
+                    else "Input log-spectrogram")
         self._heat(self.p_in, self.img_in, in_title, centers, cfg.n_channels)
         self.img_in.setLevels(dbl)
         self._add_cbar(self.img_in, dbl, spec_cmap, "dB", row=3)
@@ -199,7 +198,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             p.setXLink(self.p_in)
 
         self.p_C, self.img_C, self.bar_C = self._mk_matrix(
-            3, "Connections   C   (coincidence)", "magma", "corr")
+            3, "C", "magma", "corr")
 
         self.p_masks = self.glw.addPlot(row=5, col=2, rowspan=2)
         self.p_masks.setTitle("nPCA stream masks", color=_FG, size="11pt",
@@ -222,8 +221,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         # temporal-flow trace: forward (AB, green) above 0, reverse (BA, red) below
         self.p_flow = self.glw.addPlot(row=4, col=0)
-        self.p_flow.setTitle("Temporal flow   forward A→B (std) / reverse "
-                             "B→A (dev)", color=_FG, size="11pt", bold=True)
+        self.p_flow.setTitle("Temporal flow", color=_FG, size="11pt", bold=True)
         self.p_flow.setLabel("left", "flow", color=_MUTED)
         self._style_curve_plot(self.p_flow)
         self.p_flow.setRange(xRange=(-cfg.history_s, 0.0), yRange=(-1.05, 1.05),
@@ -238,13 +236,13 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         self.p_str1 = self.glw.addPlot(row=5, col=0)
         self.img_str1 = pg.ImageItem(); self.img_str1.setColorMap(spec_cmap)
-        self._heat(self.p_str1, self.img_str1, "Stream AB — forward (standard)",
+        self._heat(self.p_str1, self.img_str1, "Stream 2",
                    centers, cfg.n_channels, title_color=_FWD)
         self.img_str1.setLevels(dbl)
 
         self.p_str2 = self.glw.addPlot(row=6, col=0)
         self.img_str2 = pg.ImageItem(); self.img_str2.setColorMap(spec_cmap)
-        self._heat(self.p_str2, self.img_str2, "Stream BA — reverse (deviant)",
+        self._heat(self.p_str2, self.img_str2, "Stream 1",
                    centers, cfg.n_channels, title_color=_REV, xlabel="time (s)")
         self.img_str2.setLevels(dbl)
 
@@ -253,8 +251,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         # directed connection map D (asymmetric): row=post (follower), col=pre (leader)
         self.p_C, self.img_C, self.bar_C = self._mk_matrix(
-            3, "Connections — directed  ⟨E·tr⟩", "magma", "⟨E·tr⟩",
-            xlabel="channel (leads →)", ylabel="channel (follows)")
+            3, "Connections: directed  ⟨E·tr⟩", "magma", "⟨E·tr⟩",
+            xlabel="channel (leads)", ylabel="channel (follows)")
 
         # per-channel lead→lag score (col-sum − row-sum of D): + leads, − follows
         self.p_lead = self.glw.addPlot(row=5, col=2, rowspan=2)
@@ -453,20 +451,35 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self._D = (g ** k) * self._D + (E * w) @ tr.T
         Dz = self._D.copy()
         np.fill_diagonal(Dz, 0.0)
+        # keep only CROSS-tone coincidences: zero the near-diagonal band so a
+        # tone's own spectral spread (within-cluster leakage) can't register as
+        # a self-violation at every onset -- only DISTINCT tones define an order.
+        N = Dz.shape[0]
+        idx = np.arange(N)
+        Dz[np.abs(idx[:, None] - idx[None, :]) <= 3] = 0.0
         Delta = Dz - Dz.T                               # skew part = direction
         Dhat = Delta / (np.linalg.norm(Delta) + 1e-9)
-        # local flow: >0 when current activity flows in the accumulated (standard)
-        # direction, <0 when reversed (deviant).  f(t) = E(:,t)ᵀ Δ̂ tr(:,t)
-        f = (E * (Dhat @ tr)).sum(0)
-        self._push_1d(self._flow, f.astype(np.float32))
+        # Split the directional template into forward (consistent) and reverse
+        # (order-violating) edges.  Then per frame:
+        #   fwd(t) = activity that flows WITH the established order,
+        #   rev(t) = activity that flows AGAINST it.
+        # A deviant (BA, or the B↔C swap in ACB) shows as a rev spike, while the
+        # net flow fwd-rev stays positive (the common A-leads dominate) -- so it
+        # is the VIOLATION energy rev, not the net flow, that flags a deviant.
+        Dp = np.maximum(Dhat, 0.0)
+        Dm = np.maximum(-Dhat, 0.0)
+        fwd = (E * (Dp @ tr)).sum(0)
+        rev = (E * (Dm @ tr)).sum(0)
+        self._push_1d(self._fwd, fwd.astype(np.float32))
+        self._push_1d(self._rev, rev.astype(np.float32))
         # lead score: col-sum − row-sum of D.  D[i,j] large ⟺ i follows j, so
         # col j (others follow j) − row j (j follows others) = net "j leads".
         self._lead = (Dz.sum(0) - Dz.sum(1)).astype(np.float32)
         self._D_vmax = max(0.85 * self._D_vmax
                            + 0.15 * float(np.percentile(Dz, 99.7)), 1e-4)
-        self._flow_scale = max(
+        self._flow_scale = max(                         # consistent-energy scale
             0.85 * self._flow_scale
-            + 0.15 * float(np.percentile(np.abs(self._flow), 97)), 1e-6)
+            + 0.15 * float(np.percentile(self._fwd, 95)), 1e-6)
 
     # -----------------------------------------------------------------
     #  refresh
@@ -505,10 +518,12 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         cfg = self.cfg
         dbl = (-cfg.top_db, 0.0)
         self.img_in.setImage(self._in_db, autoLevels=False, levels=dbl)
-        # normalised flow in [-1, 1]; gate the spectrogram into AB / BA streams
-        g = np.clip(self._flow / (self._flow_scale + 1e-9), -1.0, 1.0)
-        gp = np.clip(g, 0.0, 1.0)        # forward (AB) gate
-        gn = np.clip(-g, 0.0, 1.0)       # reverse (BA) gate
+        # gates from the forward/violation energies, both referenced to the
+        # consistent-energy scale: gp ~ how much standard-order flow now, gn ~
+        # how much order-violation (deviant) now.
+        sc = self._flow_scale + 1e-9
+        gp = np.clip(self._fwd / sc, 0.0, 1.0)        # forward / consistent gate
+        gn = np.clip(self._rev / sc, 0.0, 1.0)        # reverse / violation gate
         floor = -cfg.top_db
         ab = self._in_db * gp[None, :] + floor * (1.0 - gp[None, :])
         ba = self._in_db * gn[None, :] + floor * (1.0 - gn[None, :])
@@ -535,11 +550,11 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         paused = (f"<b style='color:{_S1}'>⏸ PAUSED</b> &nbsp;|&nbsp; "
                   if self.paused else "")
         if self.directional:
-            fnow = float(self._flow[-1]) if self._F else 0.0
             sc = self._flow_scale + 1e-9
-            rev_frac = 100.0 * float(np.mean(self._flow < -0.3 * sc))
-            dirn = (f"<b style='color:{_FWD}'>A→B</b>" if fnow >= 0
-                    else f"<b style='color:{_REV}'>B→A</b>")
+            rnow = float(self._rev[-1]) if self._F else 0.0
+            rev_frac = 100.0 * float(np.mean(self._rev > 0.4 * sc))
+            dirn = (f"<b style='color:{_REV}'>deviant</b>" if rnow > 0.4 * sc
+                    else f"<b style='color:{_FWD}'>standard</b>")
             self.stats.setText(
                 paused +
                 f"<span style='color:{gate_c}'>●</span> "
@@ -608,7 +623,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self.engine = LiveEngine(self.cfg.to_a1_config(),
                                      learn=self.cfg.learn, seed=0)
             self._D[:] = 0.0
-            self._flow[:] = 0.0
+            self._fwd[:] = 0.0
+            self._rev[:] = 0.0
             self._lead[:] = 0.0
             self._D_vmax = 1e-4
             self._flow_scale = 1e-6
