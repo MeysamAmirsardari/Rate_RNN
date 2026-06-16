@@ -8,6 +8,7 @@ Entry point for the live stream-segregation demo.
     python -m live_demo_cortical --source twostream           two coherent tone streams
     python -m live_demo_cortical --source abba                AB-BA directional (order)
     python -m live_demo_cortical --source abcacb              ABC-ACB directional (order)
+    python -m live_demo_cortical --source abcacb --tau-trace 0.15   longer-timescale trace
     python -m live_demo_cortical --source sfg                 stochastic figure-ground
     python -m live_demo_cortical --source synthetic           mic-free tone bursts
     python -m live_demo_cortical --source wav --wav a.wav     play a recording
@@ -290,6 +291,13 @@ def main(argv=None) -> int:
                     help="disable Hebbian plasticity")
     ap.add_argument("--history", type=float, default=None,
                     help="seconds of scrolling history")
+    ap.add_argument("--tau-trace", type=float, default=None, dest="tau_trace",
+                    help="eligibility-trace time constant (s) -- the directional "
+                         "read-out's lead→lag window (abba uses 0.05; try 0.15 "
+                         "for a longer-timescale trace)")
+    ap.add_argument("--forget", type=float, default=None,
+                    help="leaky directed-coincidence forgetting horizon (s) "
+                         "-- the flow trace's scene memory (abba uses 3.0)")
     ap.add_argument("--selftest", action="store_true",
                     help="headless validation + preview PNG")
     ap.add_argument("--snapshot", default=None,
@@ -309,6 +317,10 @@ def main(argv=None) -> int:
         overrides["learn"] = False
     if args.history:
         overrides["history_s"] = args.history
+    if args.tau_trace:
+        overrides["tau_trace"] = args.tau_trace
+    if args.forget:
+        overrides["forget_s"] = args.forget
     cfg = get_preset(args.preset, **overrides)
 
     if args.selftest:
