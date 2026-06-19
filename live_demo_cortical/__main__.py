@@ -9,6 +9,8 @@ Entry point for the live stream-segregation demo.
     python -m live_demo_cortical --source abba                AB-BA directional (order)
     python -m live_demo_cortical --source abcacb              ABC-ACB directional (order)
     python -m live_demo_cortical --source abcacb --tau-trace 0.15   longer-timescale trace
+    python -m live_demo_cortical --source abcacb --preset segregate  unsupervised k-stream
+                                                     clustering (balanced, any paradigm)
     python -m live_demo_cortical --source abc_cab            ABC vs CAB  (rotation)
     python -m live_demo_cortical --source abc_cba            ABC vs CBA  (reversal)
     python -m live_demo_cortical --source ab_ac              AB vs AC    (feature swap)
@@ -53,6 +55,10 @@ _SEQ_PARADIGMS = {
 }
 # every directional paradigm auto-selects the 'directional' preset
 _DIRECTIONAL_SOURCES = ("abba", "abcacb", *_SEQ_PARADIGMS)
+# all ordered-sequence paradigms as (standard, deviant) -- for the 'segregate'
+# mode every paradigm is one balanced (50-50) two-class SequenceSource
+_ALL_SEQ = {"abba": ((0, 1), (1, 0)), "abcacb": ((0, 1, 2), (0, 2, 1)),
+            **_SEQ_PARADIGMS}
 
 
 def _directional_source(cfg: LiveConfig, name: str, **kw):
@@ -67,6 +73,11 @@ def _directional_source(cfg: LiveConfig, name: str, **kw):
 
 # ---------------------------------------------------------------------
 def _build_source(cfg: LiveConfig, args):
+    # 'segregate' mode: any ordered-sequence paradigm becomes a BALANCED 50-50
+    # two-class stream (no standard/deviant) for unsupervised clustering.
+    if cfg.mode == "segregate" and args.source in _ALL_SEQ:
+        std, dev = _ALL_SEQ[args.source]
+        return SequenceSource(cfg, std, dev, p_dev=cfg.dev_prob)
     if args.source == "mic":
         return MicSource(cfg, device=args.device)
     if args.source == "wav":
@@ -195,6 +206,9 @@ def run_selftest(cfg: LiveConfig, preview_path: str, source: str = "abba") -> in
     flagged (directional mode).  Saves the GUI as the preview PNG."""
     if cfg.mode == "directional":
         return run_selftest_directional(cfg, preview_path, source)
+    if cfg.mode == "segregate":
+        from live_demo_cortical.segregate import main as _seg_selftest
+        return _seg_selftest([])           # the all-paradigm clustering table
     import time
     os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
     from pyqtgraph.Qt import QtWidgets
@@ -274,7 +288,8 @@ def run_snapshot(cfg: LiveConfig, args) -> int:
         feed_src = _build_source(cfg, args)
         if hasattr(feed_src, "start"):
             feed_src.start()
-        n = keep + (int(8.0 * cfg.sr) if cfg.mode == "directional" else 0)
+        n = keep + (int(8.0 * cfg.sr)
+                    if cfg.mode in ("directional", "segregate") else 0)
         audio = feed_src.read(n)
     else:
         audio = _pseudo_speech(cfg)

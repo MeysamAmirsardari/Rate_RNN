@@ -68,6 +68,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.source = source
         self.paused = False
         self.directional = (cfg.mode == "directional")
+        self.segregate = (cfg.mode == "segregate")
 
         self.fe = SpectroFrontEnd(cfg)
 
@@ -89,6 +90,15 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self._lead = np.zeros(N, dtype=np.float32)  # per-channel lead score
             self._D_vmax = 1e-4
             self._flow_scale = 1e-6
+        elif self.segregate:
+            from .segregate import EventSegregator
+            self.seg = EventSegregator(
+                N, cfg.dt, n_streams=cfg.n_streams, sig_tau=cfg.seg_tau,
+                merge_gap_s=cfg.seg_merge_gap_s, max_events=cfg.seg_max_events)
+            self._evlab = np.full(F, -1, dtype=np.int16)   # per-frame stream label
+            self._segD = np.zeros((N, N), dtype=np.float32)  # last event's D
+            self._D_vmax = 1e-4
+            self._n_events = 0
         else:
             self.pitch = PitchGram(self.fe.center_freqs(), n_pitch=cfg.n_pitch,
                                    fmin=cfg.pitch_fmin, fmax=cfg.pitch_fmax,
@@ -129,6 +139,10 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             title = ("Directional Segregation")
             sub = ("model activations E -> directed coincidence "
                    "D[i,j]=⟨E_i·tr_j⟩")
+        elif self.segregate:
+            title = ("Unsupervised Stream Segregation")
+            sub = ("per-event directed-coincidence signatures -> centre -> "
+                   "PCA + k-means · balanced, gap-insensitive, any paradigm")
         else:
             title = ("Stream Segregation; temporal coherence (nPCA of the "
                      "coincidence matrix)")
@@ -148,7 +162,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         # ---- panel 1: input log-spectrogram (both modes) ----
         self.p_in = self.glw.addPlot(row=3, col=0)
         self.img_in = pg.ImageItem(); self.img_in.setColorMap(spec_cmap)
-        in_title = ("Input sequence" if self.directional
+        in_title = ("Input sequence" if (self.directional or self.segregate)
                     else "Input log-spectrogram")
         self._heat(self.p_in, self.img_in, in_title, centers, cfg.n_channels)
         self.img_in.setLevels(dbl)
@@ -156,6 +170,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         if self.directional:
             self._build_directional(centers, spec_cmap, dbl)
+        elif self.segregate:
+            self._build_segregate(centers, spec_cmap, dbl)
         else:
             self._build_coherence(centers, spec_cmap, dbl)
 
@@ -268,6 +284,65 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             pen=pg.mkPen(_S1, width=2), fillLevel=0.0,
             brush=pg.mkBrush(_S1 + "40"))
 
+    # ---- segregate-mode panels (unsupervised event clustering) ----
+    def _build_segregate(self, centers, spec_cmap, dbl):
+        cfg = self.cfg
+        # Stream 1 / Stream 2 = the cochleagram masked by each event's cluster
+        self.p_t1 = self.glw.addPlot(row=4, col=0)
+        self.img_t1 = pg.ImageItem(); self.img_t1.setColorMap(spec_cmap)
+        self._heat(self.p_t1, self.img_t1, "Stream 1  (cluster A)", centers,
+                   cfg.n_channels, title_color=_S1)
+        self.img_t1.setLevels(dbl)
+        self.p_t2 = self.glw.addPlot(row=5, col=0)
+        self.img_t2 = pg.ImageItem(); self.img_t2.setColorMap(spec_cmap)
+        self._heat(self.p_t2, self.img_t2, "Stream 2  (cluster B)", centers,
+                   cfg.n_channels, title_color=_S2, xlabel="time (s)")
+        self.img_t2.setLevels(dbl)
+        # event tape: per-frame cluster colour, aligned with the streams
+        self.p_tape = self.glw.addPlot(row=6, col=0)
+        self.p_tape.setTitle("events (auto-clustered)", color=_FG, size="11pt",
+                             bold=True)
+        self.p_tape.setMouseEnabled(x=False, y=False)
+        self.p_tape.hideButtons(); self.p_tape.setMenuEnabled(False)
+        self.p_tape.setDefaultPadding(0.0)
+        self.p_tape.getViewBox().setBackgroundColor(_PANEL)
+        self.p_tape.getAxis("left").hide()
+        self.p_tape.getAxis("bottom").setPen(_GRID)
+        self.p_tape.getAxis("bottom").setTextPen(_MUTED)
+        self.p_tape.setRange(xRange=(-cfg.history_s, 0.0), yRange=(0, 1), padding=0)
+        self.p_tape.setMaximumHeight(60)
+        self.img_tape = pg.ImageItem(); self.p_tape.addItem(self.img_tape)
+        self._tape_rect = QtCore.QRectF(-cfg.history_s, 0.0, cfg.history_s, 1.0)
+        for p in (self.p_t1, self.p_t2, self.p_tape):
+            p.setXLink(self.p_in)
+        # right: signature scatter (PCA of per-event D) + last-event D
+        self.p_scatter = self.glw.addPlot(row=3, col=2, rowspan=2)
+        self.p_scatter.setTitle("signature space  (PCA of per-event D)",
+                                color=_FG, size="11pt", bold=True)
+        self.p_scatter.setLabel("bottom", "PC1", color=_MUTED)
+        self.p_scatter.setLabel("left", "PC2", color=_MUTED)
+        self.p_scatter.setMouseEnabled(x=False, y=False)
+        self.p_scatter.hideButtons(); self.p_scatter.setMenuEnabled(False)
+        self.p_scatter.getViewBox().setBackgroundColor(_PANEL)
+        for a in ("left", "bottom"):
+            self.p_scatter.getAxis(a).setPen(_GRID)
+            self.p_scatter.getAxis(a).setTextPen(_MUTED)
+        self.scatter = pg.ScatterPlotItem(size=9, pen=None)
+        self.p_scatter.addItem(self.scatter)
+        self.p_C, self.img_C, self.bar_C = self._mk_matrix(
+            5, "last event   D=⟨E·tr⟩", "magma", "⟨·⟩")
+
+    def _tape_rgb(self):
+        F = self._F
+        rgb = np.empty((1, F, 3), dtype=np.ubyte)
+        rgb[0, :] = (22, 27, 34)                         # background (panel)
+        for lab in range(self.cfg.n_streams):
+            m = self._evlab == lab
+            if m.any():
+                c = pg.mkColor(_STREAM_COLORS[lab % len(_STREAM_COLORS)])
+                rgb[0, m] = c.getRgb()[:3]
+        return rgb
+
     # ---- small UI helpers (shared) ----
     def _heat(self, plot, img, title, right_freqs, ny, *, left="channel",
               xlabel="", title_color=_FG):
@@ -375,6 +450,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             if self.directional:
                 out = self.engine.step_block(drive)
                 self._update_directed(out["E"], out["tr"])
+            elif self.segregate:
+                self.seg.push(drive.astype(np.float64))
             else:
                 self._push_cols(self._drive, drive.astype(np.float32))
                 self._push_cols(self._pitch,
@@ -487,6 +564,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
     def _refresh_images(self):
         if self.directional:
             self._refresh_directional()
+        elif self.segregate:
+            self._refresh_segregate()
         else:
             self._refresh_coherence()
 
@@ -542,6 +621,53 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         for im in (self.img_in, self.img_str1, self.img_str2):
             im.setRect(self._img_rect)
 
+    def _refresh_segregate(self):
+        cfg = self.cfg
+        N, F = cfg.n_channels, self._F
+        dbl = (-cfg.top_db, 0.0)
+        floor = -cfg.top_db
+        self.img_in.setImage(self._in_db, autoLevels=False, levels=dbl)
+        # re-cluster only when a new event has completed (cheap, label-stable)
+        if len(self.seg.sigs) != self._n_events and len(self.seg.sigs) >= 2:
+            self.seg.cluster()
+            self._n_events = len(self.seg.sigs)
+        # rebuild the per-frame stream-label buffer from event spans + labels
+        self._evlab[:] = -1
+        now = self.seg.frame
+        if self.seg.labels is not None:
+            for (s, e), lab in zip(self.seg.spans, self.seg.labels):
+                c0 = max(0, s - (now - F))
+                c1 = min(F, e - (now - F))
+                if c1 > c0:
+                    self._evlab[c0:c1] = lab
+            self._segD = self.seg.sigs[-1].reshape(N, N)
+        # streams = cochleagram gated by each event's cluster
+        t1 = np.where(self._evlab[None, :] == 0, self._in_db, floor)
+        t2 = np.where(self._evlab[None, :] == 1, self._in_db, floor)
+        self.img_t1.setImage(t1.astype(np.float32), autoLevels=False, levels=dbl)
+        self.img_t2.setImage(t2.astype(np.float32), autoLevels=False, levels=dbl)
+        self.img_tape.setImage(self._tape_rgb()); self.img_tape.setRect(self._tape_rect)
+        # last-event directed coincidence
+        Dz = self._segD.copy(); np.fill_diagonal(Dz, 0.0)
+        if Dz.any():
+            self._D_vmax = max(0.85 * self._D_vmax
+                               + 0.15 * float(np.percentile(Dz, 99.5)), 1e-4)
+        self.img_C.setImage(Dz.astype(np.float32), autoLevels=False,
+                            levels=(0.0, self._D_vmax))
+        self.bar_C.setLevels((0.0, self._D_vmax))
+        # signature scatter (PCA), coloured by cluster
+        P, L = self.seg.proj, self.seg.labels
+        if L is not None and P.shape[0] == len(L) and P.shape[0]:
+            brushes = [pg.mkBrush(_STREAM_COLORS[int(l) % len(_STREAM_COLORS)])
+                       for l in L]
+            self.scatter.setData(P[:, 0], P[:, 1], brush=brushes, pen=None, size=9)
+            xr = (float(P[:, 0].min()), float(P[:, 0].max()))
+            yr = (float(P[:, 1].min()), float(P[:, 1].max()))
+            if xr[1] > xr[0] and yr[1] > yr[0]:
+                self.p_scatter.setRange(xRange=xr, yRange=yr, padding=0.2)
+        for im in (self.img_in, self.img_t1, self.img_t2):
+            im.setRect(self._img_rect)
+
     def _update_stats(self):
         cfg = self.cfg
         lvl = self.fe.level_db
@@ -568,6 +694,27 @@ class LiveDemoApp(QtWidgets.QMainWindow):
                 f"<span style='color:{_MUTED}'>|D| peak</span> "
                 f"<b>{self._D_vmax:.3f}</b> &nbsp;|&nbsp; "
                 f"<span style='color:{_MUTED}'>{self._fps_ema:.0f} fps</span>")
+            return
+        if self.segregate:
+            ne = len(self.seg.sigs)
+            sizes = ""
+            if self.seg.labels is not None:
+                cnt = [int((self.seg.labels == c).sum()) for c in range(cfg.n_streams)]
+                sizes = " / ".join(
+                    f"<b style='color:{_STREAM_COLORS[c % len(_STREAM_COLORS)]}'>"
+                    f"{cnt[c]}</b>" for c in range(cfg.n_streams))
+            self.stats.setText(
+                paused +
+                f"<span style='color:{gate_c}'>●</span> "
+                f"<span style='color:{_MUTED}'>input</span> <b>{lvl:+5.1f} dB</b>"
+                f" &nbsp;|&nbsp; <span style='color:{_MUTED}'>streams</span> "
+                f"<b>{cfg.n_streams}</b> &nbsp;|&nbsp; "
+                f"<span style='color:{_MUTED}'>events</span> <b>{ne}</b>"
+                + (f" &nbsp;|&nbsp; <span style='color:{_MUTED}'>cluster sizes</span> "
+                   f"{sizes}" if sizes else "")
+                + f" &nbsp;|&nbsp; <span style='color:{_MUTED}'>window</span> "
+                  f"<b>{cfg.seg_max_events}</b> &nbsp;|&nbsp; "
+                  f"<span style='color:{_MUTED}'>{self._fps_ema:.0f} fps</span>")
             return
         nact = int((self._drive[:, -1] > 0.02).sum()) if self._F else 0
         s1 = int((self._masks[:, 0] > 0.5).sum())
@@ -628,6 +775,12 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self._lead[:] = 0.0
             self._D_vmax = 1e-4
             self._flow_scale = 1e-6
+        elif self.segregate:
+            self.seg.reset()
+            self._evlab[:] = -1
+            self._segD[:] = 0.0
+            self._D_vmax = 1e-4
+            self._n_events = 0
         else:
             self.sep.reset()
             self._drive[:] = 0.0
@@ -669,11 +822,15 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             if self.directional:
                 out = self.engine.step_block(drive)
                 self._update_directed(out["E"], out["tr"])
+            elif self.segregate:
+                self.seg.push(drive.astype(np.float64))
             else:
                 self._push_cols(self._drive, drive.astype(np.float32))
                 self._push_cols(self._pitch,
                                 self.pitch.push(drive).astype(np.float32))
-        if not self.directional:
+        if self.segregate:
+            self.seg.finalize()
+        elif not self.directional:
             self._update_coincidence()
         self._refresh_images()
         self._update_stats()

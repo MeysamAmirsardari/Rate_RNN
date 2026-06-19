@@ -115,11 +115,24 @@ class LiveConfig:
     #                 D[i,j] = <E_i(t) tr_j(t)> (the model's own Hebbian
     #                 post x pre-trace operator).  Asymmetric -> resolves
     #                 temporal ORDER, e.g. AB (standard) vs BA (deviant).
+    # 'segregate'   : UNSUPERVISED clustering of per-EVENT directed-coincidence
+    #                 signatures into k streams (balanced, no std/dev).  Segments
+    #                 the stream, centers the signatures, PCA+k-means; the
+    #                 symmetric part splits feature changes, the skew part order.
     mode: str = "coherence"
     forget_s: float = 3.0           # directed-coincidence forgetting horizon (s):
                                     # the leaky integrator's time constant -- low
                                     # => the connection map tracks the recent
                                     # scene and forgets fast (the dynamic knob)
+
+    # ---- 'segregate' mode (per-event signature clustering) ----
+    seg_tau: float = 0.10           # within-event trace time constant (s)
+    seg_merge_gap_s: float = 0.07   # gaps shorter than this are bridged (intra-
+                                    # token); longer ones split events -> the
+                                    # result is insensitive to the inter-event gap
+    seg_max_events: int = 60        # rolling window of recent events (adaptive)
+    dev_prob: float = 0.20          # P(deviant) in the stimulus; 'segregate' uses
+                                    # 0.5 (balanced two classes, no std/dev)
 
     # ---- pitch-gram (subharmonic-summation pitch saliency) ----
     # A real-time pitch saliency map (Hermes 1988, SHS; Schroeder 1968): for
@@ -227,9 +240,9 @@ class LiveConfig:
             raise ValueError(
                 f"inhibition must be 'selective' or 'uniform'; "
                 f"got {self.inhibition!r}")
-        if self.mode not in ("coherence", "directional"):
+        if self.mode not in ("coherence", "directional", "segregate"):
             raise ValueError(
-                f"mode must be 'coherence' or 'directional'; "
+                f"mode must be 'coherence', 'directional' or 'segregate'; "
                 f"got {self.mode!r}")
 
 
@@ -276,6 +289,14 @@ def directional(**kw) -> LiveConfig:
     return LiveConfig(name="directional", mode="directional", **kw)
 
 
+def segregate(**kw) -> LiveConfig:
+    """Unsupervised stream segregation: clusters per-event directed-coincidence
+    signatures into ``n_streams`` streams (balanced 50-50, no std/dev).  Works
+    for order AND feature paradigms, continuously, gap-insensitive.  Pair with
+    any directional source, e.g. ``--source abcacb``."""
+    return LiveConfig(name="segregate", mode="segregate", dev_prob=0.5, **kw)
+
+
 PRESETS = {
     "default":     default,
     "uniform":     uniform,
@@ -283,6 +304,7 @@ PRESETS = {
     "dynamic":     dynamic,
     "dynamic2":    dynamic2,
     "directional": directional,
+    "segregate":   segregate,
 }
 
 

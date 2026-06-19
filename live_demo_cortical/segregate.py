@@ -83,7 +83,7 @@ class EventSegregator:
     def __init__(self, n_channels: int, dt: float, n_streams: int = 2,
                  sig_tau: float = 0.10, merge_gap_s: float = 0.07,
                  on_frac: float = 0.02, min_event_s: float = 0.03,
-                 n_pca: int | None = None):
+                 n_pca: int | None = None, max_events: int | None = None):
         self.N = n_channels
         self.dt = dt
         self.k = n_streams
@@ -92,11 +92,15 @@ class EventSegregator:
         self.on_frac = on_frac
         self.min_ev = max(1, int(round(min_event_s / dt)))
         self.n_pca = n_pca
+        self.max_events = max_events           # rolling window (adaptive); None = keep all
         self.reset()
 
     def reset(self):
         self.onsets, self.offsets, self.sigs = [], [], []
+        self.spans = []                        # (start_frame, end_frame) per event
         self.labels = None
+        self.proj = np.zeros((0, 2))           # top-2 PC of centered signatures (scatter)
+        self._prev_cents = None                # for label stability across re-clusters
         self._buf = []
         self._in = False
         self._start = 0
@@ -104,6 +108,10 @@ class EventSegregator:
         self._since = 0
         self._t = 0
         self._peak = 1e-9
+
+    @property
+    def frame(self):
+        return self._t
 
     # ---- streaming ----
     def push(self, X: np.ndarray):
@@ -138,15 +146,36 @@ class EventSegregator:
     def _finish(self):
         buf = self._buf
         last = self._last_active
+        start = self._start
         self._in, self._buf, self._since, self._last_active = False, [], 0, -1
         if last + 1 < self.min_ev:
             return
         seg = np.asarray(buf[:last + 1]).T               # drop the trailing gap
-        self.onsets.append(self._start * self.dt)
-        self.offsets.append((self._start + last + 1) * self.dt)
+        self.onsets.append(start * self.dt)
+        self.offsets.append((start + last + 1) * self.dt)
+        self.spans.append((start, start + last + 1))
         self.sigs.append(directed_signature(seg, self.dt, self.sig_tau))
+        if self.max_events and len(self.sigs) > self.max_events:   # rolling window
+            self.onsets = self.onsets[-self.max_events:]
+            self.offsets = self.offsets[-self.max_events:]
+            self.spans = self.spans[-self.max_events:]
+            self.sigs = self.sigs[-self.max_events:]
 
-    # ---- clustering (call anytime; cheap, re-clusters all events) ----
+    @staticmethod
+    def _match(new_c, old_c):
+        """Greedy nearest assignment new->old (label stability across calls)."""
+        k = len(new_c)
+        D = np.linalg.norm(new_c[:, None] - old_c[None], axis=2)
+        perm = -np.ones(k, dtype=int)
+        used = set()
+        for _, ni, oi in sorted((D[a, b], a, b)
+                                for a in range(k) for b in range(k)):
+            if perm[ni] < 0 and oi not in used:
+                perm[ni] = oi
+                used.add(oi)
+        return perm
+
+    # ---- clustering (call anytime; cheap, re-clusters the rolling window) ----
     def cluster(self, n_streams: int | None = None):
         k = n_streams or self.k
         S = np.asarray(self.sigs)
@@ -154,10 +183,22 @@ class EventSegregator:
             return None
         Sc = S - S.mean(0)                               # remove shared / 50-50-cancelling part
         U, sv, Vt = np.linalg.svd(Sc, full_matrices=False)
+        self.proj = (Sc @ Vt[:2].T) if Vt.shape[0] >= 2 \
+            else np.column_stack([Sc @ Vt[0], np.zeros(S.shape[0])])
         npc = self.n_pca or min(2 * k, Vt.shape[0], S.shape[0] - 1)
-        Z = Sc @ Vt[:npc].T
-        self.labels = _kmeans(Z, k)
-        return self.labels
+        labels = _kmeans(Sc @ Vt[:npc].T, k)
+        # stabilise label identity across re-clusters via centroid matching
+        cents = np.array([S[labels == c].mean(0) if (labels == c).any()
+                          else np.zeros(S.shape[1]) for c in range(k)])
+        if self._prev_cents is not None and self._prev_cents.shape == cents.shape:
+            perm = self._match(cents, self._prev_cents)
+            labels = perm[labels]
+        self._prev_cents = np.array(
+            [S[labels == d].mean(0) if (labels == d).any()
+             else (self._prev_cents[d] if self._prev_cents is not None
+                   else np.zeros(S.shape[1])) for d in range(k)])
+        self.labels = labels
+        return labels
 
 
 # ---------------------------------------------------------------------
