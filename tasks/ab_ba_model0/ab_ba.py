@@ -234,7 +234,7 @@ def plot_run(res: dict, suptitle: str, fname: str):
             ax.plot(ts, BA_E.mean(0)[ch], color="tab:purple", ls="--", lw=2,
                     label=f"BA trial (n={len(BA_E)})")
         ax.legend(fontsize=8, frameon=False)
-        _setup_axes(ax, title=f"Activity — firing rate, channel {name}",
+        _setup_axes(ax, title=f"Activity: firing rate, channel {name}",
                     xlabel="time in sequence (s)", ylabel=f"$E_{name}$")
 
     # ---- row 3: INPUT — recurrent excitation & inhibition onto E ----
@@ -255,13 +255,13 @@ def plot_run(res: dict, suptitle: str, fname: str):
                     label="recurrent exc. — BA")
         if len(AB_inh):
             ax.plot(ts, -AB_inh.mean(0)[ch], color="tab:red", lw=2,
-                    label="− inhibition — AB")
+                    label="− inh — AB")
         if len(BA_inh):
             ax.plot(ts, -BA_inh.mean(0)[ch], color="tab:red", lw=2, ls="--",
-                    label="− inhibition — BA")
+                    label="− inh — BA")
         ax.legend(fontsize=7.5, frameon=False)
         _setup_axes(ax,
-                    title=f"Input — recurrent excitation & inhibition, channel {name}",
+                    title=f"Input: recurrent exc & inh, channel {name}",
                     xlabel="time in sequence (s)", ylabel="current")
 
     # ---- row 4: weight evolution + final W ----
@@ -317,7 +317,7 @@ def plot_surprise(res_std: dict, res_dev: dict, fname: str,
 
     fig = plt.figure(figsize=(13, 8), constrained_layout=True)
     fig.suptitle(
-        f"Surprise contrast — selective-inhibition model "
+        f"Surprise contrast -- selective-inhibition model "
         f"(DEV − STD, AB sequence)\n"
         f"STD: Run 1, p(AB)=90%   n={len(AB_std)}     "
         f"DEV: Run 2, p(AB)=10%   n={len(AB_dev)}",
@@ -384,7 +384,7 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
 
     fig = plt.figure(figsize=(13, 9), constrained_layout=True)
     fig.suptitle(
-        "Selective-inhibition mechanism — predicted-tone interneuron carries the memory",
+        "Selective-inhibition mechanism -- predicted-tone interneuron carries the memory",
         fontsize=12, fontweight="bold",
     )
     gs = fig.add_gridspec(3, 2)
@@ -395,7 +395,7 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
     ax.plot(ts, E_std[ch_B], color="tab:blue", lw=2, label="STD (B is predicted)")
     ax.plot(ts, E_dev[ch_B], color="tab:red",  lw=2, label="DEV (B is unpredicted)")
     ax.legend(fontsize=9, frameon=False)
-    _setup_axes(ax, title=f"E[B={ch_B}]  —  predicted vs unpredicted tone B",
+    _setup_axes(ax, title=f"E[B={ch_B}]  --  predicted vs unpredicted tone B",
                 xlabel="time in sequence (s)", ylabel="rate")
 
     # I[B] STD vs DEV — THE KEY DIAGNOSTIC
@@ -405,7 +405,7 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
     ax.plot(ts, I_dev[ch_B], color="tab:red",  lw=2, label="DEV (B is unpredicted)")
     ax.legend(fontsize=9, frameon=False)
     _setup_axes(ax,
-                title=f"I[B={ch_B}]  —  pre-built during tone A under prediction",
+                title=f"I[B={ch_B}]  --  pre-built during tone A under prediction",
                 xlabel="time in sequence (s)", ylabel="I rate")
 
     # E[A] for context
@@ -516,8 +516,8 @@ def plot_recurrent_masking(res: dict, fname: str):
         fontsize=11.5, fontweight="bold")
 
     for col, (code, D, head) in enumerate([
-            ("AB", AB, "AB trial (standard) — tone A 1st, B is fresh"),
-            ("BA", BA, "BA trial (deviant) — tone A 2nd, B just fired")]):
+            ("AB", AB, "AB trial (standard) -- tone A 1st, B is fresh"),
+            ("BA", BA, "BA trial (deviant) -- tone A 2nd, B just fired")]):
         wAc = wA[code]
         tA0 = wAc.start * dt
 
@@ -620,7 +620,7 @@ def plot_recurrent_masking(res: dict, fname: str):
     ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=9.5)
     ax.legend(fontsize=9, frameon=False, loc="upper right")
     _setup_axes(ax, title="Snapshot at mid-tone-A: identical A→B drive, "
-                          "opposite outcome — inhibition is the only thing "
+                          "opposite outcome -- inhibition is the only thing "
                           "that changed",
                 ylabel="current / rate")
 
@@ -666,11 +666,11 @@ def main():
 
         print("[ Plotting ]")
         plot_run(res1,
-                 f"Run 1 — 90% AB (standard) / 10% BA (deviant) "
+                 f"Run 1 -- 90% AB (standard) / 10% BA (deviant) "
                  f"[{inh_name} inhibition]",
                  f"m0_ab_ba_run1_{inh_name}.png")
         plot_run(res2,
-                 f"Run 2 — 10% AB (deviant) / 90% BA (standard) "
+                 f"Run 2 -- 10% AB (deviant) / 90% BA (standard) "
                  f"[{inh_name} inhibition]",
                  f"m0_ab_ba_run2_{inh_name}.png")
         plot_surprise(res1, res2,            f"m0_ab_ba_surprise_{inh_name}.png")

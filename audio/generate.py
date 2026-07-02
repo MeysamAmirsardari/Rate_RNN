@@ -98,11 +98,11 @@ def _load_syllable(name: str, sr: int) -> np.ndarray:
 # =====================================================================
 #  Paradigm clips  (each returns a float waveform in [-1, 1])
 # =====================================================================
-def make_ab_ba(sr: int, n_pairs: int = 24, p_BA: float = 0.18,
+def make_ab_ba(sr: int, n_pairs: int = 200, p_BA: float = 0.18,
                seed: int = 0) -> np.ndarray:
     """Two-tone streaming: a stream of AB pairs with occasional BA."""
     rng = np.random.default_rng(seed)
-    fA, fB = 494.0, 740.0                          # ~B4, ~F#5
+    fA, fB = 494.0, 2140.0                          # ~B4, ~F#5
     tone_d, intra, inter = 0.050, 0.030, 0.500
     out = [silence(0.3, sr)]
     for _ in range(n_pairs):
@@ -112,7 +112,7 @@ def make_ab_ba(sr: int, n_pairs: int = 24, p_BA: float = 0.18,
     return normalize(concat(*out))
 
 
-def make_oddball(sr: int, n_tones: int = 150, p_dev: float = 0.10,
+def make_oddball(sr: int, n_tones: int = 350, p_dev: float = 0.10,
                  seed: int = 1) -> np.ndarray:
     """SSA: frequent standard f1, rare deviant f2 (never two deviants in a row)."""
     rng = np.random.default_rng(seed)
@@ -127,7 +127,7 @@ def make_oddball(sr: int, n_tones: int = 150, p_dev: float = 0.10,
     return normalize(concat(*out))
 
 
-def make_local_global(sr: int, n_seq: int = 16, p_dev: float = 0.2,
+def make_local_global(sr: int, n_seq: int = 200, p_dev: float = 0.2,
                       seed: int = 2) -> np.ndarray:
     """5-tone sequences: standard xxxxy (80%), rare deviant xxxxx (20%)."""
     rng = np.random.default_rng(seed)
@@ -164,71 +164,170 @@ def _roving_words(deviant_pos: int = 3) -> list[str]:
     return words
 
 
-def make_roving_tones(sr: int, reps_per_block: int = 5,
-                      deviant_pos: int = 3) -> np.ndarray:
-    """Roving oddball: each word repeats ``reps_per_block`` times (a standard),
-    then the standard 'roves' to the next word -- the change is the deviant."""
+def _block_order(words: list[str], n_blocks_per_word: int,
+                 rng: np.random.Generator) -> list[str]:
+    """Constrained-random block order: STRICTLY no two consecutive same-word blocks.
+    Uses a backtracking approach to guarantee the constraint is never violated."""
+    while True:
+        counts = {w: n_blocks_per_word for w in words}
+        order: list[str] = []
+        stuck = False
+
+        for _ in range(len(words) * n_blocks_per_word):
+            # Find available words that have count > 0 AND do not repeat the previous word
+            avail = [w for w in words if counts[w] > 0 and (not order or w != order[-1])]
+
+            if not avail:
+                # The generator painted itself into a corner. Backtrack and restart.
+                stuck = True
+                break
+
+            w = avail[int(rng.integers(len(avail)))]
+            order.append(w)
+            counts[w] -= 1
+
+        if not stuck:
+            return order
+
+
+def make_roving_tones(sr: int, n_blocks_per_word: int = 10,
+                      n_reps_per_block: int = 10, deviant_pos: int = 3,
+                      seed: int = 0) -> np.ndarray:
+    """Roving oddball (Audio): 3 words x ``n_blocks_per_word`` blocks in a
+    strictly constrained random order. Each block repeats ``n_reps_per_block`` times.
+    180 ms tones, no intra-word gap, 1 s between sequences."""
+    words = _roving_words(deviant_pos)
+    order = _block_order(words, n_blocks_per_word, np.random.default_rng(seed))
+
     tone_d, seq_gap = 0.180, 1.000
     out = [silence(0.3, sr)]
-    for word in _roving_words(deviant_pos):
-        for _ in range(reps_per_block):
+
+    for word in order:
+        for _ in range(n_reps_per_block):
             for ch in word:
                 out.append(tone(_ROVING_FREQS[ch], tone_d, sr))
             out.append(silence(seq_gap, sr))
+
     return normalize(concat(*out))
 
 
-def make_roving_syllables(sr: int, reps_per_block: int = 5,
-                          deviant_pos: int = 1) -> np.ndarray:
-    """Roving oddball voiced with real syllable recordings."""
+def make_roving_syllables(sr: int, n_blocks_per_word: int = 10,
+                          n_reps_per_block: int = 10, deviant_pos: int = 3,
+                          seed: int = 0) -> np.ndarray:
+    """The same roving block structure as make_roving_tones, voiced with the
+    real syllable recordings. Includes a natural 40ms intra-syllable gap."""
+    words = _roving_words(deviant_pos)
+    order = _block_order(words, n_blocks_per_word, np.random.default_rng(seed))
     cache = {ch: _load_syllable(name, sr) for ch, name in _ROVING_SYLL.items()}
+
     syll_gap, seq_gap = 0.040, 1.000
     out = [silence(0.3, sr)]
-    for word in _roving_words(deviant_pos):
-        for _ in range(reps_per_block):
+
+    for word in order:
+        for _ in range(n_reps_per_block):
             for ch in word:
                 out += [cache[ch], silence(syll_gap, sr)]
+            # Subtract the trailing syll_gap to ensure exactly 1.0s between sequences
             out.append(silence(seq_gap - syll_gap, sr))
+
     return normalize(concat(*out))
 
 
-def make_sfg(sr: int, pre_s: float = 3.0, fig_s: float = 4.0, post_s: float = 3.0,
-             n_fig: int = 8, rate_hz: float = 4.0, seed: int = 7) -> np.ndarray:
-    """Stochastic figure-ground: a random tone cloud over 37 log-spaced
-    channels; during the middle epoch a fixed subset fires SYNCHRONOUS chords
-    (the 'figure') so it perceptually pops out of the cloud."""
-    rng = np.random.default_rng(seed)
-    freqs = 1600.0 * 2.0 ** (np.arange(-12, 25) / 12.0)   # 37 ch, 800..6400 Hz
-    N = len(freqs)
-    total = pre_s + fig_s + post_s
-    pip = 0.050
-    grid = 0.050
-    p = rate_hz * grid                                    # per-grid-slot prob
-    n_slots = int(total / grid)
-    fig_start, fig_end = pre_s, pre_s + fig_s
-    out = silence(total + pip, sr)
+# =====================================================================
+#  Stochastic Figure-Ground (SFG) - Full Session
+# =====================================================================
+def _sfg_cloud_onsets(rng: np.random.Generator, dur_ms: int = 5000) -> np.ndarray:
+    """Generate independent cloud onsets (ms) for a single channel."""
+    onsets = []
+    # 8 onsets per 2-second window
+    for w0 in range(0, dur_ms, 2000):
+        picks = np.sort(rng.choice(np.arange(0, 2000, 50), size=8, replace=False))
+        jit = rng.uniform(-25, 25, size=8)
+        for cand in (w0 + picks + jit):
+            if 0 <= cand and cand + 50 <= dur_ms:
+                onsets.append(cand)
+    return np.array(onsets)
 
-    def add_pip(freq, t0, amp):
-        i0 = int(round(t0 * sr))
-        seg = tone(freq, pip, sr, amp=amp)
+
+def _sfg_figure_onsets(rng: np.random.Generator) -> np.ndarray:
+    """Generate the shared synchronous chord onsets for the figure channels."""
+    onsets = {0.0, 4950.0}  # Forced first and last
+    target_n = 20
+    grid = np.arange(50, 4950, 50)
+    rng.shuffle(grid)
+    for cand in grid:
+        if len(onsets) >= target_n:
+            break
+        if all(abs(cand - o) >= 50 for o in onsets):
+            onsets.add(cand + rng.uniform(-25, 25))
+
+    valid = [o for o in onsets if 0 <= o and o + 50 <= 5000]
+    return np.array(sorted(valid))
+
+
+def make_sfg(sr: int, n_reps: int = 3, n_fig: int = 8,
+             base_seed: int = 0, fig_seed: int = 12345) -> np.ndarray:
+    """Stochastic figure-ground (Session Audio): Multiple 16-second presentations.
+    Each presentation = 0.5s silence + 5s pre + 5s figure + 5s post + 0.5s silence.
+    The figure channels and their chord onsets are FROZEN across reps.
+    The background cloud is drawn FRESH every rep.
+    """
+    # 1. Setup global figure structure (FROZEN across all reps)
+    rng_fig = np.random.default_rng(fig_seed)
+    shared_fig_onsets = _sfg_figure_onsets(rng_fig)
+
+    # 37 log-spaced frequencies from 800 to 6400 Hz
+    freqs = 1600.0 * 2.0 ** (np.arange(-12, 25) / 12.0)
+    N = len(freqs)
+
+    # Target figure channels (exact matches from stimulus.py)
+    fig_channels_10 = [16, 35, 23, 9, 27, 2, 21, 4, 32, 13]
+    fig_idx = set(fig_channels_10[:n_fig])
+
+    # 2. Audio buffer setup
+    presentation_dur_s = 16.0
+    total_s = n_reps * presentation_dur_s
+    out = silence(total_s + 0.1, sr)
+    pip_dur = 0.050
+
+    def add_pip(freq: float, t0_s: float, amp: float):
+        i0 = int(round(t0_s * sr))
+        seg = tone(freq, pip_dur, sr, amp=amp)
         out[i0:i0 + seg.size] += seg[:max(0, out.size - i0)]
 
-    # background cloud: independent pips per channel
-    for f in freqs:
-        for k in range(n_slots):
-            if rng.random() < p:
-                t0 = k * grid + rng.uniform(-0.012, 0.012)
-                add_pip(f, max(0.0, t0), amp=0.18)
+    # 3. Build session loop
+    for r in range(n_reps):
+        # Fresh RNGs for this presentation's background
+        rng_pre = np.random.default_rng(base_seed + 1000 * (r + 1))
+        rng_figc = np.random.default_rng(base_seed + 1000 * (r + 1) + 1)
+        rng_post = np.random.default_rng(base_seed + 1000 * (r + 1) + 2)
 
-    # figure: a fixed subset firing on a SHARED (synchronous) onset list,
-    # only during the middle epoch
-    fig_ch = rng.choice(N, size=n_fig, replace=False)
-    k0, k1 = int(fig_start / grid), int(fig_end / grid)
-    for k in range(k0, k1):
-        if rng.random() < p:
-            t0 = k * grid + rng.uniform(-0.012, 0.012)
-            for ci in fig_ch:
-                add_pip(freqs[ci], max(fig_start, t0), amp=0.22)
+        offset_s = r * presentation_dur_s
+
+        # --- PRE EPOCH (0.5s to 5.5s) ---
+        pre_start = offset_s + 0.5
+        for ch in range(N):
+            for on_ms in _sfg_cloud_onsets(rng_pre, 5000):
+                add_pip(freqs[ch], pre_start + on_ms / 1000.0, amp=0.18)
+
+        # --- FIGURE EPOCH (5.5s to 10.5s) ---
+        fig_start = offset_s + 5.5
+        for ch in range(N):
+            if ch in fig_idx:
+                # Rate-matched: Figure channels ONLY play the synchronous chord
+                for on_ms in shared_fig_onsets:
+                    add_pip(freqs[ch], fig_start + on_ms / 1000.0, amp=0.22)
+            else:
+                # Ground channels play fresh independent cloud
+                for on_ms in _sfg_cloud_onsets(rng_figc, 5000):
+                    add_pip(freqs[ch], fig_start + on_ms / 1000.0, amp=0.18)
+
+        # --- POST EPOCH (10.5s to 15.5s) ---
+        post_start = offset_s + 10.5
+        for ch in range(N):
+            for on_ms in _sfg_cloud_onsets(rng_post, 5000):
+                add_pip(freqs[ch], post_start + on_ms / 1000.0, amp=0.18)
+
     return normalize(out)
 
 

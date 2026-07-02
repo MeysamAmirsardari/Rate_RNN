@@ -61,8 +61,8 @@ if str(_PROJECT_ROOT) not in sys.path:
 from model0 import A1Config, INH_PRESETS, simulate
 
 # ---- paradigm defaults --------------------------------------------------------
-N_CHANNELS    = 28
-FIG_IDX       = np.array([4, 9, 14, 19, 24])       # 5 figure channels, spaced
+N_CHANNELS    = 38
+FIG_IDX       = np.array([3, 7, 11, 15, 19, 23, 27, 31, 35])       # 5 figure channels, spaced
 PULSE_DUR     = 25e-3
 FIG_PERIOD    = 250e-3                             # coherent figure repeat period
 P_PER_CHANNEL = 28                                 # pulses per channel per trial

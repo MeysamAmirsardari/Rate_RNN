@@ -88,7 +88,7 @@ class LiveConfig:
     W_decay:   float = 5e-4         # passive forgetting toward 0
     W_norm:    float = 20.0         # rate normaliser; LOWER => faster learning
                                     # (convergence time ~ W_norm**2)
-    tau_trace: float = 0.030        # eligibility-trace window (s)
+    tau_trace: float = 0.050        # eligibility-trace window (s)
 
     # ---- display ----
     history_s: float = 4.0          # seconds of scrolling history shown

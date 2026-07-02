@@ -203,7 +203,7 @@ class A1Config:
     # observed in ECoG recordings of the local-global / roving task.
     # Reference: Mill, Coath, Wennekers, Denham (2011) PLoS Comp. Biol.
     # use exactly this multi-timescale STD as the SSA substrate.
-    multiscale_std: bool = False
+    multiscale_std: bool = True
     tau_std: tuple = (0.100, 0.800, 5.000)   # s -- three timescales
     w_std:   tuple = (0.10, 0.35, 0.55)      # relative weight per scale
     # U_std calibrated for a binary-stimulus driver (model0 drives the

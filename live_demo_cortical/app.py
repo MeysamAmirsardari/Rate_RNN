@@ -90,15 +90,22 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self._lead = np.zeros(N, dtype=np.float32)  # per-channel lead score
             self._D_vmax = 1e-4
             self._flow_scale = 1e-6
+            self._E = np.zeros((N, F), dtype=np.float32)  # E rate (shown in streams)
+            self._E_vmax = 1.0
         elif self.segregate:
             from .segregate import EventSegregator
             self.seg = EventSegregator(
                 N, cfg.dt, n_streams=cfg.n_streams, sig_tau=cfg.seg_tau,
                 merge_gap_s=cfg.seg_merge_gap_s, max_events=cfg.seg_max_events)
+            # segregation runs on the drive; the engine is only for showing the
+            # excitatory rate E in the stream panels (learn off = no W drift).
+            self.engine = LiveEngine(cfg.to_a1_config(), learn=False, seed=0)
             self._evlab = np.full(F, -1, dtype=np.int16)   # per-frame stream label
             self._segD = np.zeros((N, N), dtype=np.float32)  # last event's D
             self._D_vmax = 1e-4
             self._n_events = 0
+            self._E = np.zeros((N, F), dtype=np.float32)  # E rate (shown in streams)
+            self._E_vmax = 1.0
         else:
             self.pitch = PitchGram(self.fe.center_freqs(), n_pitch=cfg.n_pitch,
                                    fmin=cfg.pitch_fmin, fmax=cfg.pitch_fmax,
@@ -140,9 +147,8 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             sub = ("model activations E -> directed coincidence "
                    "D[i,j]=⟨E_i·tr_j⟩")
         elif self.segregate:
-            title = ("Unsupervised Stream Segregation")
-            sub = ("per-event directed-coincidence signatures -> centre -> "
-                   "PCA + k-means · balanced, gap-insensitive, any paradigm")
+            title = ("Stream Segregation")
+            sub = ("directed-coincidence")
         else:
             title = ("Stream Segregation; temporal coherence (nPCA of the "
                      "coincidence matrix)")
@@ -252,15 +258,13 @@ class LiveDemoApp(QtWidgets.QMainWindow):
 
         self.p_str1 = self.glw.addPlot(row=5, col=0)
         self.img_str1 = pg.ImageItem(); self.img_str1.setColorMap(spec_cmap)
-        self._heat(self.p_str1, self.img_str1, "Stream 2",
+        self._heat(self.p_str1, self.img_str1, "Stream 2  ·  E (forward)",
                    centers, cfg.n_channels, title_color=_FWD)
-        self.img_str1.setLevels(dbl)
 
         self.p_str2 = self.glw.addPlot(row=6, col=0)
         self.img_str2 = pg.ImageItem(); self.img_str2.setColorMap(spec_cmap)
-        self._heat(self.p_str2, self.img_str2, "Stream 1",
+        self._heat(self.p_str2, self.img_str2, "Stream 1  ·  E (reverse)",
                    centers, cfg.n_channels, title_color=_REV, xlabel="time (s)")
-        self.img_str2.setLevels(dbl)
 
         for p in (self.p_flow, self.p_str1, self.p_str2):
             p.setXLink(self.p_in)
@@ -290,14 +294,12 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         # Stream 1 / Stream 2 = the cochleagram masked by each event's cluster
         self.p_t1 = self.glw.addPlot(row=4, col=0)
         self.img_t1 = pg.ImageItem(); self.img_t1.setColorMap(spec_cmap)
-        self._heat(self.p_t1, self.img_t1, "Stream 1  (cluster A)", centers,
+        self._heat(self.p_t1, self.img_t1, "Stream 1  ·  E (cluster A)", centers,
                    cfg.n_channels, title_color=_S1)
-        self.img_t1.setLevels(dbl)
         self.p_t2 = self.glw.addPlot(row=5, col=0)
         self.img_t2 = pg.ImageItem(); self.img_t2.setColorMap(spec_cmap)
-        self._heat(self.p_t2, self.img_t2, "Stream 2  (cluster B)", centers,
+        self._heat(self.p_t2, self.img_t2, "Stream 2  ·  E (cluster B)", centers,
                    cfg.n_channels, title_color=_S2, xlabel="time (s)")
-        self.img_t2.setLevels(dbl)
         # event tape: per-frame cluster colour, aligned with the streams
         self.p_tape = self.glw.addPlot(row=6, col=0)
         self.p_tape.setTitle("events (auto-clustered)", color=_FG, size="11pt",
@@ -449,9 +451,12 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self._push_cols(self._in_db, db.astype(np.float32))
             if self.directional:
                 out = self.engine.step_block(drive)
+                self._push_cols(self._E, out["E"].astype(np.float32))
                 self._update_directed(out["E"], out["tr"])
             elif self.segregate:
-                self.seg.push(drive.astype(np.float64))
+                out = self.engine.step_block(drive)          # E for the stream panels
+                self._push_cols(self._E, out["E"].astype(np.float32))
+                self.seg.push(drive.astype(np.float64))      # segregation runs on the drive
             else:
                 self._push_cols(self._drive, drive.astype(np.float32))
                 self._push_cols(self._pitch,
@@ -603,11 +608,15 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         sc = self._flow_scale + 1e-9
         gp = np.clip(self._fwd / sc, 0.0, 1.0)        # forward / consistent gate
         gn = np.clip(self._rev / sc, 0.0, 1.0)        # reverse / violation gate
-        floor = -cfg.top_db
-        ab = self._in_db * gp[None, :] + floor * (1.0 - gp[None, :])
-        ba = self._in_db * gn[None, :] + floor * (1.0 - gn[None, :])
-        self.img_str1.setImage(ab.astype(np.float32), autoLevels=False, levels=dbl)
-        self.img_str2.setImage(ba.astype(np.float32), autoLevels=False, levels=dbl)
+        # streams show the model's excitatory (E) rate, gated by each direction's
+        # flow -- not the raw input.
+        self._E_vmax = max(0.85 * self._E_vmax
+                           + 0.15 * float(np.percentile(self._E, 99.0)), 0.05)
+        el = (0.0, self._E_vmax)
+        ab = self._E * gp[None, :]
+        ba = self._E * gn[None, :]
+        self.img_str1.setImage(ab.astype(np.float32), autoLevels=False, levels=el)
+        self.img_str2.setImage(ba.astype(np.float32), autoLevels=False, levels=el)
         # directed connection map (asymmetric)
         Dz = self._D.copy(); np.fill_diagonal(Dz, 0.0)
         self.img_C.setImage(Dz.astype(np.float32), autoLevels=False,
@@ -625,7 +634,6 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         cfg = self.cfg
         N, F = cfg.n_channels, self._F
         dbl = (-cfg.top_db, 0.0)
-        floor = -cfg.top_db
         self.img_in.setImage(self._in_db, autoLevels=False, levels=dbl)
         # re-cluster only when a new event has completed (cheap, label-stable)
         if len(self.seg.sigs) != self._n_events and len(self.seg.sigs) >= 2:
@@ -641,11 +649,15 @@ class LiveDemoApp(QtWidgets.QMainWindow):
                 if c1 > c0:
                     self._evlab[c0:c1] = lab
             self._segD = self.seg.sigs[-1].reshape(N, N)
-        # streams = cochleagram gated by each event's cluster
-        t1 = np.where(self._evlab[None, :] == 0, self._in_db, floor)
-        t2 = np.where(self._evlab[None, :] == 1, self._in_db, floor)
-        self.img_t1.setImage(t1.astype(np.float32), autoLevels=False, levels=dbl)
-        self.img_t2.setImage(t2.astype(np.float32), autoLevels=False, levels=dbl)
+        # streams = the model's excitatory (E) rate gated by each event's cluster
+        # (not the raw cochleagram); segregation itself still runs on the drive.
+        self._E_vmax = max(0.85 * self._E_vmax
+                           + 0.15 * float(np.percentile(self._E, 99.0)), 0.05)
+        el = (0.0, self._E_vmax)
+        t1 = np.where(self._evlab[None, :] == 0, self._E, 0.0)
+        t2 = np.where(self._evlab[None, :] == 1, self._E, 0.0)
+        self.img_t1.setImage(t1.astype(np.float32), autoLevels=False, levels=el)
+        self.img_t2.setImage(t2.astype(np.float32), autoLevels=False, levels=el)
         self.img_tape.setImage(self._tape_rgb()); self.img_tape.setRect(self._tape_rect)
         # last-event directed coincidence
         Dz = self._segD.copy(); np.fill_diagonal(Dz, 0.0)
@@ -775,12 +787,17 @@ class LiveDemoApp(QtWidgets.QMainWindow):
             self._lead[:] = 0.0
             self._D_vmax = 1e-4
             self._flow_scale = 1e-6
+            self._E[:] = 0.0
+            self._E_vmax = 1.0
         elif self.segregate:
+            self.engine = LiveEngine(self.cfg.to_a1_config(), learn=False, seed=0)
             self.seg.reset()
             self._evlab[:] = -1
             self._segD[:] = 0.0
             self._D_vmax = 1e-4
             self._n_events = 0
+            self._E[:] = 0.0
+            self._E_vmax = 1.0
         else:
             self.sep.reset()
             self._drive[:] = 0.0

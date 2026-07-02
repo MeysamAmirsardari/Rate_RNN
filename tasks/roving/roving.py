@@ -362,17 +362,17 @@ def plot_repetition_suppression(res: dict, fname: str):
                     label=f"rep {n_reps} (n={len(last_pop)})")
         ax_top.legend(fontsize=8, frameon=False, loc="upper right")
         _setup_axes(ax_top,
-                    title=f"word {w}  (population E across {''.join(w)})",
-                    ylabel="summed E rate")
+                    title=f"word {w}  (E during {''.join(w)})",
+                    ylabel="sum E rate")
 
         # ----- Row 2: surprisal = rep 1 - rep N -----
         surp = first_mean - last_mean
         ax_bot.axhline(0, color="0.7", lw=0.8)
         ax_bot.plot(ts, surp, color=col_word, lw=2.0)
         ax_bot.fill_between(ts, 0, surp, color=col_word, alpha=0.15)
-        _setup_axes(ax_bot, title="surprisal  (rep 1 - rep N)",
+        _setup_axes(ax_bot, title="surprisal  (rep 1 - rep 15)",
                     xlabel="time from sequence onset (s)",
-                    ylabel=r"$\Delta$E rate")
+                    ylabel=r"delta E rate")
 
     fig.savefig(fname, dpi=150)
     print(f"  saved {fname}")

@@ -100,7 +100,7 @@ class RovingConfig:
 
     # ---- Protocol ----
     n_tones_per_seq: int = 3
-    deviant_tone_pos: int = 3
+    deviant_tone_pos: int = 1
     words_override: Optional[Tuple[str, ...]] = None
     n_blocks_per_word: int = 10        # 3 words * 10 = 30 blocks
     n_reps_per_block: int = 15         # 30 blocks * 15 = 450 trials

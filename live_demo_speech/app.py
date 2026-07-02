@@ -95,7 +95,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
     def _build_ui(self):
         cfg = self.cfg
         pg.setConfigOptions(antialias=True, imageAxisOrder="row-major")
-        self.setWindowTitle("Speech segregation (live)")
+        self.setWindowTitle("Speech segregation")
         self.resize(1360, 900)
         self.setStyleSheet(f"background-color:{_BG};")
         self.glw = pg.GraphicsLayoutWidget()
@@ -108,11 +108,10 @@ class LiveDemoApp(QtWidgets.QMainWindow):
                                         self._nlags)
 
         self.title = self.glw.addLabel(
-            "Speech Stream Segregation — pitch / periodicity (concurrent voices)",
+            "Stream Segregation",
             row=0, col=0, colspan=4, color=_FG, size="19pt", bold=True)
         self.subtitle = self.glw.addLabel(
-            "cochlea → per-channel autocorrelation → two F0 tracks → route each "
-            "channel to its fundamental · real time",
+            "real time",
             row=1, col=0, colspan=4, color=_MUTED, size="10pt")
         self.stats = self.glw.addLabel("", row=2, col=0, colspan=4, color=_FG,
                                        size="10.5pt")
@@ -126,7 +125,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.p_in = self.glw.addPlot(row=3, col=0)
         self.img_in = pg.ImageItem(); self.img_in.setColorMap(spec_cmap)
         self._heat(self.p_in, self.img_in,
-                   "Input cochleagram  (two-talker mixture)", centers,
+                   "Input cochleagram", centers,
                    cfg.n_channels)
         self.img_in.setLevels(dbl)
         self._add_cbar(self.img_in, dbl, spec_cmap, "dB", row=3)
@@ -134,7 +133,7 @@ class LiveDemoApp(QtWidgets.QMainWindow):
         self.p_pitch = self.glw.addPlot(row=4, col=0)
         self.img_pitch = pg.ImageItem(); self.img_pitch.setColorMap(pitch_cmap)
         self._heat(self.p_pitch, self.img_pitch,
-                   "Pitch  (summary autocorrelation: two F0 tracks)",
+                   "Pitch: two F0 tracks)",
                    self._f0_axis, self._nlags, left="F0")
         self.bar_pitch = self._add_cbar(self.img_pitch, (0.0, self._sacf_vmax),
                                         pitch_cmap, "salience", row=4)

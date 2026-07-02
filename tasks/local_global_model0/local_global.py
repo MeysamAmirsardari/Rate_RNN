@@ -283,7 +283,7 @@ def plot_run(res: dict, suptitle: str, fname: str):
                 label=f"deviant {dev_type} (n={len(dev_E)})")
     ax.set_xlim(0, xmax)
     ax.legend(fontsize=8, frameon=False, loc="upper right")
-    _setup_axes(ax, title="Activity — all-channel mean firing rate",
+    _setup_axes(ax, title="Activity -- all-channel mean firing rate",
                 xlabel="time in sequence (s)", ylabel=r"$\langle E\rangle$")
 
     # right: per-channel E for the standard
@@ -295,7 +295,7 @@ def plot_run(res: dict, suptitle: str, fname: str):
         ax.plot(ts, m[ch_y], color="tab:blue", lw=2, label="$E_y$")
     ax.set_xlim(0, xmax)
     ax.legend(fontsize=8, frameon=False, loc="upper right")
-    _setup_axes(ax, title=f"Activity — per channel, standard ({std_type})",
+    _setup_axes(ax, title=f"Activity -- per channel, standard ({std_type})",
                 xlabel="time in sequence (s)", ylabel="rate")
 
     # ---- row 3: weight evolution + final W ----
@@ -352,7 +352,7 @@ def plot_comparisons(comparisons: List[dict], cfg: A1Config, fname: str):
                    and cfg.w_IE_self == cfg.w_IE_lat)
                else "selective inhibition")
     fig.suptitle(
-        f"Local-Global paradigm — model0 [{inh_tag}]\n"
+        f"Local-Global paradigm -- model0 [{inh_tag}]\n"
         "purple band = 5th (critical) tone; effect measured over its "
         "150 ms response window",
         fontsize=12, fontweight="bold")
@@ -406,7 +406,7 @@ def plot_comparisons(comparisons: List[dict], cfg: A1Config, fname: str):
                     xytext=(0, 4 if v >= 0 else -13),
                     textcoords="offset points", ha="center",
                     fontsize=10, fontweight="bold")
-    _setup_axes(ax, title="Effect size — mean Δ⟨E⟩ over the 5th-tone "
+    _setup_axes(ax, title="Effect size -- mean Δ⟨E⟩ over the 5th-tone "
                           "response window",
                 ylabel=r"$\Delta\langle E\rangle$")
 
@@ -445,11 +445,11 @@ def main():
 
         print("[ Plotting ]")
         plot_run(res1,
-                 f"Run 1 — standard xxxxy / deviant xxxxx — local-global "
+                 f"Run 1 -- standard xxxxy / deviant xxxxx -- local-global "
                  f"[{inh_name} inhibition]",
                  f"lg_m0_run1_{inh_name}.png")
         plot_run(res2,
-                 f"Run 2 — standard xxxxx / deviant xxxxy — local-global "
+                 f"Run 2 -- standard xxxxx / deviant xxxxy -- local-global "
                  f"[{inh_name} inhibition]",
                  f"lg_m0_run2_{inh_name}.png")
 
