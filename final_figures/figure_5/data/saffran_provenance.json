@@ -1,0 +1,117 @@
+{
+  "figure": "Figure 5 - Saffran statistical learning and composition",
+  "generated_utc": "2026-07-31T23:51:44.571792+00:00",
+  "outputs": {
+    "saffran_figure5_data.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/data/saffran_figure5_data.npz",
+      "sha256": "2a8b1a5ec651f6dc257bade0b0bf53c49e4f3ca61a1fe5a9e5034bd541dad44e"
+    },
+    "saffran_figure5_runs.csv": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/data/saffran_figure5_runs.csv",
+      "sha256": "83fb4a7a33cfccf3b53e5442bd38f6205b50164e1dbbceb71f0ca73d04423ab7"
+    }
+  },
+  "protocol_note": "single_rate and multi_rate share eta, lam, gate_frac, w_init, commit_frac and n_units; they differ only in the number of timescales in the trace bank (1 versus 6).",
+  "replication_unit": "Exposure order seed. Layer 2 masks start from the same small random values in every seed, so these are independent exposure sessions rather than independent networks.",
+  "settings": {
+    "conditions": [
+      [
+        "full",
+        "structured"
+      ],
+      [
+        "frozen",
+        "structured"
+      ],
+      [
+        "raw",
+        "structured"
+      ],
+      [
+        "full",
+        "scrambled"
+      ]
+    ],
+    "gap_s": 0.03,
+    "layer1": {
+      "W_norm": 4.0,
+      "w_EI_self": 0.4,
+      "w_IE_self": 3.0
+    },
+    "mask_floor": 0.02,
+    "multi_rate_config": {
+      "commit_frac": 0.2,
+      "eta": 0.005,
+      "gate_frac": 0.15,
+      "lam": 0.0001,
+      "n_units": 24,
+      "rates": [
+        0.03,
+        0.0527,
+        0.0924,
+        0.1623,
+        0.2848,
+        0.5
+      ],
+      "seed": 0,
+      "w_init": 0.05
+    },
+    "n_channels": 14,
+    "n_seeds": 8,
+    "n_test_reps": 8,
+    "n_train_words": 500,
+    "n_units": 24,
+    "readouts": [
+      "single_rate",
+      "multi_rate"
+    ],
+    "single_rate_config": {
+      "commit_frac": 0.2,
+      "eta": 0.005,
+      "gate_frac": 0.15,
+      "lam": 0.0001,
+      "n_units": 24,
+      "no_self_pairs": true,
+      "rho": 0.0,
+      "seed": 0,
+      "tau_decay": 0.15,
+      "tau_rise": 0.04,
+      "w_init": 0.05
+    },
+    "tone_dur_s": 0.05,
+    "word_lengths": [
+      3,
+      4
+    ],
+    "words": [
+      [
+        0,
+        1,
+        2
+      ],
+      [
+        3,
+        4,
+        5
+      ],
+      [
+        6,
+        7,
+        8,
+        9
+      ],
+      [
+        10,
+        11,
+        12,
+        13
+      ]
+    ]
+  },
+  "settings_hash": "09c082c71fdeb9bc",
+  "software": {
+    "numpy": "2.3.5",
+    "python": "3.13.9"
+  },
+  "test_note": "Layer 1 is re-run on the isolated test stream in the same mode used for exposure, matching the committed protocol in layer2_multirate.run_saffran."
+}

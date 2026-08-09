@@ -1,0 +1,10 @@
+{
+  "condition": [
+    "selective",
+    "plastic"
+  ],
+  "exemplar_hash": "625475e1019eeb35",
+  "exemplar_version": 2,
+  "figure_size": 10,
+  "generated_utc": "2026-08-09T04:14:35.367971+00:00"
+}

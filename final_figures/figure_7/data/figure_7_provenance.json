@@ -1,0 +1,35 @@
+{
+  "claim": "A coordinated set of mechanisms supports distinct computations within one frozen core, while the present circuit lacks a spectral-distance axis.",
+  "data_provenance": {
+    "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_7/data/figure_7_data_provenance.json",
+    "sha256": "40f96a8d13eb27f000a57356d66de9c0928fecd44cae3dbed8f4dc0986df59ef"
+  },
+  "figure": "Figure 7 - frozen-core causal synthesis",
+  "final_size_mm": [
+    183,
+    245
+  ],
+  "generated_utc": "2026-08-01T06:12:59.892025+00:00",
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_7/make_figure_7.py",
+  "generator_sha256": "dc3819b28bee724dc2c7860d7d10d7fb6a15703f8e57b3f8f58870cf03c033c7",
+  "layout_checks": {
+    "fixed_bounds": true,
+    "minimum_nominal_font_pt": 5.5,
+    "pdf_fonttype": 42,
+    "png_dpi": 600
+  },
+  "outputs": {
+    "pdf": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_7/outputs/figure_7_causal_synthesis.pdf",
+      "sha256": "34650a011623b734cf324d975601732790bfc129e7cb6416388734b6eec8c607"
+    },
+    "png": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_7/outputs/figure_7_causal_synthesis.png",
+      "sha256": "3e24081f7f5045d7f8deee9c6f06442881409daf03e4f9efd2b52d6d75bcbbd8"
+    },
+    "svg": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_7/outputs/figure_7_causal_synthesis.svg",
+      "sha256": "5aa316017bc181af03001a60e10f84c4122be00ae28d767d57cd23c7b6ec3bc8"
+    }
+  }
+}

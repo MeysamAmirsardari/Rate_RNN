@@ -1,0 +1,158 @@
+{
+  "aba_interpretation": "The sweep is a model falsification, not a perceptual result. With one-hot inputs and distance-independent connectivity, all nonzero channel separations are permutation-equivalent.",
+  "figure": "Figure 7 - frozen-core causal synthesis",
+  "generated_utc": "2026-08-01T06:11:33.943543+00:00",
+  "inference": {
+    "change": "two-sided exact paired max-T sign-flip test, corrected within each prespecified task family",
+    "cross_task_inference": false,
+    "equivalence": "paired TOST within retention 1 +/- 0.20, Holm-corrected within task",
+    "uncertainty": "20,000 paired bootstrap resamples of ratio of condition mean to intact mean"
+  },
+  "output": {
+    "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_7/data/figure_7_frozen_core_data.npz",
+    "sha256": "259acf09d7b0f3fc24fa46d5353a7a5b73c009abf0f24fcde22b9289bdff2af9"
+  },
+  "replication_units": {
+    "ab_ba": "paired training/test order seed; identical balanced test stream across probability contexts and lesions",
+    "roving": "paired constrained block-order session seed; positions averaged within seed",
+    "saffran": "paired exposure-order and downstream-initialization seed",
+    "sfg": "paired cloud/onset session seed; fixed ten figure channels"
+  },
+  "self_test": {
+    "max_abs_E": 8.881784197001252e-16,
+    "max_abs_W": 6.938893903907228e-18,
+    "passed": true
+  },
+  "settings": {
+    "ab_target_window_ms": [
+      80,
+      130
+    ],
+    "ab_test_trials": 120,
+    "ab_train_trials": 400,
+    "aba_cycles": 80,
+    "aba_rates_hz": [
+      4.0,
+      5.0,
+      6.25,
+      7.5,
+      8.75,
+      10.0,
+      11.25,
+      12.5
+    ],
+    "aba_separations_channels": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "aba_tone_ms": 50,
+    "bootstrap_draws": 20000,
+    "conditions": [
+      "intact",
+      "no_depression",
+      "no_recurrent_learning",
+      "uniform_inhibition",
+      "single_rate_readout"
+    ],
+    "equivalence_bound_retention": 0.2,
+    "frozen_core_excluding_input_dimension": {
+      "A_TC": 35.0,
+      "U": 0.5,
+      "U_std": 0.001,
+      "W_decay": 0.0005,
+      "W_init_scale": 0.0,
+      "W_max": 0.25,
+      "W_max_self": 0.25,
+      "W_norm": 4.0,
+      "bounded_plasticity": true,
+      "dt": 0.001,
+      "eta_LTD": 0.1,
+      "eta_LTP": 0.8,
+      "eta_het": 0.0,
+      "multiscale_std": true,
+      "plastic_self": true,
+      "stp_enabled": true,
+      "tau_D": 0.3,
+      "tau_E": 0.02,
+      "tau_F": 0.1,
+      "tau_I": 0.08,
+      "tau_std": [
+        0.1,
+        0.8,
+        5.0
+      ],
+      "tau_trace": 0.03,
+      "w_EI_lat": 0.05,
+      "w_EI_self": 0.4,
+      "w_IE_lat": 0.2,
+      "w_IE_self": 3.0,
+      "w_std": [
+        0.1,
+        0.35,
+        0.55
+      ]
+    },
+    "generic_seeds": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11
+    ],
+    "n_seeds": 12,
+    "roving_seeds": [
+      11,
+      23,
+      37,
+      41,
+      53,
+      67,
+      79,
+      97,
+      101,
+      109,
+      127,
+      139
+    ],
+    "schema_version": 1,
+    "sfg_figure_size": 10,
+    "sfg_repetitions": 30,
+    "tasks": [
+      "roving",
+      "ab_ba",
+      "sfg",
+      "saffran"
+    ]
+  },
+  "settings_hash": "fabaf1c30a7cd2fe28cf",
+  "software": {
+    "numpy": "2.3.5",
+    "python": "3.13.9",
+    "scipy": "1.16.3"
+  },
+  "source_hashes": {
+    "final_figures/figure_2/model_data.py": "7eef3efd9840b042e2e56f4fae6501264e97cd32166f515f0bf770170da07348",
+    "final_figures/figure_5/saffran_data.py": "6f97d97bc02fca2dde20dae703a128a2413a8368019aa305cca113d434506533",
+    "final_figures/figure_7/figure7_data.py": "8231ed62966832a687febce019e04bc898fe8a03109e77c37efe7b886bd3a40d",
+    "layer2_multirate/layer2.py": "9cf88d3f3370089eea55fd7ac91a8bfee60d3c3cef17f091afbbbcbb8b5830ad",
+    "layer2_syllable/layer2.py": "7523c8444550dca1e9df13891757271a9dbf65eb4a2932842851a29d86ddecbc",
+    "model0/config.py": "2e91dbdacb93bb7cabe55d5e197bf3c5ca84baa6ffa6fa790ed330e59d8433db",
+    "model0/model.py": "05512636cfe7acf02b0cbc9edb2d53f7b9f8f642aa9b451689edf8f9b264d628",
+    "tasks/ab_ba_model0/ab_ba.py": "d3e8fd714c1a14311fda86299233f9e5bc5fce1b98e30b426ce57bc6b0884d6a",
+    "tasks/roving/roving.py": "7826e83ae11df64df6f192f2b07663ad4efe1c9f64ad1b5a6507124ff81f954c",
+    "tasks/sfg2/stimulus.py": "ef21583f6f417ec1c7b1cec1ab5e01a45087900111964614236b429698431919"
+  }
+}

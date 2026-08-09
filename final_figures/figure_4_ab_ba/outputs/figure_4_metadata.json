@@ -1,0 +1,80 @@
+{
+  "figure": "Figure 4",
+  "title": "Probability-reversal sequence oddball",
+  "displayed_panels": [
+    "A",
+    "B",
+    "C",
+    "D",
+    "E",
+    "F"
+  ],
+  "configuration": {
+    "ab_ba_overrides": {
+      "w_IE_self": 3.0,
+      "w_EI_self": 1.0,
+      "tau_I": 0.25,
+      "W_norm": 4.0
+    },
+    "p_regular": 0.85,
+    "p_rare": 0.15000000000000002,
+    "timing_long_seconds": {
+      "tone_dur": 0.18,
+      "intra_gap": 0.0,
+      "inter_gap": 1.5
+    },
+    "timing_short_seconds": {
+      "tone_dur": 0.05,
+      "intra_gap": 0.1,
+      "inter_gap": 1.5
+    },
+    "tone_duration_ms": 50,
+    "target_onset_ms": 80,
+    "inter_sequence_gap_ms": 1500
+  },
+  "ecog": {
+    "experiment": "Experiment 1 only: continuous 180-ms tones, zero intra-pair gap",
+    "comparisons": [
+      "exp1_day1_deviant",
+      "exp1_day2_deviant"
+    ],
+    "status": "raw Open Ephys reanalysis with recovered Baphy playback labels",
+    "planned_probability_each_run": {
+      "regular": 0.85,
+      "rare": 0.15
+    },
+    "data_contract": "six allM2 metadata tags precede neural samples; tags are never treated as time",
+    "panel_b": "odd acquisition blocks select one contact per physical sequence; even blocks estimate mean and SEM; exact two-sided block-label cluster mass controls FWER jointly over AB, BA and 0-600 ms",
+    "display_smoothing": "symmetric zero-phase Gaussian sigma 2 ms, display only; inference uses unsmoothed held-out block means",
+    "scope": "two recordings from one animal provisionally treated as one session at the experimenter's instruction; inference remains conditional on that assumption and does not support animal-population claims"
+  },
+  "model": {
+    "replication_unit": "paired simulation seed; n=12",
+    "uncertainty": "mean +/- SEM for time courses; 95% t intervals for scalar estimates",
+    "time_inference": "exact paired sign flips; cluster mass; family-wise correction jointly over physical sequence identities and the full 0-600-ms clock",
+    "scalar_inference": "exact paired sign flips with max-|t| correction within each planned family",
+    "leakage_guard": "separate context training; identical balanced held-out streams; plasticity off at test; trials averaged within seed before inference"
+  },
+  "data_files": {
+    "ecog_panel": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/data/ecog_exp1_legacy_panel_data.csv.gz",
+    "ecog_channel_erp": "/Users/eminent/Projects/Rate_RNN_py/ECoG/ab_ba/results/ab_ba_channel_erp/ab_ba_channel_erp.npz",
+    "ecog_channel_erp_provenance": "/Users/eminent/Projects/Rate_RNN_py/ECoG/ab_ba/results/ab_ba_channel_erp/provenance.json",
+    "model_npz": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/data/model_figure4_ab_ba.npz",
+    "model_provenance": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/data/model_figure4_provenance.json",
+    "model_inference": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/data/figure_4_inference.csv"
+  },
+  "outputs": {
+    "pdf": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.pdf",
+      "sha256": "b9a7bc323f50646ee091e5500a6677eb8f3d660b090e916b1d51bc65afbce9b8"
+    },
+    "svg": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.svg",
+      "sha256": "984a8d935b181cf69df77ac791abbcbcb81ac30a71aa07db55d09e57f616f4d8"
+    },
+    "png": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.png",
+      "sha256": "2febca950469b226d40e386687bc6db7869522f0377a1d6d9dc16597828e622e"
+    }
+  }
+}

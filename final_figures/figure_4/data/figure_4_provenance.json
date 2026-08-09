@@ -1,0 +1,25 @@
+{
+  "drive_check_csv": "data/figure_4_drive_check.csv",
+  "figure": "Figure 4 - stochastic figure-ground",
+  "inference": {
+    "csv": "data/figure_4_inference.csv",
+    "npz": "data/figure_4_inference.npz",
+    "provenance": "data/figure_4_inference_provenance.json"
+  },
+  "outputs": {
+    "pdf": {
+      "path": "outputs/figure_4_sfg.pdf",
+      "sha256": "93fdcf67b23e8def661f050f8a398bd943956ddcb93a01a8bea7f003d43c5d12"
+    },
+    "png": {
+      "path": "outputs/figure_4_sfg.png",
+      "sha256": "246fbca9361a4d63dba5d6442b52e6063ccef30d589991e140509b9a5d993124"
+    },
+    "svg": {
+      "path": "outputs/figure_4_sfg.svg",
+      "sha256": "3d97833280169e55ee92e2d4eff572f5e448372502aaeef7a76597052ca7e5ff"
+    }
+  },
+  "physiology_reference": "Lu, Dutta, Mohammed, Elhilali & Shamma (2025) iScience 28:111991. Cited, not reproduced: every panel here is model output.",
+  "summary_csv": "data/figure_4_summary.csv"
+}

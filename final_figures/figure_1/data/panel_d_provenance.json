@@ -1,0 +1,84 @@
+{
+  "figure": "Figure 1 panel D - measured reading key",
+  "generated_utc": "2026-08-03T22:32:26.578320+00:00",
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/panel_d_data.py",
+  "generator_sha256": "9c1be5029d5b1eb274ce1703d319949f395138d1fff5be034f2099c145b8a293",
+  "measured": {
+    "W_AB": 0.0,
+    "W_BA": 0.211734444163774,
+    "excitation_at_tone_b_onset": 0.0,
+    "excitation_off_ms": 70.0,
+    "inhibition_at_tone_b_onset": 1.3281736988126949,
+    "inhibition_peak": 5.537585126990469,
+    "tau_E_config_ms": 20.0,
+    "tau_E_measured_ms": 22.0,
+    "tau_I_config_ms": 80.0,
+    "tau_I_measured_ms": 86.0
+  },
+  "npz_sha256": "c5a3c65079df6a483aac1b2927b57fe4f54e14f58b276a27bac32226721f7651",
+  "paradigm_source": "tasks/ab_ba_model0/ab_ba.py - 400 sequences, 90% AB / 10% BA in shuffled order, 50 ms tones, 30 ms intra-sequence gap, 500 ms inter-sequence gap, two delta-tuned channels.",
+  "reduction": "Mean over the 174 AB sequences in the second half of the run, by which point W[B<-A] has converged. No smoothing, rescaling or idealisation is applied to any trace.",
+  "settings": {
+    "baseline_fraction": 0.01,
+    "ch_A": 0,
+    "ch_B": 1,
+    "config": {
+      "A_TC": 35.0,
+      "N": 2,
+      "U": 0.5,
+      "U_std": 0.001,
+      "W_decay": 0.0005,
+      "W_init_scale": 0.0,
+      "W_max": 0.25,
+      "W_max_self": 0.25,
+      "W_norm": 4.0,
+      "bounded_plasticity": true,
+      "dt": 0.001,
+      "eta_LTD": 0.1,
+      "eta_LTP": 0.8,
+      "eta_het": 0.0,
+      "multiscale_std": true,
+      "plastic_self": true,
+      "stp_enabled": true,
+      "tau_D": 0.3,
+      "tau_E": 0.02,
+      "tau_F": 0.1,
+      "tau_I": 0.08,
+      "tau_std": [
+        0.1,
+        0.8,
+        5.0
+      ],
+      "tau_trace": 0.03,
+      "w_EI_lat": 0.05,
+      "w_EI_self": 0.4,
+      "w_IE_lat": 0.2,
+      "w_IE_self": 3.0,
+      "w_std": [
+        0.1,
+        0.35,
+        0.55
+      ]
+    },
+    "config_overrides": {
+      "W_norm": 4.0,
+      "w_EI_self": 0.4,
+      "w_IE_self": 3.0
+    },
+    "data_version": "figure1-panelD-1",
+    "inter_gap_s": 0.5,
+    "intra_gap_s": 0.03,
+    "n_trials": 400,
+    "p_AB": 0.9,
+    "paradigm": "ab_ba_model0",
+    "seed": 1,
+    "tone_dur_s": 0.05,
+    "window_ms": 340.0
+  },
+  "settings_hash": "9a7258de584e0194",
+  "software": {
+    "numpy": "2.4.6",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.0"
+  }
+}

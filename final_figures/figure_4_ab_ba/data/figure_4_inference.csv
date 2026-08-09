@@ -1,0 +1,10 @@
+family,contrast,p_fwer,method
+condition_effect_vs_zero,intact,0.00048828125,exact paired sign flips; max-|t| over four conditions
+condition_effect_vs_zero,no_depression,0.00048828125,exact paired sign flips; max-|t| over four conditions
+condition_effect_vs_zero,no_recurrent_learning,1.0,exact paired sign flips; max-|t| over four conditions
+condition_effect_vs_zero,uniform_inhibition,0.00048828125,exact paired sign flips; max-|t| over four conditions
+lesion_vs_intact,no_depression,0.00048828125,exact paired sign flips; max-|t| over three planned lesions
+lesion_vs_intact,no_recurrent_learning,0.00048828125,exact paired sign flips; max-|t| over three planned lesions
+lesion_vs_intact,uniform_inhibition,0.00048828125,exact paired sign flips; max-|t| over three planned lesions
+directional_weight_alignment,AB_context,0.00048828125,exact paired sign flips; max-|t| over two contexts
+directional_weight_alignment,BA_context,0.00048828125,exact paired sign flips; max-|t| over two contexts

@@ -1,0 +1,34 @@
+{
+  "asset": "Figure 1 standalone Layer-2 introduction panel",
+  "status": "schematic; equations reproduce Layer2MR exactly",
+  "final_size_mm": [
+    183.0,
+    76.0
+  ],
+  "algorithm": {
+    "input": "E only; Layer 1 is read-only",
+    "trace": "s += dt * (-s + E[:, None]) / tau[None, :]",
+    "coincidence": "D = outer(E, s_flat); same-channel pairs zero",
+    "readout": "y = relu(M_flat @ D_flat)",
+    "learning": "drive gate; normalize D; cosine best-match competition; winner instar update clipped non-negative; all-mask decay"
+  },
+  "sources": {
+    "final_figures/figure_1/make_layer2_panel.py": "ea7a444781c1e26e814c43a064914c7909acece00eaf299a769c8d5752666931",
+    "layer2_multirate/layer2.py": "9cf88d3f3370089eea55fd7ac91a8bfee60d3c3cef17f091afbbbcbb8b5830ad",
+    "layer2_multirate/config.py": "06e9b1c7581a1736949e1291de59c689fdad7b2da792d721b205b18b5dba9e60"
+  },
+  "outputs": {
+    "pdf": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/outputs/figure_1_layer2_panel.pdf",
+      "sha256": "b5c5a30fdac0a49fbcfd6eb2670393812b23467c36b3a170748d92a5ca2c78c2"
+    },
+    "svg": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/outputs/figure_1_layer2_panel.svg",
+      "sha256": "78726423ab16f6dc6a28c3254f60671ff6b7d910bcfff8e60d49cd37a89142c1"
+    },
+    "png": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/outputs/figure_1_layer2_panel.png",
+      "sha256": "9e6e75f627a6b836e95e46125d0f9b3fc8f4470abbd3d36a8cb4401cca350767"
+    }
+  }
+}

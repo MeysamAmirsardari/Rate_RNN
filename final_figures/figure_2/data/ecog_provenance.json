@@ -1,0 +1,88 @@
+{
+  "scope": "descriptive recordings from one animal; no biological population confidence interval or significance inference",
+  "animal": "Zaatar",
+  "endpoint_repetitions": [
+    1,
+    15
+  ],
+  "response_measure": "global field power: population standard deviation across 32 baseline-SD-normalized channel ERPs",
+  "spatial_measure": "absolute Haufe activation pattern from a discovery-half ridge logistic fit, averaged over the prespecified 0-180 ms window and normalized within recording; the complementary blocks are reserved for channel-level ERP estimation and inference",
+  "recordings": {
+    "zaatar_pos1": {
+      "deviant_position": 1,
+      "recording": "2024-11-22_12-08-48_SRH1",
+      "source_data_file": "/Users/eminent/Projects/ECoG/Zaatar_2024-11-22_12-08-48_SRH1.mat",
+      "source_data_sha256": "d367974a3179e5c080af43441c073e93f10ed6ff733103e2110b9d016bce486d",
+      "map_arrays": "/Users/eminent/Projects/Rate_RNN_py/ECoG/roving/results/zaatar_pos1/regression_rep_map/leakage-safe/regression_rep_map_arrays.npz",
+      "map_arrays_sha256": "8a925200d80c1872897d3180fc0ea44fdc0aa59b9014345cb1757a027fe632d6",
+      "map_method": {
+        "source": "SVM_rep_map.m",
+        "preserved": "Gen_M2Mat cutting=1, samples 101:901, all six valid transitions, repetitions 1:15, rng seed 42, anchor standardization formula, ridge lambda, five folds, and Gaussian map smoothing",
+        "requested_update": "fitclinear Learner='svm' replaced by fitclinear Learner='logistic' equivalent",
+        "posterior": "class-1 logistic probability: P(Rep 1-like | ECoG)"
+      },
+      "fold_strategy": "fixed 5-fold cross-validation grouped by roving block and stratified over the six context/current transitions",
+      "standardization_scope": "training blocks only, separately in every fold",
+      "n_blocks": 125,
+      "erp_contact_selection": {
+        "rule": "maximum of the displayed discovery-half absolute Haufe activation pattern",
+        "selected_channel_matlab": 27,
+        "n_discovery_blocks": 65,
+        "n_inference_blocks": 60,
+        "split": "alternating intact blocks within every ordered previous/current stimulus stratum; inference blocks are never used to select the contact"
+      }
+    },
+    "zaatar_pos2": {
+      "deviant_position": 2,
+      "recording": "2024-11-26_13-17-55_SRH",
+      "source_data_file": "/Users/eminent/Projects/ECoG/Zaatar_2024-11-26_13-17-55_SRH.mat",
+      "source_data_sha256": "609227c16b3843bad873708a61ae1e5039f5452d4f514f29931d7989c3c52cd5",
+      "map_arrays": "/Users/eminent/Projects/Rate_RNN_py/ECoG/roving/results/zaatar_pos2/regression_rep_map/leakage-safe/regression_rep_map_arrays.npz",
+      "map_arrays_sha256": "bbe1eb91da84686ee31720d6a254142948f076e9633c3029c058bd9eff46b750",
+      "map_method": {
+        "source": "SVM_rep_map.m",
+        "preserved": "Gen_M2Mat cutting=1, samples 101:901, all six valid transitions, repetitions 1:15, rng seed 42, anchor standardization formula, ridge lambda, five folds, and Gaussian map smoothing",
+        "requested_update": "fitclinear Learner='svm' replaced by fitclinear Learner='logistic' equivalent",
+        "posterior": "class-1 logistic probability: P(Rep 1-like | ECoG)"
+      },
+      "fold_strategy": "fixed 5-fold cross-validation grouped by roving block and stratified over the six context/current transitions",
+      "standardization_scope": "training blocks only, separately in every fold",
+      "n_blocks": 125,
+      "erp_contact_selection": {
+        "rule": "maximum of the displayed discovery-half absolute Haufe activation pattern",
+        "selected_channel_matlab": 12,
+        "n_discovery_blocks": 64,
+        "n_inference_blocks": 61,
+        "split": "alternating intact blocks within every ordered previous/current stimulus stratum; inference blocks are never used to select the contact"
+      }
+    },
+    "zaatar_pos3": {
+      "deviant_position": 3,
+      "recording": "2024-11-27_10-42-16_SRH",
+      "source_data_file": "/Users/eminent/Projects/ECoG/Zaatar_2024-11-27_xx.mat",
+      "source_data_sha256": "3f18533842ed8d67cd110c633d5c65771ed721d3f13b50e9acc9bad687c1ef76",
+      "map_arrays": "/Users/eminent/Projects/Rate_RNN_py/ECoG/roving/results/zaatar_pos3/regression_rep_map/leakage-safe/regression_rep_map_arrays.npz",
+      "map_arrays_sha256": "531873d7d48141e912b9874ef5d824f6714db8c0b1ed3926afb946f91402e3c8",
+      "map_method": {
+        "source": "SVM_rep_map.m",
+        "preserved": "Gen_M2Mat cutting=1, samples 101:901, all six valid transitions, repetitions 1:15, rng seed 42, anchor standardization formula, ridge lambda, five folds, and Gaussian map smoothing",
+        "requested_update": "fitclinear Learner='svm' replaced by fitclinear Learner='logistic' equivalent",
+        "posterior": "class-1 logistic probability: P(Rep 1-like | ECoG)"
+      },
+      "fold_strategy": "fixed 5-fold cross-validation grouped by roving block and stratified over the six context/current transitions",
+      "standardization_scope": "training blocks only, separately in every fold",
+      "n_blocks": 125,
+      "erp_contact_selection": {
+        "rule": "maximum of the displayed discovery-half absolute Haufe activation pattern",
+        "selected_channel_matlab": 18,
+        "n_discovery_blocks": 64,
+        "n_inference_blocks": 61,
+        "split": "alternating intact blocks within every ordered previous/current stimulus stratum; inference blocks are never used to select the contact"
+      }
+    }
+  },
+  "cache_file": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/ecog_figure2_data.npz",
+  "cache_sha256": "01eb7c59d378bbb04470eafdced64aab1bf524b7cc99df946d5a7f6bbe8381e6",
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/ecog_data.py",
+  "generator_sha256": "8fb7267e8df303cd22769f30721f666438bce614ddf060c8fb2a5cf85d9b866a"
+}

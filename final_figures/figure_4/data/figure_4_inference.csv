@@ -1,0 +1,26 @@
+panel,family,contrast,index_start,index_stop,direction,statistic,p_corrected,significant
+C,figure_minus_ground_timecourse,figure channels - ground channels,0,29,positive,419.1182170762937,0.0078125,True
+D,response_points_vs_zero,fig_4 vs zero,,,two-sided,21.10483808345097,0.0078125,True
+D,response_points_vs_zero,fig_6 vs zero,,,two-sided,32.637729666750154,0.0078125,True
+D,response_points_vs_zero,fig_8 vs zero,,,two-sided,36.77523488128553,0.0078125,True
+D,response_points_vs_zero,fig_10 vs zero,,,two-sided,39.70114205198577,0.0078125,True
+D,response_points_vs_zero,gnd_4 vs zero,,,two-sided,-11.00313884572568,0.0078125,True
+D,response_points_vs_zero,gnd_6 vs zero,,,two-sided,-19.83457080028099,0.0078125,True
+D,response_points_vs_zero,gnd_8 vs zero,,,two-sided,-22.06665556021841,0.0078125,True
+D,response_points_vs_zero,gnd_10 vs zero,,,two-sided,-22.01839352977227,0.0078125,True
+D,size_trends,fig linear slope vs zero,,,two-sided,48.40806625132957,0.0078125,True
+D,size_trends,gnd linear slope vs zero,,,two-sided,-22.644775706465236,0.0078125,True
+E,non_thalamic_currents_vs_zero,rec_fig vs zero,,,two-sided,52.53944137435778,0.0078125,True
+E,non_thalamic_currents_vs_zero,inh_fig vs zero,,,two-sided,76.81530411141166,0.0078125,True
+E,non_thalamic_currents_vs_zero,net_fig vs zero,,,two-sided,39.4736993010871,0.0078125,True
+E,non_thalamic_currents_vs_zero,rec_gnd vs zero,,,two-sided,318.3106414791521,0.0078125,True
+E,non_thalamic_currents_vs_zero,inh_gnd vs zero,,,two-sided,122.48789127231804,0.0078125,True
+E,non_thalamic_currents_vs_zero,net_gnd vs zero,,,two-sided,61.975799371060745,0.0078125,True
+F,buildup_slopes,size 4 linear slope vs zero,,,two-sided,47.35931037319924,0.0078125,True
+F,buildup_slopes,size 6 linear slope vs zero,,,two-sided,55.465599407689574,0.0078125,True
+F,buildup_slopes,size 8 linear slope vs zero,,,two-sided,54.9953215535296,0.0078125,True
+F,buildup_slopes,size 10 linear slope vs zero,,,two-sided,50.50165469867038,0.0078125,True
+G,figure_minus_ground_cloud,size 4: figure - ground,,,two-sided,3.1738419533737465,0.03125,True
+G,figure_minus_ground_cloud,size 6: figure - ground,,,two-sided,7.336550083627966,0.0078125,True
+G,figure_minus_ground_cloud,size 8: figure - ground,,,two-sided,10.385286567773624,0.0078125,True
+G,figure_minus_ground_cloud,size 10: figure - ground,,,two-sided,11.688505995415834,0.0078125,True

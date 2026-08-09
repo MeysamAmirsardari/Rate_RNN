@@ -1,0 +1,80 @@
+{
+  "averaging": "Mean over AB trials from trial 300 onward, so the recurrent weights have settled.",
+  "design": "Identity-controlled: both conditions plot the same physical AB sequence on the same two channels. Only the preceding context, and hence the learned W[B<-A], differs.",
+  "figure": "Figure 3 - AB/BA circuit-state snapshots",
+  "settings": {
+    "conditions": [
+      [
+        "frequent",
+        0.9,
+        1
+      ],
+      [
+        "rare",
+        0.1,
+        2
+      ]
+    ],
+    "config": {
+      "A_TC": 35.0,
+      "N": 2,
+      "U": 0.5,
+      "U_std": 0.001,
+      "W_decay": 0.0005,
+      "W_init_scale": 0.0,
+      "W_max": 0.25,
+      "W_max_self": 0.25,
+      "W_norm": 4.0,
+      "bounded_plasticity": true,
+      "dt": 0.001,
+      "eta_LTD": 0.1,
+      "eta_LTP": 0.8,
+      "eta_het": 0.0,
+      "multiscale_std": true,
+      "plastic_self": true,
+      "stp_enabled": true,
+      "tau_D": 0.3,
+      "tau_E": 0.02,
+      "tau_F": 0.1,
+      "tau_I": 0.08,
+      "tau_std": [
+        0.1,
+        0.8,
+        5.0
+      ],
+      "tau_trace": 0.03,
+      "w_EI_lat": 0.05,
+      "w_EI_self": 0.4,
+      "w_IE_lat": 0.2,
+      "w_IE_self": 3.0,
+      "w_std": [
+        0.1,
+        0.35,
+        0.55
+      ]
+    },
+    "gap_ms": 30,
+    "inter_gap_ms": 500,
+    "late_from": 300,
+    "n_seed_pairs": 6,
+    "n_trials": 400,
+    "overrides": {
+      "W_norm": 4.0,
+      "w_EI_self": 0.4,
+      "w_IE_self": 3.0
+    },
+    "snapshots": [
+      10,
+      45,
+      65,
+      105
+    ],
+    "timing": {
+      "inter_gap": 0.5,
+      "intra_gap": 0.03,
+      "tone_dur": 0.05
+    },
+    "tone_ms": 50
+  },
+  "settings_hash": "89b51e99e3fa2ea5"
+}

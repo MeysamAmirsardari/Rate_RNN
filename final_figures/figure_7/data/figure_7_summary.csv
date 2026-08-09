@@ -1,0 +1,18 @@
+task,condition,n_seeds,native_mean,native_sem,metric
+roving,intact,12,0.3054821473815254,0.0021270711518695576,suppression index
+roving,no_depression,12,-0.005171831837496783,1.1300599010923544e-05,suppression index
+roving,no_recurrent_learning,12,0.30894547281712037,0.002112113167996361,suppression index
+roving,uniform_inhibition,12,0.3160716679369299,0.002178826956454325,suppression index
+ab_ba,intact,12,0.24331479592072613,0.0017179666558058756,unexpected - predicted rate
+ab_ba,no_depression,12,0.31876944184700107,0.003086022788144026,unexpected - predicted rate
+ab_ba,no_recurrent_learning,12,0.0,0.0,unexpected - predicted rate
+ab_ba,uniform_inhibition,12,0.04002298903697673,0.0006274871175413361,unexpected - predicted rate
+sfg,intact,12,0.015565425570556813,0.00046986979938881435,W_FF - W_GG
+sfg,no_depression,12,0.0018111827710168306,4.6538935357116936e-05,W_FF - W_GG
+sfg,no_recurrent_learning,12,0.0,0.0,W_FF - W_GG
+sfg,uniform_inhibition,12,0.0140279512040126,0.0004306676074492075,W_FF - W_GG
+saffran,intact,12,1.0,0.0,fraction of words held
+saffran,no_depression,12,1.0,0.0,fraction of words held
+saffran,no_recurrent_learning,12,0.9791666666666666,0.020833333333333332,fraction of words held
+saffran,uniform_inhibition,12,1.0,0.0,fraction of words held
+saffran,single_rate_readout,12,0.0,0.0,fraction of words held

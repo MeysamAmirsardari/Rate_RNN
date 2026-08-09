@@ -1,0 +1,205 @@
+task,condition,seed_index,seed,native_effect,metric
+roving,intact,0,11,0.3103797216535793,suppression index
+roving,intact,1,23,0.3031183610553054,suppression index
+roving,intact,2,37,0.3103685439422794,suppression index
+roving,intact,3,41,0.2878695852560556,suppression index
+roving,intact,4,53,0.3101502244799303,suppression index
+roving,intact,5,67,0.3101783931212485,suppression index
+roving,intact,6,79,0.30311294847496945,suppression index
+roving,intact,7,97,0.3104380584309856,suppression index
+roving,intact,8,101,0.31069520581021914,suppression index
+roving,intact,9,109,0.29545521991927903,suppression index
+roving,intact,10,127,0.3033239826335962,suppression index
+roving,intact,11,139,0.310695523800857,suppression index
+roving,no_depression,0,11,-0.005184452044025795,suppression index
+roving,no_depression,1,23,-0.005109978608734713,suppression index
+roving,no_depression,2,37,-0.00519961410868097,suppression index
+roving,no_depression,3,41,-0.005086171557351722,suppression index
+roving,no_depression,4,53,-0.005137253053273231,suppression index
+roving,no_depression,5,67,-0.005188796357975954,suppression index
+roving,no_depression,6,79,-0.005203510461141924,suppression index
+roving,no_depression,7,97,-0.005193181904948426,suppression index
+roving,no_depression,8,101,-0.0051986524052109314,suppression index
+roving,no_depression,9,109,-0.005170381928355153,suppression index
+roving,no_depression,10,127,-0.005191466512548071,suppression index
+roving,no_depression,11,139,-0.005198523107714503,suppression index
+roving,no_recurrent_learning,0,11,0.3138031759736528,suppression index
+roving,no_recurrent_learning,1,23,0.30655349015227834,suppression index
+roving,no_recurrent_learning,2,37,0.313803819367146,suppression index
+roving,no_recurrent_learning,3,41,0.291439411572921,suppression index
+roving,no_recurrent_learning,4,53,0.3135365975163318,suppression index
+roving,no_recurrent_learning,5,67,0.3136032830458481,suppression index
+roving,no_recurrent_learning,6,79,0.306624188514796,suppression index
+roving,no_recurrent_learning,7,97,0.31386976329650684,suppression index
+roving,no_recurrent_learning,8,101,0.3141360520524689,suppression index
+roving,no_recurrent_learning,9,109,0.2990109032460216,suppression index
+roving,no_recurrent_learning,10,127,0.306828930555376,suppression index
+roving,no_recurrent_learning,11,139,0.3141360585120971,suppression index
+roving,uniform_inhibition,0,11,0.3210915040074101,suppression index
+roving,uniform_inhibition,1,23,0.3136744603676515,suppression index
+roving,uniform_inhibition,2,37,0.3210741243215302,suppression index
+roving,uniform_inhibition,3,41,0.2980300619491629,suppression index
+roving,uniform_inhibition,4,53,0.3208948002877297,suppression index
+roving,uniform_inhibition,5,67,0.3208900502645389,suppression index
+roving,uniform_inhibition,6,79,0.31363732211731615,suppression index
+roving,uniform_inhibition,7,97,0.3211416873736335,suppression index
+roving,uniform_inhibition,8,101,0.32139188375426825,suppression index
+roving,uniform_inhibition,9,109,0.3058014512854955,suppression index
+roving,uniform_inhibition,10,127,0.31384090043490054,suppression index
+roving,uniform_inhibition,11,139,0.3213917690795222,suppression index
+ab_ba,intact,0,0,0.2513550732362235,unexpected - predicted rate
+ab_ba,intact,1,1,0.23771832552630157,unexpected - predicted rate
+ab_ba,intact,2,2,0.2422906600507062,unexpected - predicted rate
+ab_ba,intact,3,3,0.23632949018163352,unexpected - predicted rate
+ab_ba,intact,4,4,0.23634996950130205,unexpected - predicted rate
+ab_ba,intact,5,5,0.23887077139118462,unexpected - predicted rate
+ab_ba,intact,6,6,0.24568636689642354,unexpected - predicted rate
+ab_ba,intact,7,7,0.2523452043401573,unexpected - predicted rate
+ab_ba,intact,8,8,0.23867552053877628,unexpected - predicted rate
+ab_ba,intact,9,9,0.24330703040389823,unexpected - predicted rate
+ab_ba,intact,10,10,0.24572245368608048,unexpected - predicted rate
+ab_ba,intact,11,11,0.25112668529602633,unexpected - predicted rate
+ab_ba,no_depression,0,0,0.332815100668185,unexpected - predicted rate
+ab_ba,no_depression,1,1,0.3096722839766244,unexpected - predicted rate
+ab_ba,no_depression,2,2,0.31351483294607707,unexpected - predicted rate
+ab_ba,no_depression,3,3,0.30404471662953547,unexpected - predicted rate
+ab_ba,no_depression,4,4,0.3084163420791315,unexpected - predicted rate
+ab_ba,no_depression,5,5,0.31126189200595356,unexpected - predicted rate
+ab_ba,no_depression,6,6,0.3221604995096321,unexpected - predicted rate
+ab_ba,no_depression,7,7,0.3344779399538709,unexpected - predicted rate
+ab_ba,no_depression,8,8,0.3105992828811708,unexpected - predicted rate
+ab_ba,no_depression,9,9,0.3201885964962914,unexpected - predicted rate
+ab_ba,no_depression,10,10,0.3250999747639751,unexpected - predicted rate
+ab_ba,no_depression,11,11,0.3329818402535656,unexpected - predicted rate
+ab_ba,no_recurrent_learning,0,0,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,1,1,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,2,2,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,3,3,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,4,4,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,5,5,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,6,6,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,7,7,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,8,8,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,9,9,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,10,10,0.0,unexpected - predicted rate
+ab_ba,no_recurrent_learning,11,11,0.0,unexpected - predicted rate
+ab_ba,uniform_inhibition,0,0,0.042964484187265395,unexpected - predicted rate
+ab_ba,uniform_inhibition,1,1,0.038053421968718304,unexpected - predicted rate
+ab_ba,uniform_inhibition,2,2,0.039723099257897854,unexpected - predicted rate
+ab_ba,uniform_inhibition,3,3,0.0376588453314497,unexpected - predicted rate
+ab_ba,uniform_inhibition,4,4,0.03753443579122617,unexpected - predicted rate
+ab_ba,uniform_inhibition,5,5,0.03823313593516753,unexpected - predicted rate
+ab_ba,uniform_inhibition,6,6,0.040992406181187935,unexpected - predicted rate
+ab_ba,uniform_inhibition,7,7,0.04339540363690286,unexpected - predicted rate
+ab_ba,uniform_inhibition,8,8,0.03823108002731335,unexpected - predicted rate
+ab_ba,uniform_inhibition,9,9,0.03983160624760007,unexpected - predicted rate
+ab_ba,uniform_inhibition,10,10,0.04076060310094176,unexpected - predicted rate
+ab_ba,uniform_inhibition,11,11,0.042897346778049794,unexpected - predicted rate
+sfg,intact,0,0,0.016578776361484013,W_FF - W_GG
+sfg,intact,1,1,0.01627611293947119,W_FF - W_GG
+sfg,intact,2,2,0.014878751646907704,W_FF - W_GG
+sfg,intact,3,3,0.017829256132398413,W_FF - W_GG
+sfg,intact,4,4,0.013061778765688356,W_FF - W_GG
+sfg,intact,5,5,0.015694319678311128,W_FF - W_GG
+sfg,intact,6,6,0.016792973147443907,W_FF - W_GG
+sfg,intact,7,7,0.014028553309955727,W_FF - W_GG
+sfg,intact,8,8,0.014723287620039868,W_FF - W_GG
+sfg,intact,9,9,0.01348910766808252,W_FF - W_GG
+sfg,intact,10,10,0.015268310511945576,W_FF - W_GG
+sfg,intact,11,11,0.01816387906495333,W_FF - W_GG
+sfg,no_depression,0,0,0.0019695711288942874,W_FF - W_GG
+sfg,no_depression,1,1,0.0016271356918373253,W_FF - W_GG
+sfg,no_depression,2,2,0.0014660295889860342,W_FF - W_GG
+sfg,no_depression,3,3,0.001838063057319858,W_FF - W_GG
+sfg,no_depression,4,4,0.001712248907103378,W_FF - W_GG
+sfg,no_depression,5,5,0.0017573890359205008,W_FF - W_GG
+sfg,no_depression,6,6,0.00174881127008214,W_FF - W_GG
+sfg,no_depression,7,7,0.001915141435270884,W_FF - W_GG
+sfg,no_depression,8,8,0.0018804533347113045,W_FF - W_GG
+sfg,no_depression,9,9,0.0018105383985025092,W_FF - W_GG
+sfg,no_depression,10,10,0.0019936031349713917,W_FF - W_GG
+sfg,no_depression,11,11,0.002015208268602353,W_FF - W_GG
+sfg,no_recurrent_learning,0,0,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,1,1,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,2,2,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,3,3,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,4,4,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,5,5,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,6,6,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,7,7,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,8,8,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,9,9,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,10,10,0.0,W_FF - W_GG
+sfg,no_recurrent_learning,11,11,0.0,W_FF - W_GG
+sfg,uniform_inhibition,0,0,0.014533917081814146,W_FF - W_GG
+sfg,uniform_inhibition,1,1,0.014387166626076267,W_FF - W_GG
+sfg,uniform_inhibition,2,2,0.013631076821365315,W_FF - W_GG
+sfg,uniform_inhibition,3,3,0.01654275898573572,W_FF - W_GG
+sfg,uniform_inhibition,4,4,0.011816234096633321,W_FF - W_GG
+sfg,uniform_inhibition,5,5,0.014450633514209749,W_FF - W_GG
+sfg,uniform_inhibition,6,6,0.015540930130352112,W_FF - W_GG
+sfg,uniform_inhibition,7,7,0.012791211345864029,W_FF - W_GG
+sfg,uniform_inhibition,8,8,0.013388253871542188,W_FF - W_GG
+sfg,uniform_inhibition,9,9,0.012118851361574604,W_FF - W_GG
+sfg,uniform_inhibition,10,10,0.01313690626566813,W_FF - W_GG
+sfg,uniform_inhibition,11,11,0.015997474347315604,W_FF - W_GG
+saffran,intact,0,0,1.0,fraction of words held
+saffran,intact,1,1,1.0,fraction of words held
+saffran,intact,2,2,1.0,fraction of words held
+saffran,intact,3,3,1.0,fraction of words held
+saffran,intact,4,4,1.0,fraction of words held
+saffran,intact,5,5,1.0,fraction of words held
+saffran,intact,6,6,1.0,fraction of words held
+saffran,intact,7,7,1.0,fraction of words held
+saffran,intact,8,8,1.0,fraction of words held
+saffran,intact,9,9,1.0,fraction of words held
+saffran,intact,10,10,1.0,fraction of words held
+saffran,intact,11,11,1.0,fraction of words held
+saffran,no_depression,0,0,1.0,fraction of words held
+saffran,no_depression,1,1,1.0,fraction of words held
+saffran,no_depression,2,2,1.0,fraction of words held
+saffran,no_depression,3,3,1.0,fraction of words held
+saffran,no_depression,4,4,1.0,fraction of words held
+saffran,no_depression,5,5,1.0,fraction of words held
+saffran,no_depression,6,6,1.0,fraction of words held
+saffran,no_depression,7,7,1.0,fraction of words held
+saffran,no_depression,8,8,1.0,fraction of words held
+saffran,no_depression,9,9,1.0,fraction of words held
+saffran,no_depression,10,10,1.0,fraction of words held
+saffran,no_depression,11,11,1.0,fraction of words held
+saffran,no_recurrent_learning,0,0,1.0,fraction of words held
+saffran,no_recurrent_learning,1,1,1.0,fraction of words held
+saffran,no_recurrent_learning,2,2,1.0,fraction of words held
+saffran,no_recurrent_learning,3,3,0.75,fraction of words held
+saffran,no_recurrent_learning,4,4,1.0,fraction of words held
+saffran,no_recurrent_learning,5,5,1.0,fraction of words held
+saffran,no_recurrent_learning,6,6,1.0,fraction of words held
+saffran,no_recurrent_learning,7,7,1.0,fraction of words held
+saffran,no_recurrent_learning,8,8,1.0,fraction of words held
+saffran,no_recurrent_learning,9,9,1.0,fraction of words held
+saffran,no_recurrent_learning,10,10,1.0,fraction of words held
+saffran,no_recurrent_learning,11,11,1.0,fraction of words held
+saffran,uniform_inhibition,0,0,1.0,fraction of words held
+saffran,uniform_inhibition,1,1,1.0,fraction of words held
+saffran,uniform_inhibition,2,2,1.0,fraction of words held
+saffran,uniform_inhibition,3,3,1.0,fraction of words held
+saffran,uniform_inhibition,4,4,1.0,fraction of words held
+saffran,uniform_inhibition,5,5,1.0,fraction of words held
+saffran,uniform_inhibition,6,6,1.0,fraction of words held
+saffran,uniform_inhibition,7,7,1.0,fraction of words held
+saffran,uniform_inhibition,8,8,1.0,fraction of words held
+saffran,uniform_inhibition,9,9,1.0,fraction of words held
+saffran,uniform_inhibition,10,10,1.0,fraction of words held
+saffran,uniform_inhibition,11,11,1.0,fraction of words held
+saffran,single_rate_readout,0,0,0.0,fraction of words held
+saffran,single_rate_readout,1,1,0.0,fraction of words held
+saffran,single_rate_readout,2,2,0.0,fraction of words held
+saffran,single_rate_readout,3,3,0.0,fraction of words held
+saffran,single_rate_readout,4,4,0.0,fraction of words held
+saffran,single_rate_readout,5,5,0.0,fraction of words held
+saffran,single_rate_readout,6,6,0.0,fraction of words held
+saffran,single_rate_readout,7,7,0.0,fraction of words held
+saffran,single_rate_readout,8,8,0.0,fraction of words held
+saffran,single_rate_readout,9,9,0.0,fraction of words held
+saffran,single_rate_readout,10,10,0.0,fraction of words held
+saffran,single_rate_readout,11,11,0.0,fraction of words held

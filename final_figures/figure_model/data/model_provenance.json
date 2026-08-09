@@ -1,0 +1,122 @@
+{
+  "figure": "Two-layer model definition",
+  "generated_utc": "2026-08-04T00:15:28.950711+00:00",
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_model/model_data.py",
+  "generator_sha256": "cc377b0e0541a4b4be4a80257b656a60c14c0bb0f3f99411ff1a6ef2ba31a174",
+  "interface_note": "Layer2MR.step receives E only. It never reads layer 1's recurrent weight matrix W. This is the structural reason composition survives the layer-1 controls.",
+  "layer1": "model0.simulate through layer2_syllable.run_ab_ba.layer1_rates in 'full' mode (recurrent plasticity on), N = 14, overrides {'w_IE_self': 3.0, 'w_EI_self': 0.4, 'W_norm': 4.0}.",
+  "layer2": "Layer2MR stepped forward over the layer-1 rate history with learn=False. s, D come from the class's own update and coincidence(); the mask is taken unmodified from the Figure 5 exemplar session.",
+  "npz_sha256": "1305cb2aec7db18a8811b3f094a209e66285ba6ee19d0966f42e194e3e384153",
+  "settings": {
+    "data_version": "model-figure-1",
+    "exemplar_source": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/data/saffran_exemplar.npz",
+    "gap_s": 0.03,
+    "layer1_config": {
+      "A_TC": 35.0,
+      "N": 14,
+      "U": 0.5,
+      "U_std": 0.001,
+      "W_decay": 0.0005,
+      "W_init_scale": 0.0,
+      "W_max": 0.25,
+      "W_max_self": 0.25,
+      "W_norm": 4.0,
+      "bounded_plasticity": true,
+      "dt": 0.001,
+      "eta_LTD": 0.1,
+      "eta_LTP": 0.8,
+      "eta_het": 0.0,
+      "multiscale_std": true,
+      "plastic_self": true,
+      "stp_enabled": true,
+      "tau_D": 0.3,
+      "tau_E": 0.02,
+      "tau_F": 0.1,
+      "tau_I": 0.08,
+      "tau_std": [
+        0.1,
+        0.8,
+        5.0
+      ],
+      "tau_trace": 0.03,
+      "w_EI_lat": 0.05,
+      "w_EI_self": 0.4,
+      "w_IE_lat": 0.2,
+      "w_IE_self": 3.0,
+      "w_std": [
+        0.1,
+        0.35,
+        0.55
+      ]
+    },
+    "layer1_overrides": {
+      "W_norm": 4.0,
+      "w_EI_self": 0.4,
+      "w_IE_self": 3.0
+    },
+    "layer2_config": {
+      "commit_frac": 0.2,
+      "eta": 0.005,
+      "gate_frac": 0.15,
+      "lam": 0.0001,
+      "n_units": 24,
+      "rates": [
+        0.03,
+        0.0527,
+        0.0924,
+        0.1623,
+        0.2848,
+        0.5
+      ],
+      "seed": 0,
+      "w_init": 0.05
+    },
+    "n_channels": 14,
+    "n_units": 24,
+    "tone_dur_s": 0.05,
+    "words": [
+      [
+        0,
+        1,
+        2
+      ],
+      [
+        3,
+        4,
+        5
+      ],
+      [
+        6,
+        7,
+        8,
+        9
+      ],
+      [
+        10,
+        11,
+        12,
+        13
+      ]
+    ]
+  },
+  "settings_hash": "2ac83a8ebd19e310",
+  "snapshot": {
+    "final_token_channel": 9,
+    "mask_unit": 13,
+    "ms_into_excerpt": 2200.0,
+    "sample": 2200,
+    "word": "W3",
+    "word_tokens": [
+      6,
+      7,
+      8,
+      9
+    ]
+  },
+  "software": {
+    "numpy": "2.4.6",
+    "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
+    "python": "3.14.0"
+  },
+  "stimulus_source": "final_figures/figure_5/data/saffran_exemplar.npz - the cached late-exposure Saffran stream excerpt, used unmodified."
+}

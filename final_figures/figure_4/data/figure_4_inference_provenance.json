@@ -1,0 +1,30 @@
+{
+  "schema_version": "figure-4-sfg-exact-paired-v1",
+  "created_utc": "2026-08-09T08:14:46.997614+00:00",
+  "unit": "paired simulated session seed",
+  "n_seeds": 8,
+  "randomization": "exhaustive 2^8 paired-seed sign flips",
+  "multiplicity": {
+    "C": "two-sided cluster mass over all 30 time bins",
+    "D_points": "maximum absolute t over eight group-by-size points",
+    "D_trends": "maximum absolute t over two group slopes",
+    "E": "maximum absolute t over six non-thalamic currents",
+    "F": "maximum absolute t over four buildup slopes",
+    "G": "maximum absolute t over four size-specific group contrasts"
+  },
+  "alpha": 0.05,
+  "source": {
+    "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4/data/sfg_figure4_data.npz",
+    "sha256": "55eb8f9b8c68cede1bbc399d3bfa66d7e42516da230b4bb2384b828a72ca6c59"
+  },
+  "outputs": {
+    "figure_4_inference.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4/data/figure_4_inference.npz",
+      "sha256": "d50cc0ed0cc9ce37affc22fdf4eae63a8123eb0a2c88138cbecf8af715b35750"
+    },
+    "figure_4_inference.csv": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4/data/figure_4_inference.csv",
+      "sha256": "a813e60b1c271bb24e9cf7669f1f1fd8d9db2a24ddfad65e18079841a6168d1d"
+    }
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "figure": "Figure 1 - the claim, the circuit, and the matrix",
+  "final_size_mm": [
+    183.0,
+    247.0
+  ],
+  "claim": "An auditory object is a learned predictive dependency among sound elements; grouping, prediction and deviance detection are manifestations of one circuit.",
+  "colour_key": {
+    "depression": "#BD6B6B",
+    "plasticity": "#2C6E5A",
+    "inhibition": "#457B7A",
+    "readout": "#685994"
+  },
+  "panel_sources": {
+    "A": "schematic - one scene, coincidence and continuation links",
+    "B": "schematic - the definition in three steps",
+    "C": "schematic - the model0 architecture plus the layer-2 readout",
+    "D": "MEASURED - model0 on the AB/BA paradigm, mean of the late AB sequences; time constants read back out of the traces",
+    "E": "schematic - the four paradigms and the progression",
+    "F": "prediction matrix; already-measured cells marked"
+  },
+  "matrix": {
+    "Roving": {
+      "depression": {
+        "state": "required",
+        "measured": true
+      },
+      "plasticity": {
+        "state": "not_needed",
+        "measured": true
+      },
+      "inhibition": {
+        "state": "not_needed",
+        "measured": true
+      },
+      "readout": {
+        "state": "not_engaged",
+        "measured": false
+      }
+    },
+    "AB/BA": {
+      "depression": {
+        "state": "not_needed",
+        "measured": false
+      },
+      "plasticity": {
+        "state": "required",
+        "measured": false
+      },
+      "inhibition": {
+        "state": "required",
+        "measured": false
+      },
+      "readout": {
+        "state": "not_engaged",
+        "measured": false
+      }
+    },
+    "SFG": {
+      "depression": {
+        "state": "untested",
+        "measured": false
+      },
+      "plasticity": {
+        "state": "required",
+        "measured": true
+      },
+      "inhibition": {
+        "state": "not_needed",
+        "measured": true
+      },
+      "readout": {
+        "state": "not_engaged",
+        "measured": false
+      }
+    },
+    "Saffran": {
+      "depression": {
+        "state": "untested",
+        "measured": false
+      },
+      "plasticity": {
+        "state": "not_needed",
+        "measured": true
+      },
+      "inhibition": {
+        "state": "untested",
+        "measured": false
+      },
+      "readout": {
+        "state": "required",
+        "measured": true
+      }
+    }
+  },
+  "inputs": {
+    "panel_d_traces.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/data/panel_d_traces.npz",
+      "sha256": "c5a3c65079df6a483aac1b2927b57fe4f54e14f58b276a27bac32226721f7651"
+    },
+    "panel_d_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/data/panel_d_provenance.json",
+      "sha256": "687f898f3d36d1cb93efe3aaddb8337417dbc33069b2c89ce29675f968c66d2c"
+    }
+  },
+  "outputs": {
+    "pdf": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/outputs/figure_1_architecture.pdf",
+      "sha256": "b8c5403a029fb768c82e4b1450a235cf30ffa39c2a06e8bec497b0d21e18226d"
+    },
+    "svg": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/outputs/figure_1_architecture.svg",
+      "sha256": "2c2f044061683cc82d5d1c0fc4ec94ca023776b65b61376cc1868442aa374da5"
+    },
+    "png": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/outputs/figure_1_architecture.png",
+      "sha256": "6fa0562cffddf3463dafdfd6c013f6cf4a8766d757c5bfe4e4e303047e1e0d61"
+    }
+  },
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_1/make_figure_1.py",
+  "generator_sha256": "33cba6e35d572d6bfd5a432e0d5b38d5b206b63f566fe49f1f0096e6f99b5ef3"
+}

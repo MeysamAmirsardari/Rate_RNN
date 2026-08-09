@@ -1,0 +1,10 @@
+{
+  "exemplar_hash": "3f360759a90f562a",
+  "exemplar_version": 2,
+  "generated_utc": "2026-08-01T05:12:32.847280+00:00",
+  "kernel_note": "exemplar_span_masks is the mask over the coincidence map, shape (unit, channel firing now, context channel x rate). The second axis of the context block is a filter identity, not elapsed time.",
+  "reference_condition": [
+    "full",
+    "structured"
+  ]
+}

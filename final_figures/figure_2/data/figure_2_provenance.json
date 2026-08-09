@@ -1,0 +1,81 @@
+{
+  "figure": "Figure 2 \u2014 Roving novelty responses",
+  "final_size_mm": [
+    183,
+    245
+  ],
+  "panel_a": "entire first row reserved for the paradigm illustration",
+  "panel_sources": {
+    "B": "true Rep-1/Rep-15 deviant-aligned channel ERP at the independently selected Panel-E maximum, with held-out-block SEM and joint cluster-mass inference",
+    "C": "leakage-safe grouped endpoint decoding with paired block uncertainty and full-refit cluster permutation inference",
+    "D": "three leakage-safe out-of-fold posterior maps with jointly corrected cross-fitted block-level contours",
+    "E": "discovery-half prespecified-window Haufe activation patterns on the verified A1/PEG grid; white dots mark the map maxima used for held-out ERP estimation",
+    "F": "intact rate-RNN sequence-clock responses with paired order-seed SEM",
+    "G": "blockwise ECoG posterior buildup and model percent response change with SEM and jointly corrected within-source inference",
+    "H": "position-averaged paired-seed suppression indices with 95% intervals and jointly corrected exact paired contrasts against intact"
+  },
+  "inference_scope": "ECoG tests are within-animal, block-level tests for Zaatar and do not support animal-population inference. Model tests use the eight paired order seeds after averaging designed positions.",
+  "panel_e_erp_contact_markers_matlab": {
+    "1": 27,
+    "2": 12,
+    "3": 18
+  },
+  "inputs": {
+    "ecog_figure2_data.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/ecog_figure2_data.npz",
+      "sha256": "01eb7c59d378bbb04470eafdced64aab1bf524b7cc99df946d5a7f6bbe8381e6"
+    },
+    "ecog_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/ecog_provenance.json",
+      "sha256": "991a2f7d776c9826839f92c1d1d775e44a4bb007be21e0e007ffbb2366946566"
+    },
+    "model_figure2_data.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/model_figure2_data.npz",
+      "sha256": "5e061c4a92c6b6142792822f68d087bb6dcf5ad7d7a2f29c17eeb4cd130740f3"
+    },
+    "model_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/model_provenance.json",
+      "sha256": "7a89eed220f617b3483a76696f0afb93f50c79e6da6a3c8f83d900d7212b9495"
+    },
+    "figure_2_inference.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/figure_2_inference.npz",
+      "sha256": "b7527ff3424fc2454528b578e9b32b8fba807d9b161546a2b3091870d26b2e90"
+    },
+    "figure_2_inference_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/figure_2_inference_provenance.json",
+      "sha256": "f936fa871a9c4aef3e883fe503988447ab69ad260ee0f85a4ee6aecdd3a8a919"
+    },
+    "posterior_buildup_inference.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/posterior_buildup_inference.npz",
+      "sha256": "b53bdd0c30632f735a154930686717ebe6c771fbdc22e31ffb8215468b03b344"
+    },
+    "posterior_buildup_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/posterior_buildup_provenance.json",
+      "sha256": "55efb8d1433e3d2dbc43e3af5579a858c7b835deae1266097b3eb9dedf0c49d1"
+    },
+    "channel_erp_inference.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/channel_erp_inference.npz",
+      "sha256": "4bb9cb09c4699fe656080eac9abc779e721b86c146c26264ccd3a98322e03991"
+    },
+    "channel_erp_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/channel_erp_provenance.json",
+      "sha256": "c4786272c3449acacd1c7e2ee3a709080937c0a6a35dbe75bdc32593ec0c57f7"
+    }
+  },
+  "outputs": {
+    "pdf": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/outputs/figure_2_roving.pdf",
+      "sha256": "3e0551a55d172ff3285a7b90bdc5f4f763a4696627d8b16e57b7954910d31855"
+    },
+    "svg": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/outputs/figure_2_roving.svg",
+      "sha256": "9e5722d6d608c8321f9e1734b89ec4035a8761fadffd197534a6a92325eebfe7"
+    },
+    "png": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/outputs/figure_2_roving.png",
+      "sha256": "b4dd05f799008ef4764e0d710dc42fa1a6fbf34932494c4d47d793f448f3b2f6"
+    }
+  },
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/make_figure_2.py",
+  "generator_sha256": "efae74458ef9f43344afd81b92ac5cdf29a35dd5889613bcdd90172928c9704f"
+}

@@ -1,0 +1,56 @@
+{
+  "figure": "Figure 5 - Saffran statistical learning and composition",
+  "final_size_mm": [
+    183,
+    245
+  ],
+  "panel_sources": {
+    "A": "exemplar structured exposure stream excerpt",
+    "B": "late-exposure activity of one whole-word unit per item",
+    "C": "measured driving row of four whole-word masks, reshaped without reduction as context token by filter timescale",
+    "D": "per-seed familiarity, held-out unit selectivity, and ordered-composition metrics for matched conditions",
+    "E": "designed transition matrix and learned layer-1 recurrent map",
+    "F": "filterbank impulse response and elapsed-time code",
+    "G": "layer-1 plastic, frozen, and absent controls",
+    "H": "familiarity-composition state space with the matched single-to-multiscale readout transition, per exposure seed"
+  },
+  "inference_scope": "The replication unit is the exposure order seed (n = 8). Layer 2 masks start identically in every seed, so these are independent exposure sessions rather than independent networks.",
+  "inputs": {
+    "saffran_figure5_data.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/data/saffran_figure5_data.npz",
+      "sha256": "2a8b1a5ec651f6dc257bade0b0bf53c49e4f3ca61a1fe5a9e5034bd541dad44e"
+    },
+    "saffran_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/data/saffran_provenance.json",
+      "sha256": "4580a415d9dcc46202850a75c8b255d866016b47d4daef2167366dedf7ea34d5"
+    },
+    "saffran_figure5_runs.csv": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/data/saffran_figure5_runs.csv",
+      "sha256": "83fb4a7a33cfccf3b53e5442bd38f6205b50164e1dbbceb71f0ca73d04423ab7"
+    },
+    "saffran_exemplar.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/data/saffran_exemplar.npz",
+      "sha256": "c90f75ea8c7743ebc8b4e9ad57fe93d0d89068707d8c6011bf65c4c87600845c"
+    },
+    "saffran_exemplar_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/data/saffran_exemplar_provenance.json",
+      "sha256": "aa753d815af9ae0b3805262ffb4d5e9e072207d2c93ebf6a0112a8e89afbe7ea"
+    }
+  },
+  "outputs": {
+    "pdf": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/outputs/figure_5_composition.pdf",
+      "sha256": "55bc5fc34aa881cae0306b0f319db8a92dc1784485e43119601fbd1e144cde3b"
+    },
+    "svg": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/outputs/figure_5_composition.svg",
+      "sha256": "6fa1798fd735f50120b6a1d51fe5c4b414e7d371916b047a3477fc5590bbb9e2"
+    },
+    "png": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/outputs/figure_5_composition.png",
+      "sha256": "36613d71d2c83ade4b4eea153190d6e95a299fce15c0573d062a9c005d14dd58"
+    }
+  },
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/make_figure_5.py",
+  "generator_sha256": "1a32991e777ef3294fd4ccf77cf0f899c29539e0cc123629c8905ef482d0fbcd"
+}

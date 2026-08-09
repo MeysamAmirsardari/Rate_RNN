@@ -1,0 +1,6 @@
+step,quantity,ab_frequent,ab_rare
+1. The link,Learned weight,0.211734444163774,0.0
+2. Pre-activation,Peak E$_B$ (a.u.),1.1785623666164993,0.0
+3. Standing inhibition,Mean I$_B$ (a.u.),0.3789942194143526,0.20816280365516182
+"4. Target response
+(zoomed axis)",Peak E$_B$ (a.u.),9.87812880375972,10.195366045517805

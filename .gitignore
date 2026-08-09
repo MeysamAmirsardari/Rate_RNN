@@ -216,3 +216,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Regenerable analysis caches (rebuilt by the modules that write them)
+ECoG/**/results/
+final_figures/**/data/*.npz
+final_figures/**/__pycache__/

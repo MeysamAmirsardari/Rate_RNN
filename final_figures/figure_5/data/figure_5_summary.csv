@@ -1,0 +1,4 @@
+exposure,layer1_mode,readout,n_seeds,auc_mean,auc_sem,words_in_order_mean,words_in_order_sem,detectors_mean
+structured,full,single_rate,8,0.9153578016493056,0.021276225469145028,0.0,0.0,4.0
+structured,full,multi_rate,8,0.8808051215277778,0.0275486052862718,4.0,0.0,4.0
+scrambled,full,multi_rate,8,0.4450480143229167,0.032046682551542416,0.0,0.0,4.0

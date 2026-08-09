@@ -1,0 +1,21 @@
+{
+  "analysis": "Figure 2G ECoG posterior buildup",
+  "scope": "conditional within-recording inference for three recordings from one animal; not animal-population inference",
+  "measure": "blockwise out-of-fold Rep-1 posterior, averaged over the position-specific 0\u2013180 ms variable-tone window",
+  "uncertainty": "SEM of blockwise posterior probabilities",
+  "test_measure": "blockwise mean logit posterior over the same tone window versus 0",
+  "test": "4,999 conditional whole-block sign flips; two-sided max-|t| correction jointly over three positions and repetitions 1\u201315",
+  "assumption": "sign symmetry of frozen cross-fitted block logits; decoder models are not refit",
+  "n_blocks": 125,
+  "source_sha256": {
+    "/Users/eminent/Projects/Rate_RNN_py/ECoG/roving/results/zaatar_pos1/regression_rep_map/leakage-safe/regression_rep_map_arrays.npz": "8a925200d80c1872897d3180fc0ea44fdc0aa59b9014345cb1757a027fe632d6",
+    "/Users/eminent/Projects/Rate_RNN_py/ECoG/roving/results/zaatar_pos2/regression_rep_map/leakage-safe/regression_rep_map_arrays.npz": "bbe1eb91da84686ee31720d6a254142948f076e9633c3029c058bd9eff46b750",
+    "/Users/eminent/Projects/Rate_RNN_py/ECoG/roving/results/zaatar_pos3/regression_rep_map/leakage-safe/regression_rep_map_arrays.npz": "531873d7d48141e912b9874ef5d824f6714db8c0b1ed3926afb946f91402e3c8"
+  },
+  "analysis_id": "a0ad4bbf63bd5768b5e0d3892f3d4a9eef6971709b6b8580371512a8e6df6e22",
+  "created_utc": "2026-07-31T22:03:09.082693+00:00",
+  "npz_sha256": "b53bdd0c30632f735a154930686717ebe6c771fbdc22e31ffb8215468b03b344",
+  "csv_sha256": "7b4ecf0aaa8b6da8a6adf7bd429d70a5b6d4e4c50914367ed704fc726cd96803",
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/posterior_buildup.py",
+  "generator_sha256": "38cbccafe1d6ea652bca86af7477da69758a13d833e1adb080bbd03ca3c473c1"
+}

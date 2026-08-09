@@ -1,0 +1,7 @@
+condition,deviant_position,sign,start_ms,end_ms,cluster_mass,p_corrected,significant
+intact,1,positive,0,220,3243.6152048050963,0.0078125,True
+intact,2,positive,180,400,3217.192761710342,0.0078125,True
+intact,2,negative,5,175,9201.568466684384,0.0078125,True
+intact,3,positive,360,580,3200.5784842573707,0.0078125,True
+intact,3,negative,5,25,401.99165016623965,0.0078125,True
+intact,3,negative,195,355,3040.9099535360856,0.0078125,True

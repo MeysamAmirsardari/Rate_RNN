@@ -1,0 +1,45 @@
+{
+  "figure": "Two-layer model definition",
+  "final_size_mm": [
+    183.0,
+    138.0
+  ],
+  "claim": "Layer 1 carries three memories; layer 2 composes relations among what layer 1 emits. The interface is the rate vector E alone.",
+  "colour_key": {
+    "depression": "#BD6B6B",
+    "plasticity": "#2C6E5A",
+    "inhibition": "#457B7A",
+    "readout": "#685994"
+  },
+  "panel_sources": {
+    "a": "schematic of the model0 circuit; time constants annotated",
+    "interface": "structural statement: Layer2MR.step reads E only",
+    "b": "MEASURED - filterbank state, coincidence map and a learned mask, computed by Layer2MR on the cached Saffran excerpt"
+  },
+  "inputs": {
+    "model_figure_data.npz": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_model/data/model_figure_data.npz",
+      "sha256": "1305cb2aec7db18a8811b3f094a209e66285ba6ee19d0966f42e194e3e384153"
+    },
+    "model_provenance.json": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_model/data/model_provenance.json",
+      "sha256": "3b34a327eff6be8ea8a102792a1c6987694366b6460245d1de04496f7e6fabbd"
+    }
+  },
+  "outputs": {
+    "pdf": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_model/outputs/figure_model_architecture.pdf",
+      "sha256": "4f2e1debab53bdf89a106b4fb6c745bbb1aaec5a5a13c68dd753643a5f27c7b4"
+    },
+    "svg": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_model/outputs/figure_model_architecture.svg",
+      "sha256": "38783b8f719d7f10b8ccd22da27fab1b7f0bec91cff2b1456acbda01a4442a29"
+    },
+    "png": {
+      "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_model/outputs/figure_model_architecture.png",
+      "sha256": "9833ad7b6b2514ccda7ffa27a6a146c5516148758e4fc92e7cccd52b2c5b24f5"
+    }
+  },
+  "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_model/make_model_figure.py",
+  "generator_sha256": "052c79d56d22c5e13e58b150680035a98c3481ecabb80db91133c46cddb8a4a1"
+}
