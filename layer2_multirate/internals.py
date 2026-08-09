@@ -72,8 +72,8 @@ def unit_table(l2):
     for u in np.flatnonzero(l2.committed):
         d, w = span_depth(l2, u, WORDS)
         M = l2.M[u]
-        i = int(np.argmax(M.sum(axis=(1, 2))))
-        row = M[i]
+        i = int(np.argmax(M.sum(axis=1)))
+        row = l2.mask_context_rate(u, i)
         j1, m1 = np.unravel_index(int(np.argmax(row)), row.shape)
         rows.append(dict(unit=int(u), depth=d, now=i, p1=int(j1),
                          tau1=float(l2.tau[m1]),
@@ -165,7 +165,7 @@ def fig_dissection(l2, a1cfg, fname, word_idx=0):
     tab = [r for r in unit_table(l2) if r["word"] == word_idx and r["depth"] >= 2]
     u = tab[0]["unit"] if tab else int(np.argmax(Y.max(axis=1)))
     t0 = int(np.argmax(Y[u]))
-    i_now = int(np.argmax(l2.M[u].sum(axis=(1, 2))))
+    i_now = int(np.argmax(l2.M[u].sum(axis=1)))
     T = min(int(0.34 / dt), E.shape[1])
     ts = np.arange(T) * dt
 
@@ -230,29 +230,33 @@ def fig_dissection(l2, a1cfg, fname, word_idx=0):
     ax.legend(fontsize=7.5, loc="lower right")
     ax.set_title("4.  Age read off the profile", fontsize=10.5)
 
-    # ---- row 2: the four matrices at the marked instant ----
+    # ---- row 2: D and the blind mask at the marked instant ----
+    s_flat = l2.flatten_filterbank(S[:, :, t0])
+    D = (
+        np.multiply.outer(E[:, t0], s_flat)
+        * l2.valid_connections
+    )
     panels = [
-        ("5.  Filterbank state s", S[:, :, t0], "Greens"),
-        (f"6.  D sliced at ch {i_now}\n(s gated by who fires now)",
-         E[i_now, t0] * S[:, :, t0], "Purples"),
-        (f"7.  Mask of unit {u}, same slice", l2.M[u][i_now], "RdPu"),
-        ("8.  Their product, cell by cell",
-         l2.M[u][i_now] * E[i_now, t0] * S[:, :, t0], "Oranges"),
+        ("5.  Filterbank s, flattened by rate",
+         np.broadcast_to(s_flat, (N_CH, s_flat.size)), "Greens"),
+        ("6.  Coincidence map D", D, "Purples"),
+        (f"7.  Complete mask of u{u}", l2.M[u], "RdPu"),
+        ("8.  Their product, cell by cell", l2.M[u] * D, "Oranges"),
     ]
     for c, (title, Mx, cmap) in enumerate(panels):
         ax = fig.add_subplot(gs[2, c])
         im = ax.imshow(Mx, aspect="auto", cmap=cmap, vmin=0)
-        ax.set_xticks(range(l2.R))
-        ax.set_xticklabels([f"{t*1e3:.0f}" for t in l2.tau], fontsize=7,
-                           rotation=45)
+        centers = np.arange(l2.R) * N_CH + (N_CH - 1) / 2
+        ax.set_xticks(centers)
+        ax.set_xticklabels([f"{t*1e3:.0f}" for t in l2.tau], fontsize=7)
+        for boundary in np.arange(1, l2.R) * N_CH - 0.5:
+            ax.axvline(boundary, color="white", lw=0.6, alpha=0.75)
         ax.set_yticks(range(N_CH)); ax.set_yticklabels(range(N_CH), fontsize=6.5)
-        ax.set_xlabel("rate tau (ms)", fontsize=9)
+        ax.set_xlabel("rate blocks (ms)", fontsize=9)
         if c == 0:
-            ax.set_ylabel("channel", fontsize=9)
+            ax.set_ylabel("input frequency", fontsize=9)
         ax.set_title(title, fontsize=10)
         fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
-        for k, ch in enumerate(word[:2]):
-            ax.axhline(ch, color=INK, lw=0.5, alpha=0.35)
 
     # ---- row 3: the responses ----
     ax = _tidy(fig.add_subplot(gs[3, :]))
@@ -267,12 +271,12 @@ def fig_dissection(l2, a1cfg, fname, word_idx=0):
                  f"its peak is the dashed line, and its value is the sum of panel 8",
                  fontsize=11)
 
-    tot = float((l2.M[u][i_now] * E[i_now, t0] * S[:, :, t0]).sum())
+    tot = float((l2.M[u] * D).sum())
     _caption(fig, gs[4, :],
              f"Read left to right. The three tokens arrive (1) and layer 1 turns them into rates (2). Each channel drives a bank of filters (3); because the filters differ in speed, "
              f"a channel's profile across them says how long ago it fired (4).\n"
-             f"At the marked instant the state of the whole bank is panel 5. Multiplying by who is firing right now gives D (6), which is the same picture gated by the current channel. "
-             f"Panel 7 is the unit's stored mask, and panel 8 is\ntheir cell by cell product, whose entries sum to {tot:.1f}, exactly the height of the bold trace in panel 9. "
+             f"At the marked instant the bank is flattened into rate blocks in panel 5. Its outer product with E gives the complete D matrix in panel 6. "
+             f"Panel 7 is the unit's fixed blind mask, and panel 8 is\ntheir cell by cell product, whose entries sum to {tot:.1f}, exactly the height of the bold trace in panel 9. "
              f"Two cells dominate that sum, at two different rates: that is the word.")
 
     fig.savefig(fname, dpi=150)
@@ -289,16 +293,18 @@ def fig_all_masks(l2, fname):
     fig = plt.figure(figsize=(16.5, 2.5 * nrow + 1.5), constrained_layout=True)
     gs = fig.add_gridspec(nrow + 1, ncol,
                           height_ratios=[1.0] * nrow + [0.30 / max(nrow, 1) * 3])
-    fig.suptitle("Every committed unit's mask, sliced at the channel it fires on",
+    fig.suptitle("Every committed unit's complete blind mask",
                  fontsize=14.5, fontweight="bold")
     vmax = max(l2.M[[r["unit"] for r in tab]].max(), 1e-9)
     for k, r in enumerate(tab):
         ax = fig.add_subplot(gs[k // ncol, k % ncol])
-        ax.imshow(l2.M[r["unit"]][r["now"]], aspect="auto", cmap="RdPu",
+        ax.imshow(l2.M[r["unit"]], aspect="auto", cmap="RdPu",
                   vmin=0, vmax=vmax)
-        ax.set_xticks(range(l2.R))
-        ax.set_xticklabels([f"{t*1e3:.0f}" for t in l2.tau], fontsize=6,
-                           rotation=45)
+        centers = np.arange(l2.R) * N_CH + (N_CH - 1) / 2
+        ax.set_xticks(centers)
+        ax.set_xticklabels([f"{t*1e3:.0f}" for t in l2.tau], fontsize=6)
+        for boundary in np.arange(1, l2.R) * N_CH - 0.5:
+            ax.axvline(boundary, color="white", lw=0.5, alpha=0.75)
         ax.set_yticks(range(0, N_CH, 2))
         ax.set_yticklabels(range(0, N_CH, 2), fontsize=6)
         col = D_COL[min(r["depth"], 2)]
@@ -309,7 +315,7 @@ def fig_all_masks(l2, fname):
         for sp in ax.spines.values():
             sp.set_color(col); sp.set_linewidth(1.6)
     _caption(fig, gs[nrow, :],
-             "Predecessor channel down the side, rate along the bottom, in every panel. "
+             "Input frequency down the side, filterbank frequency repeated inside each rate block along the bottom. "
              "Dark green units hold a whole word, orange a single transition, grey neither.\n"
              "A word unit shows two bright cells stepping down and to the right: the immediate predecessor at a fast rate, the one before it at a slower rate.")
     fig.savefig(fname, dpi=150)

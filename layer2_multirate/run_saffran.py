@@ -79,10 +79,10 @@ def analyse(l2):
     wb, bb = within_bigrams(WORDS), boundary_bigrams(WORDS)
     rows = []
     for u in np.flatnonzero(l2.committed):
-        M = l2.M[u]                                  # (N, N, R)
+        M = l2.M[u]                                  # (N, N R), same as D
         tot = float(M.sum())
-        i = int(np.argmax(M.sum(axis=(1, 2))))       # the channel firing NOW
-        row = M[i]                                   # (N, R) predecessors x rates
+        i = int(np.argmax(M.sum(axis=1)))            # strongest input row
+        row = l2.mask_context_rate(u, i)             # (N, R), analysis only
 
         # strongest predecessor, and the strongest of a DIFFERENT channel
         j1, m1 = np.unravel_index(int(np.argmax(row)), row.shape)
@@ -143,7 +143,7 @@ def main(argv=None):
     print("[ layer2_multirate ] Saffran, layer 2 with a filterbank of rates")
     print(f"  rates (s): {', '.join(f'{t:.3f}' for t in cfg.rates)}")
     print(f"  units available: {cfg.n_units}   channels: {N_CH}   "
-          f"mask shape per unit: ({N_CH}, {N_CH}, {len(cfg.rates)})")
+          f"mask shape per unit: ({N_CH}, {N_CH * len(cfg.rates)})")
     print(f"  exposure: {N_TRAIN_WORDS} words\n")
 
     l2, st, tr = expose(cfg, a1cfg, seed=0)

@@ -128,28 +128,29 @@ def fig_learned(l2, an, te, fname):
     vmax = max(l2.M[[r["unit"] for r in span]].max(), 1e-9) if span else 1.0
     for c, r in enumerate(span[:4]):
         ax = fig.add_subplot(gs[0, c])
-        row = l2.M[r["unit"]][r["now"]]                # (N, R)
-        im = ax.imshow(row, aspect="auto", cmap="RdPu", vmin=0, vmax=vmax)
-        ax.set_xticks(range(l2.R))
-        ax.set_xticklabels([f"{t*1e3:.0f}" for t in l2.tau], fontsize=8,
-                           rotation=45)
+        mask = l2.M[r["unit"]]                         # (N, N R), same as D
+        im = ax.imshow(mask, aspect="auto", cmap="RdPu", vmin=0, vmax=vmax)
+        centers = np.arange(l2.R) * l2.N + (l2.N - 1) / 2
+        ax.set_xticks(centers)
+        ax.set_xticklabels([f"{t*1e3:.0f}" for t in l2.tau], fontsize=8)
+        for boundary in np.arange(1, l2.R) * l2.N - 0.5:
+            ax.axvline(boundary, color="white", lw=0.8, alpha=0.8)
         ax.set_yticks(range(N_CH))
         ax.set_yticklabels(range(N_CH), fontsize=7)
-        ax.set_xlabel("rate tau (ms)", fontsize=9)
+        ax.set_xlabel("rate blocks (ms)", fontsize=9)
         if c == 0:
-            ax.set_ylabel("predecessor channel", fontsize=9)
+            ax.set_ylabel("input frequency", fontsize=9)
         w = WORDS[r["word"]]
-        ax.set_title(f"unit {r['unit']}:  fires on ch {r['now']}\n"
-                     f"{w[0]} then {w[1]} then {w[2]}   ({WORD_NAME[r['word']]})",
+        ax.set_title(f"u{r['unit']} · pattern {w[0]} {w[1]} {w[2]}",
                      fontsize=10, color=C_OK, fontweight="bold")
-        # mark the two entries it uses
+        # Mark the strongest input row's two predecessor entries.
         for (jj, tt, lab) in ((r["p1"], r["tau1"], "recent"),
                               (r["p2"], r["tau2"], "older")):
             mi = int(np.argmin(np.abs(l2.tau - tt)))
-            ax.add_patch(plt.Rectangle((mi - 0.5, jj - 0.5), 1, 1, fill=False,
+            column = mi * l2.N + jj
+            ax.add_patch(plt.Rectangle((column - 0.5, r["now"] - 0.5),
+                                       1, 1, fill=False,
                                        edgecolor=C_OK, lw=2.0))
-            ax.text(mi + 0.7, jj, lab, fontsize=8, color=C_OK,
-                    va="center", fontweight="bold")
 
     # (e) single rate against multi rate
     ax = _tidy(fig.add_subplot(gs[1, 0]))
@@ -190,10 +191,9 @@ def fig_learned(l2, an, te, fname):
                  fontsize=10.5)
 
     _caption(fig, gs[2, :],
-             "Each panel above is one unit's mask, sliced at the channel it fires on: predecessor channel down the side, rate along the bottom. "
-             "A single rate version could only ever light up one column,\n"
-             "so it learned transitions and nothing represented a word. Here each mask lights up two cells at two different rates, which is the "
-             "word itself: 'this token now, that one recently, that other one a while ago'.\n"
+             "Each panel above is one complete blind mask in the same representation as D: input frequency down the side, with filterbank frequency repeated inside each rate block. "
+             "A single rate version could only ever light up one block,\n"
+             "so it learned transitions and nothing represented a word. Here each mask lights up cells at different rates, which lets one fixed filter represent a longer pattern.\n"
              "Nothing instructed the units to use two rates, or to put the older token on the slower one. That is what the competition settled on.")
 
     fig.savefig(fname, dpi=150)

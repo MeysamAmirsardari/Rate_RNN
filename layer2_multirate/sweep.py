@@ -79,8 +79,8 @@ def run_one(words, cfg, a1cfg, tone=TONE, gap=GAP, n_stream=N_STREAM, seed=0):
 def span_depth(l2, unit, words, thresh=THRESH):
     """How many tokens back this unit represents, in order, at slower rates."""
     M = l2.M[unit]
-    i = int(np.argmax(M.sum(axis=(1, 2))))            # channel it fires on
-    row = M[i]                                         # (N, R)
+    i = int(np.argmax(M.sum(axis=1)))                 # strongest input row
+    row = l2.mask_context_rate(unit, i)               # (N, R), analysis only
     peak = row.max()
     if peak <= 0:
         return 0, None
@@ -334,17 +334,19 @@ def fig_examples(base, fname):
                 best, bd, bw = u, d, w
         ax = fig.add_subplot(gs[0, c])
         M = l2.M[best]
-        i = int(np.argmax(M.sum(axis=(1, 2))))
-        row = M[i]
-        im = ax.imshow(row, aspect="auto", cmap="RdPu", vmin=0)
-        ax.set_xticks(range(l2.R))
-        ax.set_xticklabels([f"{t*1e3:.0f}" for t in l2.tau], fontsize=7.5,
-                           rotation=45)
+        i = int(np.argmax(M.sum(axis=1)))
+        row = l2.mask_context_rate(best, i)
+        im = ax.imshow(M, aspect="auto", cmap="RdPu", vmin=0)
+        centers = np.arange(l2.R) * l2.N + (l2.N - 1) / 2
+        ax.set_xticks(centers)
+        ax.set_xticklabels([f"{t*1e3:.0f}" for t in l2.tau], fontsize=7.5)
+        for boundary in np.arange(1, l2.R) * l2.N - 0.5:
+            ax.axvline(boundary, color="white", lw=0.6, alpha=0.8)
         ax.set_yticks(range(4 * L))
         ax.set_yticklabels(range(4 * L), fontsize=6.5)
-        ax.set_xlabel("rate tau (ms)", fontsize=9)
+        ax.set_xlabel("rate blocks (ms)", fontsize=9)
         if c == 0:
-            ax.set_ylabel("predecessor channel", fontsize=9)
+            ax.set_ylabel("input frequency", fontsize=9)
         # outline the staircase actually used
         if bw is not None:
             pos = bw.index(i)
@@ -352,7 +354,9 @@ def fig_examples(base, fname):
             for d in range(1, min(bd, pos) + 1):
                 j = bw[pos - d]
                 m = int(np.argmax(row[j]))
-                ax.add_patch(plt.Rectangle((m - 0.5, j - 0.5), 1, 1, fill=False,
+                column = m * l2.N + j
+                ax.add_patch(plt.Rectangle((column - 0.5, i - 0.5),
+                                           1, 1, fill=False,
                                            edgecolor=C_OK, lw=2.0))
                 prev = l2.tau[m]
         ax.set_title(f"{L} token words   depth {bd} of {L-1}\n"
@@ -360,8 +364,8 @@ def fig_examples(base, fname):
                      color=C_OK if bd >= L - 1 else C_MID, fontweight="bold")
 
     _caption(fig, gs[1, :],
-             "Each panel is the deepest unit found for that word length, sliced at the channel it fires on. Outlined cells are the predecessors it actually uses. "
-             "Reading right and up, each step back in the word\nsits at a slower rate, which is the age ordering. The staircase is the word, and it lengthens with the word "
+             "Each panel is the deepest unit's complete blind mask in the same layout as D. Outlined cells are the predecessors it actually uses. "
+             "Each step back in the word\nsits in a slower rate block, which is the age ordering. The staircase is the word, and it lengthens with the word "
              "until the bank runs out of range.")
 
     fig.savefig(fname, dpi=150)
