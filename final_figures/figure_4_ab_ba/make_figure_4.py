@@ -482,6 +482,9 @@ def _panel_b_legacy(fig, spec, comparisons: tuple[LegacyComparison, ...]) -> lis
 MATLAB_REPLICATION = (
     Path(__file__).resolve().parents[2] / "ECoG" / "ab_ba" / "results"
 )
+DECODER_INFERENCE = (
+    MATLAB_REPLICATION / "matlab_replication_inference" / "decoder_inference.npz"
+)
 #: Facet -> replication directory. Each is a faithful rerun of
 #: ``scripts_AB_BA.m`` on one of its two class assignments; the source saved a
 #: figure for each, named after the deviant sequence.
@@ -523,6 +526,15 @@ def panel_c(fig, spec, comparisons: tuple[LegacyComparison, ...]) -> list[plt.Ax
                     textcoords="offset points", xytext=(4, 4), fontsize=5.4,
                     color=COLORS["decoder"])
 
+        inference = np.load(DECODER_INFERENCE)
+        _significance_rail(
+            ax,
+            np.asarray(inference[f"{_key}_time_ms"], dtype=float),
+            np.asarray(inference[f"{_key}_significant"], dtype=bool),
+            y_axes=0.95,
+            color=CHARCOAL,
+        )
+
         ax.set_xlim(0, time_ms[-1])
         ax.set_xticks((0.0, 360.0, 800.0, 1200.0))
         ax.set_ylim(0.38, 0.86)
@@ -539,8 +551,7 @@ def panel_c(fig, spec, comparisons: tuple[LegacyComparison, ...]) -> list[plt.Ax
 
     axes[0].text(
         0.0, 1.06,
-        "replication of scripts_AB_BA.m - 5-fold accuracy, 20-sample moving "
-        "mean - descriptive, no interval",
+        "replication of scripts_AB_BA.m - rails: cluster-corrected vs chance",
         transform=axes[0].transAxes, ha="left", va="bottom", fontsize=5.4,
         color=COLORS["ash"], clip_on=False,
     )

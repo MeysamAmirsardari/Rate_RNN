@@ -66,15 +66,15 @@
   "outputs": {
     "pdf": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.pdf",
-      "sha256": "b9a7bc323f50646ee091e5500a6677eb8f3d660b090e916b1d51bc65afbce9b8"
+      "sha256": "9d32bc7441b7381996822d561fcc5f4766de62e8fc8918c53d9d2c7bd611814b"
     },
     "svg": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.svg",
-      "sha256": "984a8d935b181cf69df77ac791abbcbcb81ac30a71aa07db55d09e57f616f4d8"
+      "sha256": "a0a2eb9ba7580c076c69e35af5b76179e0b4eb3fa82dfe319bee41e683d58e11"
     },
     "png": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.png",
-      "sha256": "2febca950469b226d40e386687bc6db7869522f0377a1d6d9dc16597828e622e"
+      "sha256": "799fdf3fe78f4366cb552d41de474ad2eafc8a82a290046d760d8fe419a47a10"
     }
   }
 }
