@@ -12,10 +12,11 @@ The design is a 2 x 2 -- structured / scrambled crossed with background
 on / off -- because the hypothesis is an interaction, not a main effect.
 Structure should buy more when there is something to segregate from.
 
-Outputs
+Outputs, written next to this file rather than into the working directory
     interplay_stimulus.png     the stimulus, with both background
                                constraints shown rather than asserted
     interplay_measures.png     the 2 x 2 on every measure
+    interplay_layer1.png       figure-ground-style layer-1 panels
     interplay_robustness.png   performance against background level
 """
 
@@ -43,6 +44,15 @@ else:
     from tasks.interplay.config import (  # type: ignore
         WORDS, WORD_NAMES, InterplayConfig, get_preset, model_config,
         frozen_model_config, uniform_model_config)
+
+
+#: Figures are written next to the code that makes them, not into whatever
+#: directory the run happened to start in.
+OUT_DIR = Path(__file__).resolve().parent
+
+
+def _out(name: str) -> str:
+    return str(OUT_DIR / name)
 
 
 C_FIG, C_BG = "#2C6E5A", "#BD6B6B"
@@ -669,7 +679,7 @@ def main(argv=None) -> int:
     print(f"  {base.n_words} words = {base.n_tokens} tokens "
           f"= {base.n_tokens * base.slot / 1000:.0f} s per run")
 
-    plot_stimulus(base, "interplay_stimulus.png")
+    plot_stimulus(base, _out("interplay_stimulus.png"))
 
     table: Dict[str, List[Dict[str, float]]] = {}
     for structure in ("structured", "scrambled"):
@@ -699,12 +709,12 @@ def main(argv=None) -> int:
             print(f"    buildup early->late    {m['build_early']:+.4f} -> "
                   f"{m['build_late']:+.4f}  (gain {m['build_gain']:+.4f})")
 
-    plot_measures(table, "interplay_measures.png")
+    plot_measures(table, _out("interplay_measures.png"))
 
     # SFG-style layer-1 panels, on the condition the hypothesis is about.
     l1_cfg = base.replace(structure="structured", background=True)
     rp, rf = plastic_and_frozen(l1_cfg, snap_ms=500)
-    plot_layer1(rp, rf, "interplay_layer1.png")
+    plot_layer1(rp, rf, _out("interplay_layer1.png"))
     dec = current_decomposition(rp, rf)
     pm = position_modulation(rp, rf)
     print(f"\n  === layer 1 ===")
@@ -749,7 +759,7 @@ def main(argv=None) -> int:
             print(f"  robustness [{structure}] "
                   + "  ".join(f"{lv}x:{v:+.3f}"
                               for lv, v in zip(levels, series["seg_index"])))
-        plot_robustness(levels, curves, "interplay_robustness.png")
+        plot_robustness(levels, curves, _out("interplay_robustness.png"))
 
     print("\nDone.")
     return 0

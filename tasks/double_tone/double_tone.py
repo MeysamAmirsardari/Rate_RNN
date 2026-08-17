@@ -18,7 +18,7 @@ repeats a tone heard 200 ms earlier; prediction says it should be LARGE,
 because the network expected B.  Only the plastic column should separate
 the four conditions.
 
-Outputs
+Outputs, written next to this file rather than into the working directory
     double_tone_traces_<inh>.png    per-condition E / I / inhibition traces
     double_tone_responses_<inh>.png habituation vs predictive bar chart
     double_tone_weights_<inh>.png   W[B<-A] across the session
@@ -49,6 +49,14 @@ else:
         PAIRS, RARE, FREQUENT, TONE_A, TONE_B,
         DoubleToneConfig, get_preset, model_config, uniform_model_config,
         global_model_config)
+
+
+#: Figures are written next to the code that makes them.
+OUT_DIR = Path(__file__).resolve().parent
+
+
+def _out(name: str) -> str:
+    return str(OUT_DIR / name)
 
 
 COND_COLORS = {"AB": "#22409A", "AA": "#E8442A",
@@ -377,9 +385,9 @@ def main(argv=None) -> int:
               f"(W_max {a1_cfg.W_max})")
         report(plastic, frozen)
 
-        plot_responses(plastic, frozen, f"double_tone_responses_{inh}.png", inh)
-        plot_traces(plastic, f"double_tone_traces_{inh}.png", inh)
-        plot_weights(plastic, f"double_tone_weights_{inh}.png", inh)
+        plot_responses(plastic, frozen, _out(f"double_tone_responses_{inh}.png"), inh)
+        plot_traces(plastic, _out(f"double_tone_traces_{inh}.png"), inh)
+        plot_weights(plastic, _out(f"double_tone_weights_{inh}.png"), inh)
 
     print("\nDone.")
     return 0
