@@ -221,21 +221,41 @@ def results_figure(table: Dict[str, List[Dict[str, float]]],
 # ---------------------------------------------------------------------
 #  Figure 2 -- mechanism
 # ---------------------------------------------------------------------
+def _stars(p: float) -> str:
+    if not np.isfinite(p):
+        return ""
+    return "***" if p < 0.001 else "**" if p < 0.01 else \
+           "*" if p < 0.05 else "n.s."
+
+
+def _bracket(ax, x0: float, x1: float, y: float, text: str,
+             color: str = C_INK) -> None:
+    ax.plot([x0, x0, x1, x1], [y, y * 1.0 + 0, y, y], color=color, lw=0.5,
+            clip_on=False, zorder=6)
+    ax.annotate(text, xy=((x0 + x1) / 2, y), xytext=(0, 1.2),
+                textcoords="offset points", ha="center", va="bottom",
+                fontsize=6.2, color=color,
+                fontweight="bold" if text != "n.s." else "normal",
+                clip_on=False, zorder=6)
+
+
 def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
                      pos: np.ndarray, pos_bg: np.ndarray,
                      dec: Dict[str, np.ndarray],
                      rates: Dict[str, np.ndarray],
+                     poscur: Dict[str, np.ndarray] | None = None,
+                     tests: Dict[str, tuple] | None = None,
                      stem: str = "interplay_mechanism") -> Dict[str, Path]:
-    """``pos`` is (seed, 3); ``dec`` and ``rates`` hold (seed,) arrays."""
+    """``pos`` is (seed, 3); ``poscur[k]`` is (seed, 3) per current."""
     cfg = exemplar_p["cfg"]
     nf = cfg.n_figure
     W = exemplar_p["W_final"]
 
     with manuscript_style():
-        fig = plt.figure(figsize=(mm(183), mm(58)))
-        gs = fig.add_gridspec(1, 4, left=0.062, right=0.975, top=0.80,
-                              bottom=0.19, wspace=0.55,
-                              width_ratios=(0.85, 1.0, 1.0, 1.15))
+        fig = plt.figure(figsize=(mm(183), mm(62)))
+        gs = fig.add_gridspec(1, 4, left=0.055, right=0.905, top=0.78,
+                              bottom=0.19, wspace=0.50,
+                              width_ratios=(0.78, 0.90, 0.90, 1.60))
 
         # A -- weight matrix
         ax = fig.add_subplot(gs[0, 0])
@@ -277,38 +297,57 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
         _letter(fig, ax, "c")
         ax.set_title("Enhancement")
 
-        # D -- current decomposition
+        # D -- how the enhancement is built, resolved by position
         ax = fig.add_subplot(gs[0, 3])
-        names = ["Thal.", "Recur.", "Inhib.", "Net"]
-        keys = ["tm_in", "rec_E", "inh_to_E", "net"]
-        x = np.arange(len(names))
-        w = 0.34
-        for off, pool, c in ((-w / 2, "fig", C_STRUCT),
-                             (+w / 2, "bg", C_BG)):
-            m = [float(np.nanmean(dec[f"{k}_{pool}"])) for k in keys]
-            ax.bar(x + off, m, w, color=c, edgecolor="none")
-            for xi, k in zip(x + off, keys):
-                v = np.asarray(dec[f"{k}_{pool}"], dtype=float)
-                ax.scatter(np.full(v.size, xi), v, s=6,
-                           facecolors="none", edgecolors=C_INK,
-                           linewidths=0.45, zorder=4, clip_on=False)
-        ax.axhline(0, color=C_INK, lw=0.55)
-        ax.set_xticks(x)
-        ax.set_xticklabels(names)
+        series = (("rec_E", "recurrent", C_STRUCT),
+                  ("inh_to_E", "inhibition", C_BG),
+                  ("net", "net", COLORS["charcoal"]))
+        xs = np.arange(1, 4)
+        rng = np.random.default_rng(1)
+        lo, hi = np.inf, -np.inf
+        for key, lab, c in series:
+            arr = np.asarray(poscur[key], dtype=float)          # (seed, 3)
+            m = np.nanmean(arr, axis=0)
+            ax.plot(xs, m, color=c, lw=1.5, zorder=4)
+            for j in range(arr.shape[0]):
+                ax.scatter(xs + rng.uniform(-0.06, 0.06, 3), arr[j], s=6.5,
+                           facecolors="none", edgecolors=c, linewidths=0.45,
+                           alpha=0.7, zorder=3, clip_on=False)
+            lo, hi = min(lo, arr.min()), max(hi, arr.max())
+
+            # Series named at its own right-hand end, with the position
+            # 1 -> 3 change and its exact-permutation stars.  End labels
+            # instead of a legend box: the box sat on the data, and the
+            # reader should not have to match a colour swatch to a line.
+            tag = lab
+            if tests:
+                d, pv = tests[key]
+                tag = f"{lab}  \u0394{d:+.3f} {_stars(pv)}"
+            ax.annotate(tag, xy=(3, m[2]), xytext=(4.5, 0),
+                        textcoords="offset points", ha="left", va="center",
+                        fontsize=6.1, color=c,
+                        fontweight="semibold" if key != "inh_to_E" else
+                        "normal")
+
+        ax.axhline(0.0, color=COLORS["ash"], lw=0.5, ls=(0, (3, 2)))
+        pad = 0.10 * (hi - lo if hi > lo else 1.0)
+        ax.set_ylim(min(0.0, lo) - pad, hi + pad * 2.4)
+        ax.set_xlim(0.72, 3.05)
+
+        # Thalamic drive is identically zero: the frozen run sees the same
+        # stimulus, and the depression variable is driven by the stimulus
+        # alone.  Stated rather than plotted as a flat line on zero.
+        tm = float(np.nanmax(np.abs(poscur["tm_in"])))
+        ax.annotate(f"thalamic \u2261 0  (max |\u0394| = {tm:.0e})",
+                    xy=(0.03, 0.97), xycoords="axes fraction",
+                    fontsize=5.8, color=COLORS["ash"], va="top", ha="left")
+
+        ax.set_xticks(xs)
+        ax.set_xlabel("Token position in word")
         ax.set_ylabel("Change from frozen (a.u.)")
         clean_axis(ax)
         _letter(fig, ax, "d")
-        ax.set_title("Currents")
-
-        # A single key for the whole figure: the figure/background colour
-        # pair recurs in three panels, so repeating a legend in each one
-        # would cost space the bars need.
-        for i, (lab, c) in enumerate((("figure", C_STRUCT),
-                                      ("background", C_BG))):
-            fig.text(0.845 + i * 0.072, 0.965, "\u25a0", color=c,
-                     fontsize=7, va="top", ha="left")
-            fig.text(0.858 + i * 0.072, 0.963, lab, color=C_INK,
-                     fontsize=6.4, va="top", ha="left")
+        ax.set_title("Mechanism")
 
         paths = export_figure(fig, OUT_DIR / stem)
         plt.close(fig)

@@ -262,6 +262,64 @@ def position_modulation(res_p: Dict, res_f: Dict) -> Dict[str, np.ndarray]:
     return dict(mean=means, sem=sems, background=np.array([bg]))
 
 
+def position_currents(res_p: Dict, res_f: Dict) -> Dict[str, np.ndarray]:
+    """Plastic-minus-frozen current change, resolved by position in word.
+
+    The figure-versus-background contrast is confounded: the background is
+    never silent, so its channels always carry a live trace and draw more
+    recurrent current whatever is learned.  Token position inside a word is
+    not confounded -- same pool, same duty cycle, same channels over the
+    session -- and it is the contrast the hypothesis actually makes, since
+    only tokens 2 and 3 have a predecessor to be predicted by.
+
+    Differencing against the frozen run cancels the stimulus exactly, so
+    the thalamic term is zero at every position by construction and is
+    returned as the check that it is.
+    """
+    cfg: InterplayConfig = res_p["cfg"]
+    tokens, onsets = res_p["tokens"], res_p["onsets"]
+    pos = np.arange(len(tokens)) % 3
+    fields = {"tm_in": ("tm_in",), "rec_E": ("rec_E",),
+              "inh_to_E": ("inh_to_E",), "net": ("tm_in", "rec_E",
+                                                 "inh_to_E")}
+
+    def stack(res):
+        return {k: (res["tm_in"] + res["rec_E"] - res["inh_to_E"]
+                    if k == "net" else res[k]) for k in fields}
+
+    A, B = stack(res_p), stack(res_f)
+    out: Dict[str, np.ndarray] = {}
+    for k in fields:
+        per = [[] for _ in range(3)]
+        for i, (ch, o) in enumerate(zip(tokens, onsets)):
+            a, b = o, o + cfg.tone_dur
+            per[pos[i]].append(A[k][ch, a:b].mean() - B[k][ch, a:b].mean())
+        out[k] = np.array([np.mean(v) for v in per])
+    return out
+
+
+def paired_sign_flip(diff: np.ndarray) -> Tuple[float, float]:
+    """Exact sign-flip permutation test on paired within-seed differences.
+
+    Exact because the seeds are few: with n <= 20 every one of the 2^n
+    sign assignments is enumerated, so the p value is the true
+    permutation p and not an estimate of it.  The pairing is real -- both
+    members of each difference come from the same seed and therefore the
+    same stimulus -- so sign flipping is the correct exchangeability.
+    """
+    import itertools
+    d = np.asarray(diff, dtype=float)
+    d = d[np.isfinite(d)]
+    n = d.size
+    if n == 0:
+        return float("nan"), float("nan")
+    obs = float(d.mean())
+    signs = np.array(list(itertools.product([-1.0, 1.0], repeat=n)))
+    null = (signs * d).mean(axis=1)
+    p = float(np.mean(np.abs(null) >= abs(obs) - 1e-15))
+    return obs, p
+
+
 def weight_groups(res: Dict) -> Dict[str, np.ndarray]:
     """Weight trajectories split into the four groups that matter."""
     cfg: InterplayConfig = res["cfg"]
@@ -454,7 +512,9 @@ def main(argv=None) -> int:
             d = pickle.load(fh)
         figures.stimulus_figure(d["pack"], d["scfg"])
         figures.mechanism_figure(d["ex_p"], d["ex_groups"], d["pos_all"],
-                                 d["pos_bg"], d["dec_all"], d["rates"])
+                                 d["pos_bg"], d["dec_all"], d["rates"],
+                                 poscur=d.get("poscur"),
+                                 tests=d.get("tests"))
         figures.results_figure(d["table"], d["levels"], d["curves"])
         print(f"re-rendered from {cache.name}")
         return 0
@@ -501,6 +561,7 @@ def main(argv=None) -> int:
                             for p in ("fig", "bg")}
     rates = {"fig_p": [], "fig_f": [], "bg_p": [], "bg_f": []}
     pos_bg, ex_p, ex_groups = [], None, None
+    poscur = {k: [] for k in CURRENTS}
     for i, s in enumerate(seeds):
         cfg = base.replace(structure="structured", background=True, seed=s)
         rp, rf = plastic_and_frozen(cfg, snap_ms=500 if i == 0 else 0)
@@ -508,6 +569,9 @@ def main(argv=None) -> int:
         pos_all.append(pm["mean"]); pos_bg.append(pm["background"][0])
         for k, v in current_decomposition(rp, rf).items():
             dec_all[k].append(v)
+        pc = position_currents(rp, rf)
+        for k in CURRENTS:
+            poscur[k].append(pc[k])
         nf = cfg.n_figure
         rates["fig_p"].append(rp["E"][:nf].mean())
         rates["fig_f"].append(rf["E"][:nf].mean())
@@ -517,10 +581,26 @@ def main(argv=None) -> int:
             ex_p, ex_groups = rp, weight_groups(rp)
     pos_all = np.vstack(pos_all)
     dec_all = {k: np.asarray(v) for k, v in dec_all.items()}
+    poscur = {k: np.vstack(v) for k, v in poscur.items()}
+
+    # Position 1 has no predecessor inside the word, position 3 has two.
+    # The paired difference is within-seed, so an exact sign-flip test is
+    # the right null.
+    tests = {k: paired_sign_flip(poscur[k][:, 2] - poscur[k][:, 0])
+             for k in CURRENTS}
 
     print(f"\n  [layer 1]  n = {len(seeds)} seeds")
     print(f"    thalamic change        {dec_all['tm_in_fig'].mean():+.2e} "
           f"(must be 0)")
+    floor = 2.0 / 2 ** len(seeds)
+    print(f"    current change, position 1 -> 3 (exact sign-flip, "
+          f"n = {len(seeds)}; smallest attainable P = {floor:.4f})")
+    for k, name in zip(CURRENTS, ("thalamic", "recurrent", "inhibition",
+                                  "net")):
+        d, pv = tests[k]
+        m = poscur[k].mean(axis=0)
+        print(f"      {name:<11} {m[0]:+.4f} -> {m[2]:+.4f}   "
+              f"delta {d:+.4f}   P = {pv:.4f}")
     print(f"    modulation by position "
           + "  ".join(f"tok{i+1} {pos_all[:, i].mean():+.2f}%"
                       for i in range(3))
@@ -528,7 +608,8 @@ def main(argv=None) -> int:
 
     figures.mechanism_figure(ex_p, ex_groups, pos_all,
                              np.asarray(pos_bg), dec_all,
-                             {k: np.asarray(v) for k, v in rates.items()})
+                             {k: np.asarray(v) for k, v in rates.items()},
+                             poscur=poscur, tests=tests)
 
     # ---- robustness ----
     levels = [0.25, 0.5, 1.0, 2.0, 4.0]
@@ -559,6 +640,7 @@ def main(argv=None) -> int:
                          rates={k: np.asarray(v) for k, v in rates.items()},
                          ex_p={k: ex_p[k] for k in ("W_final", "cfg")},
                          ex_groups=ex_groups, scfg=scfg,
+                         poscur=poscur, tests=tests,
                          pack=build_stimulus(
                              scfg, np.random.default_rng(scfg.seed))), fh)
 
