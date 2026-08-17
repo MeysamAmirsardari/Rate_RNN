@@ -13,11 +13,11 @@ on / off -- because the hypothesis is an interaction, not a main effect.
 Structure should buy more when there is something to segregate from.
 
 Outputs, written next to this file rather than into the working directory
-    interplay_stimulus.png     the stimulus, with both background
+    interplay_stimulus.png    the stimulus and its two background constraints
                                constraints shown rather than asserted
-    interplay_measures.png     the 2 x 2 on every measure
-    interplay_layer1.png       figure-ground-style layer-1 panels
-    interplay_robustness.png   performance against background level
+    interplay_results.png     the structured-vs-scrambled comparison
+    interplay_mechanism.png   weights, position modulation, currents
+
 """
 
 from __future__ import annotations
@@ -426,341 +426,159 @@ def measure_all(res: Dict) -> Dict[str, float]:
 
 
 # =====================================================================
-#  Plots
-# =====================================================================
-def _clean(ax):
-    for sp in ("top", "right"):
-        ax.spines[sp].set_visible(False)
-
-
-def plot_stimulus(cfg: InterplayConfig, fname: str, n_words_show: int = 8):
-    rng = np.random.default_rng(cfg.seed)
-    pack = build_stimulus(cfg.replace(n_words=max(n_words_show, 12)), rng)
-    show = n_words_show * 3 * cfg.slot
-    stim = pack["stim"][:, :show]
-
-    fig, axes = plt.subplots(3, 1, figsize=(11, 7.2),
-                             gridspec_kw=dict(height_ratios=(3, 1, 1)),
-                             constrained_layout=True)
-    fig.suptitle("Interplay stimulus: a Saffran stream inside a "
-                 "one-tone-at-a-time background", fontsize=13,
-                 fontweight="bold")
-
-    ax = axes[0]
-    ax.imshow(stim, aspect="auto", origin="lower", cmap="magma",
-              interpolation="nearest", extent=[0, show, -0.5,
-                                               cfg.n_channels - 0.5])
-    ax.axhline(cfg.n_figure - 0.5, color="w", lw=1.4)
-    for k in range(0, n_words_show * 3, 3):
-        ax.axvline(k * cfg.slot, color="#7FD4C1", lw=0.8, ls=":")
-    ax.text(show * 0.005, cfg.n_figure - 1.4, "FIGURE  (4 words x 3 tokens)",
-            color=C_FIG, fontsize=9, fontweight="bold", va="top")
-    ax.text(show * 0.005, cfg.n_channels - 0.8, "BACKGROUND",
-            color="#F2C0C0", fontsize=9, fontweight="bold", va="top")
-    ax.set_ylabel("channel")
-    _clean(ax)
-
-    ax = axes[1]
-    on = pack["stim"][cfg.n_figure:, :] > 0
-    ax.plot(on.sum(axis=0)[:show], color=C_BG, lw=1.2)
-    ax.set_ylim(0, 2.5)
-    ax.set_ylabel("bg tones\non")
-    ax.set_title("exactly one background tone at every sample "
-                 f"(min {on.sum(axis=0).min()}, max {on.sum(axis=0).max()})",
-                 fontsize=9)
-    _clean(ax)
-
-    ax = axes[2]
-    totals = on.sum(axis=1) / on.shape[1] * 100
-    ax.bar(range(len(totals)), totals, color=C_BG, width=0.7)
-    ax.axhline(100 / cfg.n_background, color="0.35", ls="--", lw=1.0)
-    ax.set_ylabel("% of time")
-    ax.set_xlabel("background channel")
-    ax.set_title("every background channel on for the same total time",
-                 fontsize=9)
-    _clean(ax)
-
-    fig.savefig(fname, dpi=150)
-    plt.close(fig)
-    print(f"  saved {fname}")
-
-
-def plot_measures(table: Dict[str, List[Dict[str, float]]], fname: str):
-    panels = [
-        ("seg_index", "Segregation index\n(fig - bg)/(fig + bg)", True),
-        ("within_over_boundary", "Learned within / boundary\ntransition weight", False),
-        ("trans_acc", "Transition accuracy\n(chance = 0.40)", False),
-        ("wp_auc", "Word vs part-word AUC\n(chance = 0.50)", False),
-        ("FF_over_GG", "W_FF / W_GG\n(figure vs background)", True),
-        ("build_gain", "Segregation buildup\n(late - early)", True),
-    ]
-    labels = list(table.keys())
-    colors = [C_STRUCT if "structured" in l else C_SCRAM for l in labels]
-    hatch = ["" if "/bg" in l else "//" for l in labels]
-
-    fig, axes = plt.subplots(2, 3, figsize=(13, 7.4), constrained_layout=True)
-    fig.suptitle("Interplay: does temporal predictability segregate a stream "
-                 "from a background?", fontsize=13, fontweight="bold")
-
-    for ax, (key, title, bg_only) in zip(axes.ravel(), panels):
-        means, sems, xs, cs, hs = [], [], [], [], []
-        for i, lab in enumerate(labels):
-            vals = np.array([r[key] for r in table[lab]], dtype=float)
-            vals = vals[np.isfinite(vals)]
-            if len(vals) == 0:
-                continue
-            xs.append(i)
-            means.append(vals.mean())
-            sems.append(vals.std(ddof=1) / np.sqrt(len(vals))
-                        if len(vals) > 1 else 0.0)
-            cs.append(colors[i]); hs.append(hatch[i])
-        bars = ax.bar(xs, means, yerr=sems, color=cs, width=0.66,
-                      error_kw=dict(lw=1.0, capsize=3))
-        for b, h in zip(bars, hs):
-            b.set_hatch(h)
-        for chance, key_ in ((0.40, "trans_acc"), (0.50, "wp_auc"),
-                             (1.0, "within_over_boundary"),
-                             (1.0, "FF_over_GG")):
-            if key == key_:
-                ax.axhline(chance, color="0.3", ls="--", lw=1.0)
-        ax.set_xticks(range(len(labels)))
-        ax.set_xticklabels([l.replace("/", "\n") for l in labels],
-                           fontsize=8)
-        ax.set_title(title, fontsize=10, fontweight="bold")
-        _clean(ax)
-
-    fig.savefig(fname, dpi=150)
-    plt.close(fig)
-    print(f"  saved {fname}")
-
-
-def plot_layer1(res_p: Dict, res_f: Dict, fname: str):
-    """Figure-ground-style layer-1 panels for the temporal case."""
-    cfg: InterplayConfig = res_p["cfg"]
-    nf = cfg.n_figure
-    W = res_p["W_final"]
-    grp = weight_groups(res_p)
-    dec = current_decomposition(res_p, res_f)
-    pos = position_modulation(res_p, res_f)
-
-    fig = plt.figure(figsize=(13.2, 8.0), constrained_layout=True)
-    gs = fig.add_gridspec(2, 3)
-    fig.suptitle("Interplay, layer 1: the enhancement is recurrent, and it "
-                 "falls on the tokens that were predicted",
-                 fontsize=13, fontweight="bold")
-
-    # -- A: learned weight matrix --------------------------------------
-    ax = fig.add_subplot(gs[0, 0])
-    im = ax.imshow(W, cmap="Purples", interpolation="nearest")
-    ax.axhline(nf - 0.5, color=C_FIG, lw=1.2)
-    ax.axvline(nf - 0.5, color=C_FIG, lw=1.2)
-    ax.set_xlabel("presynaptic"); ax.set_ylabel("postsynaptic")
-    ax.set_title("Learned weights\n(figure block top-left)", fontsize=10,
-                 fontweight="bold")
-    fig.colorbar(im, ax=ax, fraction=0.046)
-
-    # -- B: weight growth over the session -----------------------------
-    ax = fig.add_subplot(gs[0, 1])
-    if grp:
-        for key, lab, col, ls in (
-                ("within", "within-word", C_FIG, "-"),
-                ("boundary", "boundary", "#7FB3A6", "-"),
-                ("ground", "background", C_BG, "-"),
-                ("cross", "cross", "0.6", "--")):
-            ax.plot(grp["t"], grp[key], ls, color=col, lw=1.6, label=lab)
-        ax.legend(fontsize=8, frameon=False)
-    ax.set_xlabel("session time (s)"); ax.set_ylabel("mean weight")
-    ax.set_title("Growth over the session", fontsize=10, fontweight="bold")
-    _clean(ax)
-
-    # -- C: modulation by position inside the word ---------------------
-    ax = fig.add_subplot(gs[0, 2])
-    x = np.arange(3)
-    ax.bar(x, pos["mean"], yerr=pos["sem"], color=C_FIG, width=0.6,
-           error_kw=dict(lw=1.0, capsize=3))
-    ax.axhline(float(pos["background"][0]), color=C_BG, ls="--", lw=1.4,
-               label="background pool")
-    ax.axhline(0, color="0.4", lw=0.8)
-    ax.set_xticks(x); ax.set_xticklabels(["token 1\n(unpredicted)",
-                                          "token 2", "token 3"], fontsize=8)
-    ax.set_ylabel("response modulation (%)")
-    ax.set_title("Enhancement falls on predicted tokens", fontsize=10,
-                 fontweight="bold")
-    ax.legend(fontsize=8, frameon=False)
-    _clean(ax)
-
-    # -- D: current decomposition --------------------------------------
-    ax = fig.add_subplot(gs[1, :2])
-    names = ["Thalamic", "Recurrent", "Inhibition", "Net drive"]
-    xs = np.arange(len(names)); w = 0.36
-    figv = [dec[f"{c}_fig"] for c in CURRENTS]
-    bgv = [dec[f"{c}_bg"] for c in CURRENTS]
-    ax.bar(xs - w / 2, figv, w, color=C_FIG, label="figure")
-    ax.bar(xs + w / 2, bgv, w, color=C_BG, label="background")
-    ax.axhline(0, color="0.35", lw=0.8)
-    ax.set_xticks(xs); ax.set_xticklabels(names)
-    ax.set_ylabel("change from frozen control (a.u.)")
-    ax.set_title(f"Where the enhancement comes from "
-                 f"(thalamic = {figv[0]:+.2e}, zero by construction)",
-                 fontsize=10, fontweight="bold")
-    ax.legend(fontsize=9, frameon=False)
-    _clean(ax)
-
-    # -- E: pool rates, plastic vs frozen ------------------------------
-    ax = fig.add_subplot(gs[1, 2])
-    labels = ["figure", "background"]
-    pv = [res_p["E"][:nf].mean(), res_p["E"][nf:].mean()]
-    fv = [res_f["E"][:nf].mean(), res_f["E"][nf:].mean()]
-    xs = np.arange(2)
-    ax.bar(xs - w / 2, fv, w, color="0.72", label="frozen")
-    ax.bar(xs + w / 2, pv, w, color=C_FIG, label="plastic")
-    for i, (a, b) in enumerate(zip(fv, pv)):
-        ax.text(i, max(a, b) * 1.02, f"{100*(b-a)/a:+.1f}%", ha="center",
-                fontsize=9, fontweight="bold")
-    ax.set_xticks(xs); ax.set_xticklabels(labels)
-    ax.set_ylabel("mean E rate (a.u.)")
-    ax.set_title("Pool rates", fontsize=10, fontweight="bold")
-    ax.legend(fontsize=8, frameon=False)
-    _clean(ax)
-
-    fig.savefig(fname, dpi=150)
-    plt.close(fig)
-    print(f"  saved {fname}")
-
-
-def plot_robustness(levels: Sequence[float],
-                    curves: Dict[str, Dict[str, List[float]]], fname: str):
-    fig, axes = plt.subplots(1, 3, figsize=(12.4, 3.9),
-                             constrained_layout=True)
-    fig.suptitle("Robustness to background level "
-                 "(1.0 = drive-matched to the figure)", fontsize=12,
-                 fontweight="bold")
-    for ax, (key, title, chance) in zip(axes, (
-            ("seg_index", "Segregation index", None),
-            ("wp_auc", "Word vs part-word AUC", 0.5),
-            ("trans_acc", "Transition accuracy", 0.4))):
-        for lab, series in curves.items():
-            ax.plot(levels, series[key], "o-", lw=1.6, ms=4.5,
-                    color=C_STRUCT if "structured" in lab else C_SCRAM,
-                    label=lab)
-        if chance is not None:
-            ax.axhline(chance, color="0.35", ls="--", lw=1.0)
-        ax.set_xlabel("background level")
-        ax.set_title(title, fontsize=10, fontweight="bold")
-        ax.set_xscale("log")
-        _clean(ax)
-    axes[0].legend(fontsize=8, frameon=False)
-    fig.savefig(fname, dpi=150)
-    plt.close(fig)
-    print(f"  saved {fname}")
-
-
-# =====================================================================
 #  Entry point
 # =====================================================================
+def _agg(rows: List[Dict[str, float]], key: str) -> np.ndarray:
+    return np.array([r[key] for r in rows], dtype=float)
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--preset", default="short")
-    p.add_argument("--seeds", type=int, default=3)
+    p.add_argument("--preset", default="default")
+    p.add_argument("--seeds", type=int, default=6)
     p.add_argument("--inh", default="selective",
                    choices=("selective", "uniform"))
     p.add_argument("--skip-robustness", action="store_true")
+    p.add_argument("--figures-only", action="store_true",
+                   help="re-render from the cached results, no simulation")
     args = p.parse_args(argv)
+
+    import pickle
+
+    from tasks.interplay import figures
+
+    cache = Path(__file__).resolve().parent / "results.pkl"
+    if args.figures_only:
+        # Style changes should not cost a 30-minute re-simulation.
+        with open(cache, "rb") as fh:
+            d = pickle.load(fh)
+        figures.stimulus_figure(d["pack"], d["scfg"])
+        figures.mechanism_figure(d["ex_p"], d["ex_groups"], d["pos_all"],
+                                 d["pos_bg"], d["dec_all"], d["rates"])
+        figures.results_figure(d["table"], d["levels"], d["curves"])
+        print(f"re-rendered from {cache.name}")
+        return 0
 
     base = get_preset(args.preset)
     builder = {"selective": model_config,
                "uniform": uniform_model_config}[args.inh]
+    seeds = [base.seed + s for s in range(args.seeds)]
 
     print(f"[ Interplay -- {base.name}, {args.inh} inhibition, "
           f"{args.seeds} seeds ]")
     print(f"  {base.n_figure} figure + {base.n_background} background "
-          f"channels; token {base.tone_dur} ms, slot {base.slot} ms, "
-          f"tau_trace {model_config(base.n_channels).tau_trace*1e3:.0f} ms")
+          f"channels; tone {base.tone_dur} ms in both streams, "
+          f"slot {base.slot} ms")
     print(f"  {base.n_words} words = {base.n_tokens} tokens "
           f"= {base.n_tokens * base.slot / 1000:.0f} s per run")
 
-    plot_stimulus(base, _out("interplay_stimulus.png"))
+    # ---- stimulus ----
+    scfg = base.replace(structure="structured", background=True)
+    figures.stimulus_figure(
+        build_stimulus(scfg, np.random.default_rng(scfg.seed)), scfg)
 
+    # ---- the 2 x 2 ----
     table: Dict[str, List[Dict[str, float]]] = {}
     for structure in ("structured", "scrambled"):
         for bg in (True, False):
             label = f"{structure}/{'bg' if bg else 'clean'}"
             rows = []
-            for s in range(args.seeds):
-                cfg = base.replace(structure=structure, background=bg,
-                                   seed=base.seed + s)
-                a1 = builder(cfg.n_channels)
-                rows.append(measure_all(run(cfg, a1)))
+            for s in seeds:
+                cfg = base.replace(structure=structure, background=bg, seed=s)
+                rows.append(measure_all(run(cfg, builder(cfg.n_channels))))
             table[label] = rows
-            m = {k: np.nanmean([r[k] for r in rows]) for k in rows[0]}
-            print(f"\n  [{label}]")
-            print(f"    drive fig/bg           {m['drive_fig']:.3g} / "
-                  f"{m['drive_bg']:.3g}   (ratio {m['drive_ratio']:.3f})")
-            print(f"    segregation index      {m['seg_index']:+.4f}"
-                  f"   d' {m['seg_dprime']:+.3f}")
-            print(f"    W within / boundary    {m['within_over_boundary']:.3f}"
-                  f"   (within {m['W_within']:.4f}, "
-                  f"boundary {m['W_boundary']:.4f})")
-            print(f"    W_FF / W_GG            {m['FF_over_GG']:.3f}")
-            print(f"    transition accuracy    {m['trans_acc']:.3f}"
-                  f"   (chance 0.40)")
-            print(f"    word vs part-word AUC  {m['wp_auc']:.3f}"
-                  f"   (no-learning floor {m['wp_auc_floor']:.3f})")
-            print(f"    buildup early->late    {m['build_early']:+.4f} -> "
-                  f"{m['build_late']:+.4f}  (gain {m['build_gain']:+.4f})")
+            m = {k: np.nanmean(_agg(rows, k)) for k in rows[0]}
+            print(f"\n  [{label}]  n = {len(rows)} seeds")
+            print(f"    drive ratio bg/fig     {m['drive_ratio']:.3f}")
+            print(f"    segregation index      {m['seg_index']:+.4f}")
+            print(f"    W within / boundary    {m['within_over_boundary']:.3f}")
+            print(f"    transition accuracy    {m['trans_acc']:.3f}")
+            print(f"    word vs part-word AUC  {m['wp_auc']:.3f}  "
+                  f"(floor {m['wp_auc_floor']:.3f})")
 
-    plot_measures(table, _out("interplay_measures.png"))
+    # ---- layer 1, every seed ----
+    pos_all, dec_all = [], {f"{c}_{p}": [] for c in CURRENTS
+                            for p in ("fig", "bg")}
+    rates = {"fig_p": [], "fig_f": [], "bg_p": [], "bg_f": []}
+    pos_bg, ex_p, ex_groups = [], None, None
+    for i, s in enumerate(seeds):
+        cfg = base.replace(structure="structured", background=True, seed=s)
+        rp, rf = plastic_and_frozen(cfg, snap_ms=500 if i == 0 else 0)
+        pm = position_modulation(rp, rf)
+        pos_all.append(pm["mean"]); pos_bg.append(pm["background"][0])
+        for k, v in current_decomposition(rp, rf).items():
+            dec_all[k].append(v)
+        nf = cfg.n_figure
+        rates["fig_p"].append(rp["E"][:nf].mean())
+        rates["fig_f"].append(rf["E"][:nf].mean())
+        rates["bg_p"].append(rp["E"][nf:].mean())
+        rates["bg_f"].append(rf["E"][nf:].mean())
+        if i == 0:
+            ex_p, ex_groups = rp, weight_groups(rp)
+    pos_all = np.vstack(pos_all)
+    dec_all = {k: np.asarray(v) for k, v in dec_all.items()}
 
-    # SFG-style layer-1 panels, on the condition the hypothesis is about.
-    l1_cfg = base.replace(structure="structured", background=True)
-    rp, rf = plastic_and_frozen(l1_cfg, snap_ms=500)
-    plot_layer1(rp, rf, _out("interplay_layer1.png"))
-    dec = current_decomposition(rp, rf)
-    pm = position_modulation(rp, rf)
-    print(f"\n  === layer 1 ===")
-    print(f"    thalamic change fig/bg  {dec['tm_in_fig']:+.2e} / "
-          f"{dec['tm_in_bg']:+.2e}   (must be 0)")
-    for c, n in zip(CURRENTS[1:], ("recurrent", "inhibition", "net drive")):
-        print(f"    {n:<22} {dec[c + '_fig']:+.4f} / {dec[c + '_bg']:+.4f}")
-    print(f"    modulation by position  "
-          + "  ".join(f"tok{i+1}: {v:+.2f}%" for i, v in enumerate(pm["mean"]))
-          + f"   background: {pm['background'][0]:+.2f}%")
+    print(f"\n  [layer 1]  n = {len(seeds)} seeds")
+    print(f"    thalamic change        {dec_all['tm_in_fig'].mean():+.2e} "
+          f"(must be 0)")
+    print(f"    modulation by position "
+          + "  ".join(f"tok{i+1} {pos_all[:, i].mean():+.2f}%"
+                      for i in range(3))
+          + f"   background {np.mean(pos_bg):+.2f}%")
 
-    # ---- the hypothesis, stated as the interaction ----
-    def mean_of(label, key):
-        return float(np.nanmean([r[key] for r in table[label]]))
+    figures.mechanism_figure(ex_p, ex_groups, pos_all,
+                             np.asarray(pos_bg), dec_all,
+                             {k: np.asarray(v) for k, v in rates.items()})
 
-    print("\n  === hypothesis ===")
-    seg_s = mean_of("structured/bg", "seg_index")
-    seg_r = mean_of("scrambled/bg", "seg_index")
-    print(f"    segregation, structured {seg_s:+.4f} vs "
-          f"scrambled {seg_r:+.4f}   difference {seg_s - seg_r:+.4f}")
-    for key, name in (("wp_auc", "word vs part-word AUC"),
-                      ("trans_acc", "transition accuracy")):
-        d_bg = mean_of("structured/bg", key) - mean_of("scrambled/bg", key)
-        d_cl = mean_of("structured/clean", key) - mean_of("scrambled/clean", key)
-        print(f"    {name}: structure effect with bg {d_bg:+.4f}, "
-              f"clean {d_cl:+.4f}, interaction {d_bg - d_cl:+.4f}")
-
+    # ---- robustness ----
+    levels = [0.25, 0.5, 1.0, 2.0, 4.0]
+    curves: Dict[str, Dict[str, List[np.ndarray]]] = {}
     if not args.skip_robustness:
-        levels = [0.25, 0.5, 1.0, 2.0, 4.0]
-        curves: Dict[str, Dict[str, List[float]]] = {}
         for structure in ("structured", "scrambled"):
             series = {k: [] for k in ("seg_index", "wp_auc", "trans_acc")}
             for lv in levels:
                 vals = []
-                for s in range(args.seeds):
+                for s in seeds:
                     cfg = base.replace(structure=structure, background=True,
-                                       bg_level=lv, seed=base.seed + s)
+                                       bg_level=lv, seed=s)
                     vals.append(measure_all(run(cfg, builder(cfg.n_channels))))
                 for k in series:
-                    series[k].append(float(np.nanmean([v[k] for v in vals])))
+                    series[k].append(_agg(vals, k))
             curves[structure] = series
-            print(f"  robustness [{structure}] "
-                  + "  ".join(f"{lv}x:{v:+.3f}"
-                              for lv, v in zip(levels, series["seg_index"])))
-        plot_robustness(levels, curves, _out("interplay_robustness.png"))
+    else:
+        for structure in ("structured", "scrambled"):
+            curves[structure] = {k: [np.array([np.nan] * len(seeds))
+                                     for _ in levels]
+                                 for k in ("seg_index", "wp_auc",
+                                           "trans_acc")}
 
+    with open(cache, "wb") as fh:
+        pickle.dump(dict(table=table, levels=levels, curves=curves,
+                         pos_all=pos_all, pos_bg=np.asarray(pos_bg),
+                         dec_all=dec_all,
+                         rates={k: np.asarray(v) for k, v in rates.items()},
+                         ex_p={k: ex_p[k] for k in ("W_final", "cfg")},
+                         ex_groups=ex_groups, scfg=scfg,
+                         pack=build_stimulus(
+                             scfg, np.random.default_rng(scfg.seed))), fh)
+
+    paths = figures.results_figure(table, levels, curves)
+
+    # ---- the comparison the design exists for ----
+    def mean_of(label, key):
+        return float(np.nanmean(_agg(table[label], key)))
+
+    print("\n  === structured vs scrambled, with background ===")
+    for key, name in (("seg_index", "segregation index"),
+                      ("trans_acc", "transition accuracy"),
+                      ("wp_auc", "word vs part-word AUC"),
+                      ("within_over_boundary", "within/boundary weight")):
+        a, b = mean_of("structured/bg", key), mean_of("scrambled/bg", key)
+        print(f"    {name:<24} {a:+.4f}  vs  {b:+.4f}   "
+              f"difference {a - b:+.4f}")
+
+    for kind, path in paths.items():
+        print(f"  {kind}: {path}")
     print("\nDone.")
     return 0
 

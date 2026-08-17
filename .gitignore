@@ -221,3 +221,4 @@ __marimo__/
 ECoG/**/results/
 final_figures/**/data/*.npz
 final_figures/**/__pycache__/
+tasks/*/results.pkl
