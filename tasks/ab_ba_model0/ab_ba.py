@@ -6,13 +6,14 @@ AB-vs-BA oddball paradigm for the **tone-selective inhibition** A1 model
 (``model0``).
 
 Differences from ``tasks.ab_ba``
---------------------------------
+-------------------------------
 1. Imports ``A1Config`` / ``simulate`` from ``model0`` instead of ``model``.
 2. ``out['I']`` is now per-channel (N, T) rather than scalar (T,), so the
    "global I" panel becomes per-channel ``I[A]`` and ``I[B]`` traces.
-3. The manuscript protocol exposes the two ECoG timing regimes explicitly:
-   contiguous 180-ms items for experiments 1/2 and 50-ms items separated by
-   100 ms for experiment 3.  Both use the recorded 1.5-s inter-sequence gap.
+3. ``intra_gap = 30 ms`` (was 0).  The selective-inhibition mechanism
+   requires a brief gap so that I_B can outlive E_B and still be high
+   when tone B arrives.  Biologically this just acknowledges that real
+   tone sequences have some inter-tone interval.
 4. An extra ``plot_inhibition_timing`` figure shows the diagnostic of
    the new mechanism: I_B is elevated at the tone-B onset in STD but
    not in DEV.
@@ -22,7 +23,6 @@ Differences from ``tasks.ab_ba``
 
 from __future__ import annotations
 
-import dataclasses
 import sys
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -35,44 +35,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate
-
-
-# =====================================================================
-#  Manuscript protocol: ECoG-matched AB/BA regime
-# =====================================================================
-# These values are centralized here so figure builders cannot silently drift
-# away from the task definition.  Times are in seconds, matching ``build_stim``.
-AB_BA_OVERRIDES = dict(
-    w_IE_self=3.0,
-    w_EI_self=1.0,
-    tau_I=0.250,
-    W_norm=4.0,
-)
-
-P_REGULAR = 0.85
-
-TIMING_LONG = dict(tone_dur=0.180, intra_gap=0.000, inter_gap=1.500)
-TIMING_SHORT = dict(tone_dur=0.050, intra_gap=0.100, inter_gap=1.500)
-
-
-def inhibition_config(preset: str) -> A1Config:
-    """Return the canonical AB/BA core or its row-sum-matched control."""
-
-    canonical = A1Config(N=2, **AB_BA_OVERRIDES)
-    if preset == "selective":
-        return dataclasses.replace(canonical)
-    if preset == "uniform":
-        ei_row = canonical.w_EI_self + canonical.w_EI_lat
-        ie_row = canonical.w_IE_self + canonical.w_IE_lat
-        return dataclasses.replace(
-            canonical,
-            w_EI_self=ei_row / canonical.N,
-            w_EI_lat=ei_row / canonical.N,
-            w_IE_self=ie_row / canonical.N,
-            w_IE_lat=ie_row / canonical.N,
-        )
-    raise ValueError(f"Unknown inhibition preset: {preset}")
+from model0 import A1Config, INH_PRESETS, simulate, shared_config
 
 
 # =====================================================================
@@ -92,9 +55,9 @@ def build_stim(
     cfg: A1Config,
     ch_A: int,
     ch_B: int,
-    tone_dur: float = TIMING_LONG["tone_dur"],
-    intra_gap: float = TIMING_LONG["intra_gap"],
-    inter_gap: float = TIMING_LONG["inter_gap"],
+    tone_dur: float = 50e-3,
+    intra_gap: float = 30e-3,         # NEW DEFAULT: 30 ms — see module docstring
+    inter_gap: float = 500e-3,
     tone_amp: float = 1.0,
     tuning_sigma: float = 0.0,        # delta tuning — no tonotopic overlap
 ) -> Tuple[np.ndarray, np.ndarray, int]:
@@ -143,22 +106,19 @@ def run_experiment(
     cfg: Optional[A1Config] = None,
     ch_A: int = 0,
     ch_B: int = 1,
-    timing: Optional[dict] = None,
 ) -> dict:
     if cfg is None:
-        cfg = A1Config(N=2, **AB_BA_OVERRIDES)
+        cfg = shared_config(N=2)
 
     rng = np.random.default_rng(seed)
     codes = shuffled_codes(n_trials, p_AB, rng)
-    if timing is None:
-        timing = TIMING_LONG
-    stim, starts, n_seq = build_stim(codes, cfg, ch_A, ch_B, **timing)
+    stim, starts, n_seq = build_stim(codes, cfg, ch_A, ch_B)
 
     snap_every = max(1, int(round(0.5 / cfg.dt)))
     out = simulate(stim, cfg=cfg, record_W_every=snap_every, seed=seed)
     out.update(
         stim=stim, codes=np.array(codes), seq_starts=starts, n_seq=n_seq,
-        p_AB=p_AB, ch_A=ch_A, ch_B=ch_B, timing=dict(timing),
+        p_AB=p_AB, ch_A=ch_A, ch_B=ch_B,
     )
     return out
 
@@ -188,26 +148,13 @@ def _setup_axes(ax, title=None, xlabel=None, ylabel=None):
         ax.spines[sp].set_visible(False)
 
 
-def _tone_windows(
-    n_seq: int,
-    dt: float,
-    intra_gap: float = TIMING_LONG["intra_gap"],
-    tone_dur: float = TIMING_LONG["tone_dur"],
-):
+def _tone_windows(n_seq: int, dt: float, intra_gap: float = 30e-3, tone_dur: float = 50e-3):
     n_tone = int(round(tone_dur / dt))
     n_intra = int(round(intra_gap / dt))
     return (0, n_tone), (n_tone + n_intra, 2 * n_tone + n_intra)
 
 
-def _shade_tones(
-    ax,
-    n_seq,
-    dt,
-    timing: Optional[dict] = None,
-):
-    timing = TIMING_LONG if timing is None else timing
-    intra_gap = float(timing["intra_gap"])
-    tone_dur = float(timing["tone_dur"])
+def _shade_tones(ax, n_seq, dt, intra_gap=30e-3, tone_dur=50e-3):
     (a0, a1), (b0, b1) = _tone_windows(n_seq, dt, intra_gap, tone_dur)
     ax.axvspan(a0 * dt, a1 * dt, color="tab:red",  alpha=0.08, label="tone A")
     ax.axvspan(b0 * dt, b1 * dt, color="tab:blue", alpha=0.08, label="tone B")
@@ -239,7 +186,6 @@ def plot_run(res: dict, suptitle: str, fname: str):
     ch_A, ch_B = res["ch_A"], res["ch_B"]
     n_seq = res["n_seq"]
     stim = res["stim"]
-    timing = res.get("timing", TIMING_LONG)
 
     n_show = 6
     show_T = n_show * n_seq
@@ -280,7 +226,7 @@ def plot_run(res: dict, suptitle: str, fname: str):
     # ---- row 2: ACTIVITY — firing rate E, channel A and channel B ----
     for col, ch, name in [(0, ch_A, "A"), (1, ch_B, "B")]:
         ax = fig.add_subplot(gs[1, col])
-        _shade_tones(ax, n_seq, dt, timing)
+        _shade_tones(ax, n_seq, dt)
         if len(AB_E):
             ax.plot(ts, AB_E.mean(0)[ch], color="tab:green", lw=2,
                     label=f"AB trial (n={len(AB_E)})")
@@ -288,7 +234,7 @@ def plot_run(res: dict, suptitle: str, fname: str):
             ax.plot(ts, BA_E.mean(0)[ch], color="tab:purple", ls="--", lw=2,
                     label=f"BA trial (n={len(BA_E)})")
         ax.legend(fontsize=8, frameon=False)
-        _setup_axes(ax, title=f"Activity: firing rate, channel {name}",
+        _setup_axes(ax, title=f"Activity — firing rate, channel {name}",
                     xlabel="time in sequence (s)", ylabel=f"$E_{name}$")
 
     # ---- row 3: INPUT — recurrent excitation & inhibition onto E ----
@@ -299,7 +245,7 @@ def plot_run(res: dict, suptitle: str, fname: str):
     # trial, 2nd tone: green dashed > 0 but the red dashed swamps it).
     for col, ch, name in [(0, ch_A, "A"), (1, ch_B, "B")]:
         ax = fig.add_subplot(gs[2, col])
-        _shade_tones(ax, n_seq, dt, timing)
+        _shade_tones(ax, n_seq, dt)
         ax.axhline(0, color="0.6", lw=0.7)
         if len(AB_rec):
             ax.plot(ts, AB_rec.mean(0)[ch], color="tab:green", lw=2,
@@ -309,13 +255,13 @@ def plot_run(res: dict, suptitle: str, fname: str):
                     label="recurrent exc. — BA")
         if len(AB_inh):
             ax.plot(ts, -AB_inh.mean(0)[ch], color="tab:red", lw=2,
-                    label="− inh — AB")
+                    label="− inhibition — AB")
         if len(BA_inh):
             ax.plot(ts, -BA_inh.mean(0)[ch], color="tab:red", lw=2, ls="--",
-                    label="− inh — BA")
+                    label="− inhibition — BA")
         ax.legend(fontsize=7.5, frameon=False)
         _setup_axes(ax,
-                    title=f"Input: recurrent exc & inh, channel {name}",
+                    title=f"Input — recurrent excitation & inhibition, channel {name}",
                     xlabel="time in sequence (s)", ylabel="current")
 
     # ---- row 4: weight evolution + final W ----
@@ -347,15 +293,13 @@ def plot_run(res: dict, suptitle: str, fname: str):
     return fig
 
 
-def plot_surprise(res_std: dict, res_dev: dict, fname: str):
+def plot_surprise(res_std: dict, res_dev: dict, fname: str,
+                  tone_dur: float = 50e-3):
     """STD-vs-DEV contrast for the AB sequence, channel-B focused."""
     cfg = res_std["cfg"]; dt = cfg.dt
     ch_A, ch_B = res_std["ch_A"], res_std["ch_B"]
     n_seq = res_std["n_seq"]
     ts = np.arange(n_seq) * dt
-    timing = res_std.get("timing", TIMING_LONG)
-    if timing != res_dev.get("timing", TIMING_LONG):
-        raise ValueError("STD and DEV results use different sequence timing")
 
     ev_std = evoked_per_trial(res_std["E"], res_std["seq_starts"], n_seq)
     ev_dev = evoked_per_trial(res_dev["E"], res_dev["seq_starts"], n_seq)
@@ -373,16 +317,16 @@ def plot_surprise(res_std: dict, res_dev: dict, fname: str):
 
     fig = plt.figure(figsize=(13, 8), constrained_layout=True)
     fig.suptitle(
-        f"Surprise contrast -- selective-inhibition model "
+        f"Surprise contrast — selective-inhibition model "
         f"(DEV − STD, AB sequence)\n"
-        f"regular context: p(AB)={P_REGULAR:.2f}   n={len(AB_std)}     "
-        f"rare context: p(AB)={1-P_REGULAR:.2f}   n={len(AB_dev)}",
+        f"STD: Run 1, p(AB)=90%   n={len(AB_std)}     "
+        f"DEV: Run 2, p(AB)=10%   n={len(AB_dev)}",
         fontsize=12, fontweight="bold",
     )
     gs = fig.add_gridspec(2, 2)
 
     ax = fig.add_subplot(gs[0, 0])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.plot(ts, pop_std, color="tab:blue", lw=2, label="STD (Run 1)")
     ax.plot(ts, pop_dev, color="tab:red",  lw=2, label="DEV (Run 2)")
     ax.legend(fontsize=9, frameon=False, loc="upper right")
@@ -390,7 +334,7 @@ def plot_surprise(res_std: dict, res_dev: dict, fname: str):
                 xlabel="time in sequence (s)", ylabel=r"$\langle E_i\rangle_i$")
 
     ax = fig.add_subplot(gs[0, 1])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.axhline(0, color="0.4", lw=0.6)
     ax.plot(ts, pop_diff, color="tab:purple", lw=2)
     ax.fill_between(ts, 0, pop_diff, where=(pop_diff > 0), color="tab:red",  alpha=0.25, label="DEV > STD")
@@ -400,7 +344,7 @@ def plot_surprise(res_std: dict, res_dev: dict, fname: str):
                 xlabel="time in sequence (s)", ylabel=r"$\Delta\,\langle E\rangle$")
 
     ax = fig.add_subplot(gs[1, 0])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.plot(ts, B_std, color="tab:blue", lw=2, label="STD (Run 1)")
     ax.plot(ts, B_dev, color="tab:red",  lw=2, label="DEV (Run 2)")
     ax.legend(fontsize=9, frameon=False, loc="upper right")
@@ -408,7 +352,7 @@ def plot_surprise(res_std: dict, res_dev: dict, fname: str):
                 xlabel="time in sequence (s)", ylabel=r"$E_B$")
 
     ax = fig.add_subplot(gs[1, 1])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.axhline(0, color="0.4", lw=0.6)
     ax.plot(ts, B_diff, color="tab:purple", lw=2)
     ax.fill_between(ts, 0, B_diff, where=(B_diff > 0), color="tab:red",  alpha=0.25)
@@ -427,9 +371,6 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
     ch_A, ch_B = res_std["ch_A"], res_std["ch_B"]
     n_seq = res_std["n_seq"]
     ts = np.arange(n_seq) * dt
-    timing = res_std.get("timing", TIMING_LONG)
-    if timing != res_dev.get("timing", TIMING_LONG):
-        raise ValueError("STD and DEV results use different sequence timing")
 
     def mean_AB(res, key):
         ev = evoked_per_trial(res[key], res["seq_starts"], n_seq)
@@ -443,33 +384,33 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
 
     fig = plt.figure(figsize=(13, 9), constrained_layout=True)
     fig.suptitle(
-        "Selective-inhibition mechanism -- predicted-tone interneuron carries the memory",
+        "Selective-inhibition mechanism — predicted-tone interneuron carries the memory",
         fontsize=12, fontweight="bold",
     )
     gs = fig.add_gridspec(3, 2)
 
     # E[B] STD vs DEV
     ax = fig.add_subplot(gs[0, 0])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.plot(ts, E_std[ch_B], color="tab:blue", lw=2, label="STD (B is predicted)")
     ax.plot(ts, E_dev[ch_B], color="tab:red",  lw=2, label="DEV (B is unpredicted)")
     ax.legend(fontsize=9, frameon=False)
-    _setup_axes(ax, title=f"E[B={ch_B}]  --  predicted vs unpredicted tone B",
+    _setup_axes(ax, title=f"E[B={ch_B}]  —  predicted vs unpredicted tone B",
                 xlabel="time in sequence (s)", ylabel="rate")
 
     # I[B] STD vs DEV — THE KEY DIAGNOSTIC
     ax = fig.add_subplot(gs[0, 1])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.plot(ts, I_std[ch_B], color="tab:blue", lw=2, label="STD (B is predicted)")
     ax.plot(ts, I_dev[ch_B], color="tab:red",  lw=2, label="DEV (B is unpredicted)")
     ax.legend(fontsize=9, frameon=False)
     _setup_axes(ax,
-                title=f"I[B={ch_B}]  --  pre-built during tone A under prediction",
+                title=f"I[B={ch_B}]  —  pre-built during tone A under prediction",
                 xlabel="time in sequence (s)", ylabel="I rate")
 
     # E[A] for context
     ax = fig.add_subplot(gs[1, 0])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.plot(ts, E_std[ch_A], color="tab:blue", lw=2, label="STD")
     ax.plot(ts, E_dev[ch_A], color="tab:red",  lw=2, label="DEV")
     ax.legend(fontsize=9, frameon=False)
@@ -478,7 +419,7 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
 
     # I[A] for context
     ax = fig.add_subplot(gs[1, 1])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.plot(ts, I_std[ch_A], color="tab:blue", lw=2, label="STD")
     ax.plot(ts, I_dev[ch_A], color="tab:red",  lw=2, label="DEV")
     ax.legend(fontsize=9, frameon=False)
@@ -487,7 +428,7 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
 
     # inh_to_E[B] — the effective subtractive current on E[B]
     ax = fig.add_subplot(gs[2, 0])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.plot(ts, inh_std[ch_B], color="tab:blue", lw=2, label="STD")
     ax.plot(ts, inh_dev[ch_B], color="tab:red",  lw=2, label="DEV")
     ax.legend(fontsize=9, frameon=False)
@@ -497,7 +438,7 @@ def plot_inhibition_timing(res_std: dict, res_dev: dict, fname: str):
 
     # Difference traces
     ax = fig.add_subplot(gs[2, 1])
-    _shade_tones(ax, n_seq, dt, timing)
+    _shade_tones(ax, n_seq, dt)
     ax.axhline(0, color="0.4", lw=0.6)
     dI = I_std[ch_B] - I_dev[ch_B]
     dE = E_dev[ch_B] - E_std[ch_B]
@@ -523,7 +464,7 @@ def plot_recurrent_masking(res: dict, fname: str):
       - AB trial:  tone A is FIRST, so B has not fired yet -> I_B ~ 0 ->
         the A->B current passes the relu and pre-activates B.
       - BA trial:  tone A is SECOND; B fired as the first tone and loaded
-        I_B (the canonical tau_I is 250 ms), so I_B is still high when tone A arrives ->
+        I_B (tau_I = 80 ms), so I_B is still high when tone A arrives ->
         the SAME A->B current is shunted below threshold -> E_B ~ 0.
 
     This is the selective-inhibition mechanism (the same one that gives the
@@ -535,9 +476,8 @@ def plot_recurrent_masking(res: dict, fname: str):
     ch_A, ch_B = res["ch_A"], res["ch_B"]
     n_seq = res["n_seq"]
     ts = np.arange(n_seq) * dt
-    timing = res.get("timing", TIMING_LONG)
-    n_tone = int(round(timing["tone_dur"] / dt))
-    n_intra = int(round(timing["intra_gap"] / dt))
+    n_tone  = int(round(50e-3 / dt))
+    n_intra = int(round(30e-3 / dt))
 
     def mean_by_code(key, code):
         ev = evoked_per_trial(res[key], res["seq_starts"], n_seq)
@@ -571,13 +511,13 @@ def plot_recurrent_masking(res: dict, fname: str):
     fig.suptitle(
         "The learned A→B input reaches channel B in BOTH trials — "
         "but is masked in BA by B's own interneuron\n"
-        f"Run 1 ({100*P_REGULAR:.0f}% AB), post-learning,  W[B←A] = {W_ba:.2f}    "
+        f"Run 1 (90% AB), post-learning,  W[B←A] = {W_ba:.2f}    "
         "(red band = tone A, blue band = tone B, dotted = tone-A onset)",
         fontsize=11.5, fontweight="bold")
 
     for col, (code, D, head) in enumerate([
-            ("AB", AB, "AB trial (standard) -- tone A 1st, B is fresh"),
-            ("BA", BA, "BA trial (deviant) -- tone A 2nd, B just fired")]):
+            ("AB", AB, "AB trial (standard) — tone A 1st, B is fresh"),
+            ("BA", BA, "BA trial (deviant) — tone A 2nd, B just fired")]):
         wAc = wA[code]
         tA0 = wAc.start * dt
 
@@ -680,7 +620,7 @@ def plot_recurrent_masking(res: dict, fname: str):
     ax.set_xticks(x); ax.set_xticklabels(labels, fontsize=9.5)
     ax.legend(fontsize=9, frameon=False, loc="upper right")
     _setup_axes(ax, title="Snapshot at mid-tone-A: identical A→B drive, "
-                          "opposite outcome -- inhibition is the only thing "
+                          "opposite outcome — inhibition is the only thing "
                           "that changed",
                 ylabel="current / rate")
 
@@ -693,50 +633,34 @@ def plot_recurrent_masking(res: dict, fname: str):
 #  Main
 # =====================================================================
 def main():
-    # AB/BA is the MMN-polarity test.  The predictive cascade
-    # (E_A -> pre-activate E_B via W[B<-A] -> drive I_B
-    #     -> tau_I persistence -> suppress E_B at tone B)
-    # needs (i) W[B<-A] near its asymptote and (ii) a strong I -> E
-    # delivery arm.  The bounded plasticity rule (preserved here -- not
-    # switched to additive) gives the right ASYMPTOTE (W_max for purely
-    # causal pairs), but at the default W_norm=20 the time-constant of
-    # the (W_max - W)-gated approach is ~6000 trials, far beyond the
-    # 400-trial test horizon.  W_norm=4 speeds the approach 25x while
-    # leaving self-weight fixed points unchanged (W_max - LTD/LTP=0.125).
-    # The strong w_IE_self provides I -> E delivery.
-    # Other tasks (roving, local_global, sfg) keep W_norm=20 and lower
-    # inhibition -- they don't want recurrent saturation in <500 trials.
+    # AB/BA is the MMN-polarity test: the predictive cascade
+    # (E_A -> pre-activate E_B via W[B<-A] -> drive I_B -> tau_I persistence
+    #  -> suppress E_B at tone B) needs W[B<-A] near its asymptote.  Under the
+    # single shared config (W_norm=20) the (W_max-W)-gated approach is slow
+    # (~6000 trials), so this 400-trial run reaches only part of the asymptote
+    # -- the polarity is present but weaker than the old bespoke config
+    # (W_norm=4, strong w_IE_self).  See model0/legacy_configs.ab_ba to
+    # reproduce the original; raise n_trials here to recover the full effect.
     for inh_name in INH_PRESETS:
-        # The uniform control changes only spatial selectivity.  Both fixed
-        # inhibitory arms retain the canonical row sums, tau_I and learning
-        # parameters.
-        cfg = inhibition_config(inh_name)
+        cfg = shared_config(N=2, inh=inh_name)
 
         print(f"\n========================================================")
         print(f"[ AB/BA -- inhibition preset '{inh_name}' ]")
         print(f"  w_EI = (self {cfg.w_EI_self}, lat {cfg.w_EI_lat}); "
               f"w_IE = (self {cfg.w_IE_self}, lat {cfg.w_IE_lat})")
 
-        print(f"[ Run 1 ]  {100*P_REGULAR:.0f}% AB / {100*(1-P_REGULAR):.0f}% BA")
-        res1 = run_experiment(
-            p_AB=P_REGULAR, n_trials=400, seed=1, cfg=cfg,
-            ch_A=0, ch_B=1, timing=TIMING_LONG,
-        )
-        print(f"[ Run 2 ]  {100*(1-P_REGULAR):.0f}% AB / {100*P_REGULAR:.0f}% BA")
-        res2 = run_experiment(
-            p_AB=1.0-P_REGULAR, n_trials=400, seed=2, cfg=cfg,
-            ch_A=0, ch_B=1, timing=TIMING_LONG,
-        )
+        print("[ Run 1 ]  90% AB / 10% BA")
+        res1 = run_experiment(p_AB=0.90, n_trials=400, seed=1, cfg=cfg, ch_A=0, ch_B=1)
+        print("[ Run 2 ]  10% AB / 90% BA")
+        res2 = run_experiment(p_AB=0.10, n_trials=400, seed=2, cfg=cfg, ch_A=0, ch_B=1)
 
         print("[ Plotting ]")
         plot_run(res1,
-                 f"Run 1 -- {100*P_REGULAR:.0f}% AB (regular) / "
-                 f"{100*(1-P_REGULAR):.0f}% BA (rare) "
+                 f"Run 1 — 90% AB (standard) / 10% BA (deviant) "
                  f"[{inh_name} inhibition]",
                  f"m0_ab_ba_run1_{inh_name}.png")
         plot_run(res2,
-                 f"Run 2 -- {100*(1-P_REGULAR):.0f}% AB (rare) / "
-                 f"{100*P_REGULAR:.0f}% BA (regular) "
+                 f"Run 2 — 10% AB (deviant) / 90% BA (standard) "
                  f"[{inh_name} inhibition]",
                  f"m0_ab_ba_run2_{inh_name}.png")
         plot_surprise(res1, res2,            f"m0_ab_ba_surprise_{inh_name}.png")
@@ -750,8 +674,8 @@ def main():
         wba1, wab1 = W_pair(res1["W_final"])
         wba2, wab2 = W_pair(res2["W_final"])
 
-        n_tone = int(round(TIMING_LONG["tone_dur"] / cfg.dt))
-        n_intra = int(round(TIMING_LONG["intra_gap"] / cfg.dt))
+        n_tone = int(round(50e-3 / cfg.dt))
+        n_intra = int(round(30e-3 / cfg.dt))
         win_B = slice(n_tone + n_intra, 2 * n_tone + n_intra)
 
         def AB_mean_E(res):
@@ -765,9 +689,9 @@ def main():
         mean_STD = abE_STD[ch_B, win_B].mean(); mean_DEV = abE_DEV[ch_B, win_B].mean()
 
         print(f"\nLearned recurrent weights [{inh_name}] (B<-A , A<-B):")
-        print(f"  Run 1 ({100*P_REGULAR:.0f}% AB):  W[B<-A] = {wba1:.3f}   W[A<-B] = {wab1:.3f}"
+        print(f"  Run 1 (90% AB):  W[B<-A] = {wba1:.3f}   W[A<-B] = {wab1:.3f}"
               f"   asym = {(wba1 - wab1):+.3f}")
-        print(f"  Run 2 ({100*P_REGULAR:.0f}% BA):  W[B<-A] = {wba2:.3f}   W[A<-B] = {wab2:.3f}"
+        print(f"  Run 2 (90% BA):  W[B<-A] = {wba2:.3f}   W[A<-B] = {wab2:.3f}"
               f"   asym = {(wba2 - wab2):+.3f}")
         print(f"Tone-B response, channel B [{inh_name}]:")
         print(f"  peak  STD={peak_STD:.2f}  DEV={peak_DEV:.2f}  "

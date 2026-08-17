@@ -58,7 +58,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate
+from model0 import A1Config, INH_PRESETS, simulate, shared_config
 
 # ---- fixed paradigm constants -------------------------------------------------
 N_PER_SEQ = 5                  # tones per sequence
@@ -127,7 +127,7 @@ def run_experiment(
     other type is the deviant.
     """
     if cfg is None:
-        cfg = A1Config()
+        cfg = shared_config(N=2)
     if std_type not in ("xxxxx", "xxxxy"):
         raise ValueError(f"std_type must be 'xxxxx' or 'xxxxy', got {std_type!r}")
     dev_type = "xxxxx" if std_type == "xxxxy" else "xxxxy"
@@ -424,8 +424,8 @@ def main():
     # Loop over both inhibition-structure presets so the user can see
     # the contribution of tone-selectivity to the local-global effects.
     # Filenames carry the preset tag; the two runs do not overwrite.
-    for inh_name, inh_factory in INH_PRESETS.items():
-        cfg = inh_factory()
+    for inh_name in INH_PRESETS:
+        cfg = shared_config(N=2, inh=inh_name)
 
         print(f"\n========================================================")
         print(f"[ Local-global -- inhibition preset '{inh_name}' ]")

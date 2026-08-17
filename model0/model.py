@@ -132,11 +132,23 @@ def simulate(
         else:
             x_eff = x
             tm_in = cfg.A_TC * u * x * s
-        rec_E    = W @ E
+        # Fast AMPA-like recurrence (W @ E) by default; slow NMDA-like
+        # recurrence (W @ tr) when the paradigm needs a prediction that
+        # outlives tau_E.  See A1Config.recurrent_from_trace.
+        pred     = W @ (tr if cfg.recurrent_from_trace else E)
+        rec_E    = cfg.A_rec * pred
         inh_to_E = M_IE @ Iv            # (N,) per-channel inhibition
 
-        net_E = tm_in + rec_E - inh_to_E
-        net_I = M_EI @ E                 # each I_i driven mostly by E_i
+        # A_cancel subtracts the prediction directly at the target E unit,
+        # bypassing the shared interneuron pool.  This is what lets the
+        # GENERAL inhibition be global (blanket) while the prediction stays
+        # channel-specific -- see A1Config.A_cancel.
+        net_E = tm_in + rec_E - inh_to_E - cfg.A_cancel * pred
+        # Each I_i is driven mostly by E_i.  When A_pred > 0 the learned
+        # association is delivered HERE instead of onto E: the prediction
+        # becomes purely inhibitory, silent until it is violated.  See
+        # A1Config.A_pred.
+        net_I = M_EI @ E + cfg.A_pred * pred
 
         # relu is applied to the *rate* E (post-step clamp below), not to
         # net_E -- so inhibition acts directly on the firing rate.

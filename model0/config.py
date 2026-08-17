@@ -54,7 +54,9 @@ References
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+
+import numpy as np
 
 
 @dataclass
@@ -154,6 +156,84 @@ class A1Config:
     W_norm:      float = 20.0
 
     plastic_self: bool = True
+
+    # ---- Slow (NMDA) recurrent drive ----
+    # When False (default) the recurrent input is W @ E: the prediction is
+    # instantaneous co-activation, so it decays with tau_E (20 ms) and can
+    # only bridge gaps of a few tens of ms.  That is fine for the paradigms
+    # whose tones nearly abut, and wrong for any paradigm with a real gap:
+    # a plain W[B<-A] says "B NOW", not "B in 200 ms", which is exactly why
+    # Wacongne et al. (2012) needed explicit delay lines.
+    #
+    # When True the recurrent input is W @ tr instead -- the same low-passed
+    # trace the learning rule already uses, with time constant tau_trace.
+    # The asymmetry is the standard one: thalamocortical transmission is
+    # AMPA-dominated and fast, while recurrent intracortical synapses carry
+    # a large NMDA component with a decay of ~100 ms (Wacongne et al. use
+    # tau_NMDA,decay = 100 ms for precisely this role).  So the drive that
+    # carries a prediction outlasts the drive that carries the stimulus,
+    # and one time constant -- tau_trace -- sets both the eligibility
+    # window for learning the association and the lifetime of the
+    # prediction it produces, which is the physiologically coherent choice.
+    recurrent_from_trace: bool = False
+
+    # Gain applied to the recurrent drive, the recurrent counterpart of
+    # A_TC.  It separates two things that W alone conflates: HOW STRONGLY
+    # two channels are associated (W, bounded by W_max and learned), and
+    # HOW MUCH CURRENT a unit of association delivers (A_rec, fixed by the
+    # anatomy of the projection).  Leaving it at 1.0 reproduces the
+    # original behaviour exactly, so no existing paradigm is affected.
+    #
+    # It matters whenever the recurrent drive is read off the trace: a
+    # 50 ms tone low-passed at tau_trace only reaches ~28% of the rate it
+    # came from, so W @ tr delivers a current an order of magnitude below
+    # W @ E even at identical W.  Without a gain the only way to get a
+    # prediction of usable size would be to push W_max far outside the
+    # measured intracortical range, which would misattribute a fan-in
+    # factor to the strength of a single association.
+    A_rec: float = 1.0
+
+    # Gain on the learned association when it is delivered to the
+    # INHIBITORY unit rather than the excitatory one.  0.0 (default) leaves
+    # every existing paradigm untouched.
+    #
+    # With A_rec > 0 the prediction is an excitatory phantom: the predicted
+    # channel visibly fires before its tone arrives, that phantom lands in
+    # the response window of the PRECEDING tone, and the E->E path closes a
+    # positive A->B->A loop that goes unstable once the gain is large
+    # enough to make the prediction strong.
+    #
+    # With A_pred > 0 instead, the prediction is silent until violated: it
+    # raises I_j without raising E_j, so it adds nothing to the population
+    # response until the predicted tone arrives and is suppressed.  It is
+    # also pure negative feedback, so unlike A_rec it has no stability
+    # ceiling.  Wacongne et al. (2012) use the same arrangement -- their
+    # predictions reach the error layer through inhibitory interneurons,
+    # which invert their sign.
+    #
+    # Learning is unchanged and still driven by ACTUAL co-activity
+    # (post E_i, pre tr_j).  Only the delivery target moves.  Driving the
+    # learning from I instead would let the prediction reinforce itself.
+    A_pred: float = 0.0
+
+    # Gain on the prediction when it is subtracted DIRECTLY at the target
+    # excitatory unit, bypassing the interneuron pool.  0.0 (default)
+    # leaves every existing paradigm untouched.
+    #
+    # A_pred routes the prediction through I, so it inherits M_IE's
+    # selectivity: under blanket inhibition I_j suppresses every channel
+    # equally, the predicted and unpredicted tone are damped by the same
+    # amount, and the paradigm collapses.  A_cancel instead makes the
+    # prediction a subtractive cancellation at its own target, which is
+    # channel-specific by construction.
+    #
+    # That splits inhibition into two jobs that need not share an
+    # anatomy: BLANKET inhibition for gain control and normalisation
+    # (PV-like, dense and unselective), and a SPECIFIC predictive
+    # cancellation (the actual comparison operation).  It is the weaker
+    # and more interesting claim -- general inhibition does not have to be
+    # tone-tuned, only the predictive projection does.
+    A_cancel: float = 0.0
 
     # ---- Bounded plasticity (soft bound + heterosynaptic LTD) ----
     # When False (default), the trace-based STDP rule is additive:
@@ -264,3 +344,234 @@ INH_PRESETS = {
     "selective": selective_inh,
     "uniform":   uniform_inh,
 }
+
+
+# =====================================================================
+#  Disynaptic inhibitory loop gain  (the cross-paradigm invariant)
+# =====================================================================
+def inhibitory_loop_gain(cfg: "A1Config") -> float:
+    """Top eigenvalue of the symmetrised disynaptic loop ``M_IE @ M_EI``.
+
+    This is the dynamically relevant measure of global (population-pooling)
+    inhibition -- the gain of the E -> I -> E negative-feedback loop.  Its
+    all-to-all term grows as ``N**2 * w_lat**2``, so a preset calibrated at
+    one channel count sits in a completely different inhibitory regime at
+    another N unless the LATERAL weights are rescaled to hold this quantity
+    fixed.  ``sfg_config`` does exactly that.
+    """
+    N = cfg.N
+    J, eye = np.ones((N, N)), np.eye(N)
+    M_EI = cfg.w_EI_lat * J + (cfg.w_EI_self - cfg.w_EI_lat) * eye
+    M_IE = cfg.w_IE_lat * J + (cfg.w_IE_self - cfg.w_IE_lat) * eye
+    G = M_IE @ M_EI
+    return float(np.max(np.linalg.eigvalsh((G + G.T) / 2)))
+
+
+def _selective_laterals(N: int, loop_gain: float, lat_ratio: float,
+                        a_self: float = A1Config.w_EI_self,
+                        b_self: float = A1Config.w_IE_self):
+    """Lateral E->I, I->E weights that hold the disynaptic loop gain at
+    ``loop_gain``, with ``w_IE_lat = lat_ratio * w_EI_lat`` and the self
+    weights fixed.  Closed form: with G = M_IE@M_EI = c*J + alpha*beta*I
+    (top eigenvalue c*N + alpha*beta, alpha = a_self - x, beta = b_self -
+    rho*x), the constraint is the quadratic
+        rho*(N-1)**2 x**2 + (rho*a_self + b_self)(N-1) x + (a_self*b_self - g) = 0
+    in x = w_EI_lat.  Returns (w_EI_lat, w_IE_lat); the caller checks physicality.
+    """
+    rho = lat_ratio
+    A = rho * (N - 1) ** 2
+    B = (rho * a_self + b_self) * (N - 1)
+    C = a_self * b_self - loop_gain
+    x = (-B + float(np.sqrt(B * B - 4 * A * C))) / (2 * A)
+    return x, rho * x
+
+
+# =====================================================================
+#  SFG / recurrent-binding regime  (finalised tasks/sfg2 config, promoted)
+# =====================================================================
+# The Stochastic-Figure-Ground recalibration (tasks/sfg2) is the first
+# paradigm run at the full A1 channel count (N = 37) rather than the N = 2
+# AB/BA minimal circuit the A1Config defaults were tuned for.  Three regime
+# constants define it -- two flat, ONE that must scale with N:
+#
+#   * W_max = W_max_self = 0.17  (recurrent ceiling).  A coherent figure
+#     assembly of n channels has recurrent gain W_FF * (n - 1); the
+#     bounded-rule fixed point W_FF -> 0.045 at this cap keeps the gain
+#     0.41 < 1 at n = 10 -- a stable amplifier, not a runaway loop.  Set by
+#     assembly SIZE, not channel count, so it does NOT scale with N.
+#
+#   * W_decay = 2e-3  (forgetting).  FF/GG = 1 + W_decay/(eta_LTP*c_gnd):
+#     larger decay sharpens the figure/ground weight contrast by pruning
+#     weakly-correlated ground synapses.  Flat in N.
+#
+#   * inhibitory_loop_gain = 6.3  (global inhibition).  THIS is the term
+#     that explodes as N**2 if the laterals are held fixed.  We hold the
+#     loop gain itself fixed and SOLVE the lateral weights for it at the
+#     requested N -- the cross-paradigm invariant.  Per-channel (self)
+#     weights keep their biophysical A1Config values; only the population-
+#     pooling laterals scale (w_lat ~ 1/N).
+#
+# At N = 37 this realises the committed tasks/sfg2 weights (selective
+# w_EI_lat 0.0298 / w_IE_lat 0.1193; uniform u 0.0678 -- i.e. the task's
+# rounded 0.030 / 0.120 / 0.068, all at loop gain 6.3).
+#
+# NOTE the selective structure cannot reach loop gain 6.3 below N = 8: the
+# N**2 pooling term is too small, so the solve demands a lateral exceeding
+# the self weight (unphysical) and raises (and the laterals are only
+# genuinely *weak* -- << self -- for N >> 10).  This is a real finding for
+# the invariance study, not a bug: the N = 2 AB/BA default sits at loop gain
+# ~0.2, three regimes away from SFG's 6.3 -- so "hold the loop gain fixed
+# across paradigms" is a Phase-1 decision with teeth, not a free lunch.
+def sfg_config(inh: str = "selective", N: int = 37,
+               loop_gain: float = 6.3, lat_ratio: float = 4.0,
+               **kw) -> "A1Config":
+    """Finalised SFG (recurrent-binding) regime at channel count ``N``.
+
+    ``inh`` selects the inhibition STRUCTURE: ``"selective"`` keeps strong
+    per-channel self inhibition with weak lateral; ``"uniform"`` collapses
+    all four E<->I weights equal.  Both are solved to the SAME disynaptic
+    ``loop_gain`` so the two structures differ only in selectivity, not in
+    total inhibitory drive.  ``lat_ratio`` = w_IE_lat / w_EI_lat for the
+    selective case (4.0 in the SFG calibration).  Extra ``kw`` override
+    A1Config fields (e.g. ``stp_enabled=False``).
+    """
+    common = dict(N=N, W_max=0.17, W_max_self=0.17, W_decay=2e-3)
+    common.update(kw)
+
+    if inh == "uniform":
+        # M_EI = M_IE = u*J  ->  loop gain = (u*N)**2.  Solve u = sqrt(g)/N.
+        u = float(np.sqrt(loop_gain)) / N
+        return A1Config(w_EI_self=u, w_EI_lat=u,
+                        w_IE_self=u, w_IE_lat=u, **common)
+
+    if inh == "selective":
+        x, y = _selective_laterals(N, loop_gain, lat_ratio)
+        a_self, b_self = A1Config.w_EI_self, A1Config.w_IE_self
+        if not 0.0 < x < a_self or y >= b_self:
+            raise ValueError(
+                f"selective loop gain {loop_gain} unreachable at N={N} with "
+                f"physical laterals (solved w_EI_lat={x:.4f} vs self "
+                f"{a_self}); the N**2 pooling term is too small -- N must be "
+                f"large enough, or use inh='uniform'.")
+        return A1Config(w_EI_lat=x, w_IE_lat=y, **common)
+
+    raise ValueError(f"unknown inhibition structure {inh!r}")
+
+
+# Ready-to-use named presets (zero-arg factories, mirroring INH_PRESETS).
+# Pass kwargs through to override N / loop_gain, e.g. SFG_PRESETS["selective"](N=37).
+SFG_PRESETS = {
+    "selective": lambda **kw: sfg_config("selective", **kw),
+    "uniform":   lambda **kw: sfg_config("uniform", **kw),
+}
+
+
+# =====================================================================
+#  THE single shared config  (one parameter set for every paradigm)
+# =====================================================================
+# Goal: run every paradigm (SFG, AB-BA, SSA/oddball, local-global, roving,
+# syllable, speech) on ONE config, with only N -- the channel count, which
+# is dictated by the stimulus, not a free knob -- differing between tasks.
+#
+# Every biophysical/learning constant is the A1Config default (tau_E, tau_I,
+# tau_trace, eta_LTP, eta_LTD, U, A_TC, tau_D, W_norm, bounded plasticity).
+# Three deliberate, paradigm-independent choices sit on top:
+#
+#   * W_max = W_max_self = 0.17.  A coherent assembly of n channels has
+#     recurrent gain W_FF*(n-1); 0.17 keeps the LARGEST assemblies (the SFG
+#     figure, n~10) subcritical and stable.  Small-circuit paradigms (n<=2)
+#     are unaffected by the lower ceiling.
+#
+#   * multiscale_std = True.  The three-timescale TC depression is one
+#     synapse model, not a per-task switch; the fast within-trial paradigms
+#     simply do not probe its slow (~5 s) component, while roving/speech do.
+#
+# One constant that is deliberately NOT shared, and why:
+#
+#   * W_decay.  ROVING sets it to ROVING_W_DECAY = 2e-2 (tau = 50 s); every
+#     other paradigm keeps the A1Config default.  This is not a fudge, it is
+#     the one place where the paradigms genuinely differ: the correct
+#     synaptic forgetting rate tracks how fast the environment's statistics
+#     change, and roving is the only paradigm here whose statistics change
+#     at all.  A roving block holds one word for 23 s and then the rule
+#     moves; the SFG figure holds the same coherent assembly for the whole
+#     25-minute run.  A single decay rate cannot serve both -- measured, at
+#     tau = 50 s the SFG assembly weight collapses to W_FF = 0.002 (1% of
+#     W_max) and the size-graded enhancement disappears, while at the SFG's
+#     tau = 500 s the roving transition matrix accumulates across blocks
+#     until B predicts C, D and E about equally.
+#
+#     The biology says the same thing in the other direction.  The A1Config
+#     default (5e-4, tau = 33 min) implicitly treats the
+#     recurrent weight as CONSOLIDATED LTP.  Nothing in these paradigms
+#     induces that: a roving block is 15 pairings at a 1.5 s interval,
+#     which is a weak induction protocol, orders of magnitude short of the
+#     tetanic / theta-burst drive that recruits protein-synthesis-dependent
+#     potentiation.  What 15 pairings actually leave behind is the labile
+#     phase -- short-term potentiation, which decays over tens of seconds
+#     to a few minutes and is mechanistically distinct from LTP (Volianskis
+#     & Jensen 2003; Volianskis et al. 2015; post-tetanic potentiation,
+#     Zucker & Regehr 2002; the labile LTP1 of Abraham 2003).  tau = 50 s
+#     sits inside that measured range, and is the single choice that makes
+#     the weight a trace of RECENT transition statistics rather than a
+#     running total over the whole session.
+#
+#     It has to be read against the paradigm's own two timescales: a block
+#     is 23 s and the same word returns after ~69 s.  tau = 50 s therefore
+#     holds a transition across the block that is teaching it and has
+#     largely forgotten it by the time that word comes round again.  At the
+#     old 33 min the weights instead accumulate across blocks: by mid
+#     session B predicts C, D and E about equally, and the transition
+#     matrix carries the session average instead of the current block.
+#     Measured on the roving task, the lateral predictive current into the
+#     deviant channel grows by ~0.08 within a block at every setting -- what
+#     changes is the stale carry-in it grows FROM, which falls 0.45 -> 0.06,
+#     so within-block learning goes from 20% of the standing level to 118%.
+#
+#   * inhibition: a single rule -- CAP the disynaptic loop gain at 6.3.
+#     The pooling term grows as N^2, so FIXED lateral weights over-inhibit
+#     large networks (loop gain ~16 at N=37, ~330 at N=180).  Below the cap
+#     (small/mid N) the laterals stay the A1Config defaults, so AB-BA /
+#     local-global / oddball keep EXACTLY their current inhibition; above it
+#     the laterals scale down to hold 6.3 (a saturating balanced-network
+#     setpoint).  selective and uniform are matched to the same loop gain,
+#     so they differ only in selectivity.
+#
+# Dropped vs the old per-task configs (preserved in model0/legacy_configs.py):
+#   - AB-BA's selective override (w_IE_self=3.0, w_EI_self=0.40, W_norm=4):
+#     W_norm=4 only sped convergence, so AB-BA now needs more exposure trials
+#     to reach the same W[B<-A] asymptote.
+#   - SFG2's bespoke recalibration: the loop-gain cap reproduces its 6.3
+#     target automatically; W_max=0.17 and multiscale are now global.
+SHARED_W_MAX         = 0.17
+SHARED_LOOP_GAIN_CAP = 6.3
+SHARED_LAT_RATIO     = 4.0
+ROVING_W_DECAY       = 2e-2      # tau = 50 s; short-term potentiation, not LTP
+
+
+def shared_config(N: int, inh: str = "selective",
+                  loop_gain_cap: float = SHARED_LOOP_GAIN_CAP,
+                  lat_ratio: float = SHARED_LAT_RATIO, **overrides) -> "A1Config":
+    """The one shared config at channel count ``N`` (see notes above).
+
+    ``inh`` selects the inhibition STRUCTURE ("selective" / "uniform"); both
+    are placed at the same (capped) loop gain.  ``**overrides`` replace any
+    A1Config field afterwards (e.g. ``stp_enabled=False`` for an ablation).
+    """
+    common = dict(N=N, W_max=SHARED_W_MAX, W_max_self=SHARED_W_MAX,
+                  multiscale_std=True)
+    # natural loop gain of the default weak-lateral selective preset at this N
+    g_nat = inhibitory_loop_gain(A1Config(N=N))
+    g_eff = min(loop_gain_cap, g_nat)
+    if inh == "selective":
+        if g_nat <= loop_gain_cap:
+            cfg = A1Config(**common)                       # default laterals
+        else:
+            x, y = _selective_laterals(N, loop_gain_cap, lat_ratio)
+            cfg = A1Config(w_EI_lat=x, w_IE_lat=y, **common)
+    elif inh == "uniform":
+        u = float(np.sqrt(g_eff)) / N                      # (u*N)^2 = g_eff
+        cfg = A1Config(w_EI_self=u, w_EI_lat=u, w_IE_self=u, w_IE_lat=u, **common)
+    else:
+        raise ValueError(f"unknown inhibition structure {inh!r}")
+    return replace(cfg, **overrides) if overrides else cfg

@@ -40,7 +40,7 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate
+from model0 import A1Config, INH_PRESETS, simulate, shared_config
 
 if __package__:
     from .config import OddballConfig, ALL_CONDITIONS, get_preset
@@ -163,7 +163,7 @@ def run_condition(
     if cfg is None:
         cfg = OddballConfig()
     if a1_cfg is None:
-        a1_cfg = A1Config(N=cfg.n_channels)
+        a1_cfg = shared_config(N=cfg.n_channels)
 
     rng = np.random.default_rng(cfg.seed)
     channel_seq = build_condition_sequence(condition, cfg, rng)
@@ -202,7 +202,7 @@ def run_all_conditions(
     if cfg is None:
         cfg = OddballConfig()
     if a1_cfg is None:
-        a1_cfg = A1Config(N=cfg.n_channels)
+        a1_cfg = shared_config(N=cfg.n_channels)
 
     results = {}
     for cond in cfg.conditions:
@@ -466,8 +466,8 @@ def main():
           f"dev_prob={cfg.dev_prob}")
     print(f"  conditions: {cfg.conditions}")
 
-    for inh_name, inh_factory in INH_PRESETS.items():
-        a1_cfg = inh_factory(N=cfg.n_channels)
+    for inh_name in INH_PRESETS:
+        a1_cfg = shared_config(N=cfg.n_channels, inh=inh_name)
         print(f"\n========================================================")
         print(f"[ Inhibition preset '{inh_name}' ]")
         print(f"  w_EI = (self {a1_cfg.w_EI_self}, lat {a1_cfg.w_EI_lat}); "
