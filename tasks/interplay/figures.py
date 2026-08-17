@@ -228,15 +228,21 @@ def _stars(p: float) -> str:
            "*" if p < 0.05 else "n.s."
 
 
-def _bracket(ax, x0: float, x1: float, y: float, text: str,
+def _bracket(ax, x0: float, x1: float, y: float, h: float, text: str,
              color: str = C_INK) -> None:
-    ax.plot([x0, x0, x1, x1], [y, y * 1.0 + 0, y, y], color=color, lw=0.5,
-            clip_on=False, zorder=6)
-    ax.annotate(text, xy=((x0 + x1) / 2, y), xytext=(0, 1.2),
+    """A square bracket with end ticks, so it reads as spanning x0..x1."""
+    ax.plot([x0, x0, x1, x1], [y, y + h, y + h, y], color=color, lw=0.5,
+            clip_on=False, zorder=6, solid_joinstyle="miter")
+    ax.annotate(text, xy=((x0 + x1) / 2, y + h), xytext=(0, 0.8),
                 textcoords="offset points", ha="center", va="bottom",
-                fontsize=6.2, color=color,
+                fontsize=6.3, color=color,
                 fontweight="bold" if text != "n.s." else "normal",
                 clip_on=False, zorder=6)
+
+
+#: Position inside the word is ordered, so it gets an ordered ramp rather
+#: than three unrelated hues.
+POS_RAMP = ("#B9D6CB", "#6AA491", COLORS["model"])
 
 
 def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
@@ -252,15 +258,20 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
     W = exemplar_p["W_final"]
 
     with manuscript_style():
-        fig = plt.figure(figsize=(mm(183), mm(62)))
-        gs = fig.add_gridspec(1, 4, left=0.055, right=0.905, top=0.78,
-                              bottom=0.19, wspace=0.50,
-                              width_ratios=(0.78, 0.90, 0.90, 1.60))
+        fig = plt.figure(figsize=(mm(183), mm(66)))
+        gs = fig.add_gridspec(1, 4, left=0.052, right=0.980, top=0.785,
+                              bottom=0.225, wspace=0.50,
+                              width_ratios=(0.92, 0.95, 0.95, 1.25))
 
         # A -- weight matrix
         ax = fig.add_subplot(gs[0, 0])
+        # box_aspect makes the AXES square, so an aspect="auto" image
+        # fills it exactly.  Leaving the image on aspect="equal" instead
+        # would shrink the drawn area inside a wider box, and the title
+        # and panel letter would then sit off the image.
         im = ax.imshow(W, cmap="Purples", interpolation="nearest",
                        vmin=0.0, aspect="auto")
+        ax.set_box_aspect(1.0)
         ax.axhline(nf - 0.5, color=C_INK, lw=0.6)
         ax.axvline(nf - 0.5, color=C_INK, lw=0.6)
         ax.set_xlabel("Presynaptic")
@@ -299,52 +310,54 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
 
         # D -- how the enhancement is built, resolved by position
         ax = fig.add_subplot(gs[0, 3])
-        series = (("rec_E", "recurrent", C_STRUCT),
-                  ("inh_to_E", "inhibition", C_BG),
-                  ("net", "net", COLORS["charcoal"]))
-        xs = np.arange(1, 4)
+        series = (("rec_E", "Recurrent"), ("inh_to_E", "Inhibition"),
+                  ("net", "Net"))
+        xs = np.arange(len(series))
+        w = 0.26
         rng = np.random.default_rng(1)
-        lo, hi = np.inf, -np.inf
-        for key, lab, c in series:
+        hi = 0.0
+        for gi, (key, _lab) in enumerate(series):
             arr = np.asarray(poscur[key], dtype=float)          # (seed, 3)
-            m = np.nanmean(arr, axis=0)
-            ax.plot(xs, m, color=c, lw=1.5, zorder=4)
-            for j in range(arr.shape[0]):
-                ax.scatter(xs + rng.uniform(-0.06, 0.06, 3), arr[j], s=6.5,
-                           facecolors="none", edgecolors=c, linewidths=0.45,
-                           alpha=0.7, zorder=3, clip_on=False)
-            lo, hi = min(lo, arr.min()), max(hi, arr.max())
+            for j in range(3):
+                xc = xs[gi] + (j - 1) * w
+                ax.bar(xc, arr[:, j].mean(), w * 0.92,
+                       color=POS_RAMP[j], edgecolor="none", zorder=2)
+                ax.scatter(xc + rng.uniform(-0.055, 0.055, arr.shape[0]),
+                           arr[:, j], s=5.5, facecolors="none",
+                           edgecolors=C_INK, linewidths=0.4, alpha=0.8,
+                           zorder=4, clip_on=False)
+            hi = max(hi, float(arr.max()))
 
-            # Series named at its own right-hand end, with the position
-            # 1 -> 3 change and its exact-permutation stars.  End labels
-            # instead of a legend box: the box sat on the data, and the
-            # reader should not have to match a colour swatch to a line.
-            tag = lab
-            if tests:
-                d, pv = tests[key]
-                tag = f"{lab}  \u0394{d:+.3f} {_stars(pv)}"
-            ax.annotate(tag, xy=(3, m[2]), xytext=(4.5, 0),
-                        textcoords="offset points", ha="left", va="center",
-                        fontsize=6.1, color=c,
-                        fontweight="semibold" if key != "inh_to_E" else
-                        "normal")
+        span = hi if hi > 0 else 1.0
+        for gi, (key, _lab) in enumerate(series):
+            arr = np.asarray(poscur[key], dtype=float)
+            top = float(arr.max())
+            d, pval = tests[key] if tests else (np.nan, np.nan)
+            _bracket(ax, xs[gi] - 1.35 * w, xs[gi] + 1.35 * w,
+                     top + 0.05 * span, 0.030 * span,
+                     f"{_stars(pval)} \u0394{d:+.3f}")
 
-        ax.axhline(0.0, color=COLORS["ash"], lw=0.5, ls=(0, (3, 2)))
-        pad = 0.10 * (hi - lo if hi > lo else 1.0)
-        ax.set_ylim(min(0.0, lo) - pad, hi + pad * 2.4)
-        ax.set_xlim(0.72, 3.05)
+        ax.axhline(0.0, color=COLORS["ash"], lw=0.5)
+        ax.set_ylim(0, hi + 0.38 * span)
+        ax.set_xticks(xs)
+        ax.set_xticklabels([lab for _k, lab in series])
+        ax.set_ylabel("Change from frozen (a.u.)")
 
-        # Thalamic drive is identically zero: the frozen run sees the same
-        # stimulus, and the depression variable is driven by the stimulus
-        # alone.  Stated rather than plotted as a flat line on zero.
+        # Thalamic drive is identically zero -- the frozen run sees the same
+        # stimulus -- so it is stated rather than given a group of flat bars.
         tm = float(np.nanmax(np.abs(poscur["tm_in"])))
         ax.annotate(f"thalamic \u2261 0  (max |\u0394| = {tm:.0e})",
-                    xy=(0.03, 0.97), xycoords="axes fraction",
-                    fontsize=5.8, color=COLORS["ash"], va="top", ha="left")
+                    xy=(0.5, -0.20), xycoords="axes fraction",
+                    fontsize=5.8, color=COLORS["ash"], va="top",
+                    ha="center", annotation_clip=False)
 
-        ax.set_xticks(xs)
-        ax.set_xlabel("Token position in word")
-        ax.set_ylabel("Change from frozen (a.u.)")
+        handles = [plt.Rectangle((0, 0), 1, 1, color=POS_RAMP[j])
+                   for j in range(3)]
+        ax.legend(handles, ["1", "2", "3"], title="Token position",
+                  loc="upper center", bbox_to_anchor=(0.53, 1.02),
+                  ncol=3, handlelength=0.8, handleheight=0.8,
+                  columnspacing=0.6, fontsize=6.0, title_fontsize=6.0,
+                  borderpad=0.15, labelspacing=0.25)
         clean_axis(ax)
         _letter(fig, ax, "d")
         ax.set_title("Mechanism")
