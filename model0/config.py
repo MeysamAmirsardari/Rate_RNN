@@ -157,6 +157,84 @@ class A1Config:
 
     plastic_self: bool = True
 
+    # ---- Slow (NMDA) recurrent drive ----
+    # When False (default) the recurrent input is W @ E: the prediction is
+    # instantaneous co-activation, so it decays with tau_E (20 ms) and can
+    # only bridge gaps of a few tens of ms.  That is fine for the paradigms
+    # whose tones nearly abut, and wrong for any paradigm with a real gap:
+    # a plain W[B<-A] says "B NOW", not "B in 200 ms", which is exactly why
+    # Wacongne et al. (2012) needed explicit delay lines.
+    #
+    # When True the recurrent input is W @ tr instead -- the same low-passed
+    # trace the learning rule already uses, with time constant tau_trace.
+    # The asymmetry is the standard one: thalamocortical transmission is
+    # AMPA-dominated and fast, while recurrent intracortical synapses carry
+    # a large NMDA component with a decay of ~100 ms (Wacongne et al. use
+    # tau_NMDA,decay = 100 ms for precisely this role).  So the drive that
+    # carries a prediction outlasts the drive that carries the stimulus,
+    # and one time constant -- tau_trace -- sets both the eligibility
+    # window for learning the association and the lifetime of the
+    # prediction it produces, which is the physiologically coherent choice.
+    recurrent_from_trace: bool = False
+
+    # Gain applied to the recurrent drive, the recurrent counterpart of
+    # A_TC.  It separates two things that W alone conflates: HOW STRONGLY
+    # two channels are associated (W, bounded by W_max and learned), and
+    # HOW MUCH CURRENT a unit of association delivers (A_rec, fixed by the
+    # anatomy of the projection).  Leaving it at 1.0 reproduces the
+    # original behaviour exactly, so no existing paradigm is affected.
+    #
+    # It matters whenever the recurrent drive is read off the trace: a
+    # 50 ms tone low-passed at tau_trace only reaches ~28% of the rate it
+    # came from, so W @ tr delivers a current an order of magnitude below
+    # W @ E even at identical W.  Without a gain the only way to get a
+    # prediction of usable size would be to push W_max far outside the
+    # measured intracortical range, which would misattribute a fan-in
+    # factor to the strength of a single association.
+    A_rec: float = 1.0
+
+    # Gain on the learned association when it is delivered to the
+    # INHIBITORY unit rather than the excitatory one.  0.0 (default) leaves
+    # every existing paradigm untouched.
+    #
+    # With A_rec > 0 the prediction is an excitatory phantom: the predicted
+    # channel visibly fires before its tone arrives, that phantom lands in
+    # the response window of the PRECEDING tone, and the E->E path closes a
+    # positive A->B->A loop that goes unstable once the gain is large
+    # enough to make the prediction strong.
+    #
+    # With A_pred > 0 instead, the prediction is silent until violated: it
+    # raises I_j without raising E_j, so it adds nothing to the population
+    # response until the predicted tone arrives and is suppressed.  It is
+    # also pure negative feedback, so unlike A_rec it has no stability
+    # ceiling.  Wacongne et al. (2012) use the same arrangement -- their
+    # predictions reach the error layer through inhibitory interneurons,
+    # which invert their sign.
+    #
+    # Learning is unchanged and still driven by ACTUAL co-activity
+    # (post E_i, pre tr_j).  Only the delivery target moves.  Driving the
+    # learning from I instead would let the prediction reinforce itself.
+    A_pred: float = 0.0
+
+    # Gain on the prediction when it is subtracted DIRECTLY at the target
+    # excitatory unit, bypassing the interneuron pool.  0.0 (default)
+    # leaves every existing paradigm untouched.
+    #
+    # A_pred routes the prediction through I, so it inherits M_IE's
+    # selectivity: under blanket inhibition I_j suppresses every channel
+    # equally, the predicted and unpredicted tone are damped by the same
+    # amount, and the paradigm collapses.  A_cancel instead makes the
+    # prediction a subtractive cancellation at its own target, which is
+    # channel-specific by construction.
+    #
+    # That splits inhibition into two jobs that need not share an
+    # anatomy: BLANKET inhibition for gain control and normalisation
+    # (PV-like, dense and unselective), and a SPECIFIC predictive
+    # cancellation (the actual comparison operation).  It is the weaker
+    # and more interesting claim -- general inhibition does not have to be
+    # tone-tuned, only the predictive projection does.
+    A_cancel: float = 0.0
+
     # ---- Bounded plasticity (soft bound + heterosynaptic LTD) ----
     # When False (default), the trace-based STDP rule is additive:
     #   dW = eta_LTP * outer(E, tr) - eta_LTD * outer(tr, E) - W_decay * W
@@ -408,6 +486,48 @@ SFG_PRESETS = {
 #     synapse model, not a per-task switch; the fast within-trial paradigms
 #     simply do not probe its slow (~5 s) component, while roving/speech do.
 #
+# One constant that is deliberately NOT shared, and why:
+#
+#   * W_decay.  ROVING sets it to ROVING_W_DECAY = 2e-2 (tau = 50 s); every
+#     other paradigm keeps the A1Config default.  This is not a fudge, it is
+#     the one place where the paradigms genuinely differ: the correct
+#     synaptic forgetting rate tracks how fast the environment's statistics
+#     change, and roving is the only paradigm here whose statistics change
+#     at all.  A roving block holds one word for 23 s and then the rule
+#     moves; the SFG figure holds the same coherent assembly for the whole
+#     25-minute run.  A single decay rate cannot serve both -- measured, at
+#     tau = 50 s the SFG assembly weight collapses to W_FF = 0.002 (1% of
+#     W_max) and the size-graded enhancement disappears, while at the SFG's
+#     tau = 500 s the roving transition matrix accumulates across blocks
+#     until B predicts C, D and E about equally.
+#
+#     The biology says the same thing in the other direction.  The A1Config
+#     default (5e-4, tau = 33 min) implicitly treats the
+#     recurrent weight as CONSOLIDATED LTP.  Nothing in these paradigms
+#     induces that: a roving block is 15 pairings at a 1.5 s interval,
+#     which is a weak induction protocol, orders of magnitude short of the
+#     tetanic / theta-burst drive that recruits protein-synthesis-dependent
+#     potentiation.  What 15 pairings actually leave behind is the labile
+#     phase -- short-term potentiation, which decays over tens of seconds
+#     to a few minutes and is mechanistically distinct from LTP (Volianskis
+#     & Jensen 2003; Volianskis et al. 2015; post-tetanic potentiation,
+#     Zucker & Regehr 2002; the labile LTP1 of Abraham 2003).  tau = 50 s
+#     sits inside that measured range, and is the single choice that makes
+#     the weight a trace of RECENT transition statistics rather than a
+#     running total over the whole session.
+#
+#     It has to be read against the paradigm's own two timescales: a block
+#     is 23 s and the same word returns after ~69 s.  tau = 50 s therefore
+#     holds a transition across the block that is teaching it and has
+#     largely forgotten it by the time that word comes round again.  At the
+#     old 33 min the weights instead accumulate across blocks: by mid
+#     session B predicts C, D and E about equally, and the transition
+#     matrix carries the session average instead of the current block.
+#     Measured on the roving task, the lateral predictive current into the
+#     deviant channel grows by ~0.08 within a block at every setting -- what
+#     changes is the stale carry-in it grows FROM, which falls 0.45 -> 0.06,
+#     so within-block learning goes from 20% of the standing level to 118%.
+#
 #   * inhibition: a single rule -- CAP the disynaptic loop gain at 6.3.
 #     The pooling term grows as N^2, so FIXED lateral weights over-inhibit
 #     large networks (loop gain ~16 at N=37, ~330 at N=180).  Below the cap
@@ -426,6 +546,7 @@ SFG_PRESETS = {
 SHARED_W_MAX         = 0.17
 SHARED_LOOP_GAIN_CAP = 6.3
 SHARED_LAT_RATIO     = 4.0
+ROVING_W_DECAY       = 2e-2      # tau = 50 s; short-term potentiation, not LTP
 
 
 def shared_config(N: int, inh: str = "selective",

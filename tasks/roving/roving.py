@@ -40,7 +40,8 @@ _PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(_PROJECT_ROOT))
 
-from model0 import A1Config, INH_PRESETS, simulate, shared_config
+from model0 import (A1Config, INH_PRESETS, ROVING_W_DECAY, simulate,
+                    shared_config)
 
 if __package__:
     from .config import RovingConfig, get_preset
@@ -132,7 +133,7 @@ def run_experiment(
     if cfg is None:
         cfg = RovingConfig()
     if a1_cfg is None:
-        a1_cfg = shared_config(N=len(cfg.tones))
+        a1_cfg = shared_config(N=len(cfg.tones), W_decay=ROVING_W_DECAY)
 
     rng = np.random.default_rng(cfg.seed)
     block_order = generate_block_order(cfg, rng)
@@ -433,7 +434,8 @@ def main():
     # 5 s component survives the 1 s ITI and integrates across the 15
     # reps, which is what makes rep 1 differ from rep 15 at all.
     for inh_name in INH_PRESETS:
-        a1_cfg = shared_config(N=len(cfg.tones), inh=inh_name)
+        a1_cfg = shared_config(N=len(cfg.tones), inh=inh_name,
+                               W_decay=ROVING_W_DECAY)
 
         print(f"\n========================================================")
         print(f"[ Roving oddball -- inhibition preset '{inh_name}' ]")

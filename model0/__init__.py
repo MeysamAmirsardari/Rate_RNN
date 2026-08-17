@@ -9,9 +9,11 @@ suppresses the response of E_B when tone B itself arrives.
 
 from .config import (A1Config, selective_inh, uniform_inh, INH_PRESETS,
                      sfg_config, SFG_PRESETS, inhibitory_loop_gain,
-                     shared_config, SHARED_W_MAX, SHARED_LOOP_GAIN_CAP)
+                     shared_config, SHARED_W_MAX, SHARED_LOOP_GAIN_CAP,
+                     ROVING_W_DECAY)
 from .model import simulate
 
 __all__ = ["A1Config", "selective_inh", "uniform_inh", "INH_PRESETS",
            "sfg_config", "SFG_PRESETS", "inhibitory_loop_gain",
-           "shared_config", "SHARED_W_MAX", "SHARED_LOOP_GAIN_CAP", "simulate"]
+           "shared_config", "SHARED_W_MAX", "SHARED_LOOP_GAIN_CAP",
+           "ROVING_W_DECAY", "simulate"]
