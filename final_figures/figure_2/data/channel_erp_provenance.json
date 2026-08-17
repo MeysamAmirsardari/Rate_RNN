@@ -396,7 +396,7 @@
     "display_smoothing_sigma_ms": 2.0
   },
   "analysis_id": "7a62c793166f86d0e6d68cd57bee1df647753fb771c5283caa10ba180d42b906",
-  "created_utc": "2026-08-09T06:42:25.625385+00:00",
+  "created_utc": "2026-08-13T06:58:31.725043+00:00",
   "question": "At the independently selected strongest Panel E contact, does the Rep-1 ERP differ from the Rep-15 ERP at any latency from 0 to 360 ms?",
   "selection": "Within each ordered previous/current stimulus stratum, alternating intact roving blocks form a discovery half. Panel E and its maximum contact use only that half. The complementary blocks estimate and test the displayed ERP.",
   "estimation": "Mean and SEM across intact held-out roving blocks at the selected baseline-SD-normalized contact.",
@@ -409,7 +409,7 @@
       "selected_channel_matlab": 27,
       "n_discovery_blocks": 65,
       "n_inference_blocks": 60,
-      "cluster_forming_abs_t": 2.0009953780882674
+      "cluster_forming_abs_t": 2.000995378088267
     },
     "zaatar_pos2": {
       "deviant_position": 2,
@@ -428,7 +428,7 @@
   },
   "outputs": {
     "npz": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/channel_erp_inference.npz",
-    "npz_sha256": "4bb9cb09c4699fe656080eac9abc779e721b86c146c26264ccd3a98322e03991",
+    "npz_sha256": "dcf826e4825733cc9f9038b18ad6d27cb50058ed8a17f05cbc6e9963bca920c9",
     "csv": {
       "channel_erp_clusters.csv": {
         "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/channel_erp_clusters.csv",

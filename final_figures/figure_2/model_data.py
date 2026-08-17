@@ -86,6 +86,10 @@ DEFAULT_SESSION_SEEDS = np.array(
 N_CHANNELS = 5
 N_BLOCKS_PER_WORD = 10
 N_REPETITIONS = 15
+# Recurrent-weight decay for the roving paradigm: tau = 50 s.  Mirrors
+# model0.ROVING_W_DECAY; defined here because this figure runs against the
+# committed model0 on main, which predates that constant.
+ROVING_W_DECAY = 2e-2
 TONE_DURATION_MS = 180
 EPOCH_PRE_MS = 100
 EPOCH_POST_MS = 360
@@ -152,6 +156,15 @@ def _condition_config(condition: str) -> tuple[A1Config, bool]:
         raise ValueError(f"Unknown condition {condition!r}")
 
     cfg = A1Config(N=N_CHANNELS, multiscale_std=True)
+    # Roving forgetting rate: tau = 50 s rather than the A1Config default's
+    # 33 min.  At the default the recurrent weights accumulate ACROSS blocks,
+    # so by mid session B predicts C, D and E about equally and the
+    # transition matrix carries the session average instead of the block
+    # currently being repeated.  See model0/config.py (ROVING_W_DECAY) for
+    # the induction-strength argument: 15 pairings at a 1.5 s interval leave
+    # short-term potentiation, not consolidated LTP.
+    cfg.W_decay = ROVING_W_DECAY
+
     learn = True
     if condition == "no_depression":
         # Exact source-model lesion: x_eff is fixed at one and the input is

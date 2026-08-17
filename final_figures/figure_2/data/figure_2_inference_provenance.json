@@ -286,14 +286,14 @@
       }
     },
     "model_arrays": {
-      "analysis_id": "22d4c9eb81f3047706c211ad6447d7951be8f10f2a05f6a8270c510ef34d5a24",
+      "analysis_id": "12e3d2dbfc33b97a3354729b7f58e255905d1b448dd85036ade19a12fc517a5a",
       "conditions": "3393f98136e00266a21bee0fd6bd7bd46efe75d54f4c2f6ec6a826d3d648d692",
       "positions": "4deeadc6e89b95ae2d8061b52f49fb488c8065d2f1cbf6168d72c801e3b37ca0",
       "seeds": "eee2a2616f160903384b727583d2f973fe721981d5ed4f931620f7d13a6a8925",
-      "sequence_responses": "cedae365454763644eb31a6f2844761d8e9f476cc211de06ebb04df233582695",
-      "responses_full": "d4739eda366a95fdf828d43e4a07b7c5c48e0c1f4ae7afdc7530fb154970e6ff",
-      "window_response": "bf024abcdd252017faeea828c08e1a5fc0d58b6600fdd1cab4b9ad34de249e1e",
-      "suppression_index": "891c4c816766f29ce78c0b58fabc23c6762ea12e64542953fd64defdedfef33b"
+      "sequence_responses": "f0c27095592fbaee55f6b4068bc58acec90a7aebade48520cba42c48be940894",
+      "responses_full": "984487a6b949b3fcef0caa520e9b160e874e471a4b9ac1319008ad24da67f7ba",
+      "window_response": "39c943c1a42927c9516d3104061aeff2036a668f7efc3d3921a35dcdaa2f668d",
+      "suppression_index": "de1b80608c9eb8316794f5518acdaaf3ed142f342a4fa489c1639fa7a4b24c47"
     },
     "ecog_arrays": {
       "positions": "4deeadc6e89b95ae2d8061b52f49fb488c8065d2f1cbf6168d72c801e3b37ca0",
@@ -304,8 +304,8 @@
     }
   },
   "generator_sha256": "406470836af70cfaf31d1ba3812e11d4ae464aff4b746f5732ad43d9808c7652",
-  "analysis_id": "d0f5b0ddd0da0979d048a8f12ecfa18181dce98a967c1eec4b179d7f928bf7a4",
-  "created_utc": "2026-08-09T04:42:45.840343+00:00",
+  "analysis_id": "5689b12b5d9fec66ecbd81f606f5ebdf3c2d23a5713bf3f2c78e1792ad46c563",
+  "created_utc": "2026-08-13T06:58:18.433111+00:00",
   "scope": "ECoG: within-recording randomization inference from three recordings in one animal. RNN: paired inference across eight simulated session/order seeds.",
   "evoked_response": {
     "question": "Does the evoked response to the first repetition differ from the fifteenth, at any latency in 0-360 ms?",
@@ -320,7 +320,7 @@
     "n_randomizations": 4999,
     "cluster_forming_threshold_abs_z": [
       1.9523450136184692,
-      1.9527373313903809,
+      1.9527372121810913,
       1.9551607370376587
     ],
     "cluster_statistic": "sum of |z| above threshold, two-sided",
@@ -348,11 +348,11 @@
       "n_samples": 192,
       "n_features": 32,
       "iterations": 5,
-      "maximum_absolute_linear_score_difference": 2.9426938491107377e-05,
+      "maximum_absolute_linear_score_difference": 2.9426938490604436e-05,
       "classification_prediction_agreement": 1.0,
-      "fast_seconds": 0.0003273329930379987,
-      "reference_seconds": 0.003388624987564981,
-      "speed_ratio_reference_over_fast": 10.352225591789368
+      "fast_seconds": 0.00013983307871967554,
+      "reference_seconds": 0.003959083929657936,
+      "speed_ratio_reference_over_fast": 28.312928284978568
     }
   },
   "posterior_maps": {
@@ -390,9 +390,9 @@
     "old_cache_fallback": "If sequence_responses is absent, responses_full is placed into sequence coordinates and unavailable samples remain NaN; no inference is assigned to unavailable samples."
   },
   "software": {
-    "python": "3.13.9",
-    "numpy": "2.3.5",
-    "numba": "0.62.1",
+    "python": "3.14.0",
+    "numpy": "2.4.6",
+    "numba": "0.65.1",
     "numba_threads": 15,
     "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O"
   },
@@ -406,12 +406,12 @@
       "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/buildup_and_suppression_inference.csv"
     ]
   },
-  "npz_sha256": "b7527ff3424fc2454528b578e9b32b8fba807d9b161546a2b3091870d26b2e90",
+  "npz_sha256": "d361082d17a40a66ae56a82828fb8cd12d8f46b36c0a499b567f2beca351a38c",
   "csv_sha256": {
-    "figure_2_erp_clusters.csv": "c88b09672e42e3cfc27556bb3e137f445cc21e93c8013eff65e8ca1fd46ae16f",
+    "figure_2_erp_clusters.csv": "103a7d9bc463b06f4d99c0650e1f6abb1ac5d8d5f5549b75fc069fe78d68343c",
     "decoder_significant_clusters.csv": "16206780844e2ce3879f4b768b7f7448d7abd8ea4629d7054af3a2f93403c83e",
-    "posterior_significant_clusters.csv": "072b1ed2d334a06b969376cd6058dd94f5b414a02a7c7e01d71f3ea4eb13337f",
-    "rnn_trace_significant_clusters.csv": "0aff399c5d4438571f58c5d1c60f056294049897b93de05dc05b6c9e59ccfa94",
-    "buildup_and_suppression_inference.csv": "c8afd40a61318ba855eb9142ebc2ade2a9c698d1d83a243f9cb4d3fd2fc8927f"
+    "posterior_significant_clusters.csv": "b4c7d6a93b516cbe99a0181e881a34581234727f3b6dcc4a6e892aab46624a18",
+    "rnn_trace_significant_clusters.csv": "a36a7fa6afa5fcf8916829ede47e8342d58e5d47abfff9b8b8ff0d577bac15b0",
+    "buildup_and_suppression_inference.csv": "7878d9a6d66842f3251f99529a5d9a7b53fbcb3ff9088669e66e5924659fc35f"
   }
 }

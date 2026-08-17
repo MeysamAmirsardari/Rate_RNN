@@ -31,19 +31,19 @@
     },
     "model_figure2_data.npz": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/model_figure2_data.npz",
-      "sha256": "5e061c4a92c6b6142792822f68d087bb6dcf5ad7d7a2f29c17eeb4cd130740f3"
+      "sha256": "4e3249f0ccdfdcfb89ca185d03237b4ab6c14df59c52943121521d2df7ab24c9"
     },
     "model_provenance.json": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/model_provenance.json",
-      "sha256": "7a89eed220f617b3483a76696f0afb93f50c79e6da6a3c8f83d900d7212b9495"
+      "sha256": "c9bf2d4ba167d403771699dc65cd8789fd71f23ab3797e0862c9c5a2bb566819"
     },
     "figure_2_inference.npz": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/figure_2_inference.npz",
-      "sha256": "b7527ff3424fc2454528b578e9b32b8fba807d9b161546a2b3091870d26b2e90"
+      "sha256": "d361082d17a40a66ae56a82828fb8cd12d8f46b36c0a499b567f2beca351a38c"
     },
     "figure_2_inference_provenance.json": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/figure_2_inference_provenance.json",
-      "sha256": "f936fa871a9c4aef3e883fe503988447ab69ad260ee0f85a4ee6aecdd3a8a919"
+      "sha256": "5732eb3b58b0537f711fd90958afdc85b4ab6ca469dd4a7a832522c7ddf74239"
     },
     "posterior_buildup_inference.npz": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/posterior_buildup_inference.npz",
@@ -51,29 +51,29 @@
     },
     "posterior_buildup_provenance.json": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/posterior_buildup_provenance.json",
-      "sha256": "55efb8d1433e3d2dbc43e3af5579a858c7b835deae1266097b3eb9dedf0c49d1"
+      "sha256": "dda5e7314294edbbcbf65223f22da42da7690245c45dcc03ceee1a705d90dbb2"
     },
     "channel_erp_inference.npz": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/channel_erp_inference.npz",
-      "sha256": "4bb9cb09c4699fe656080eac9abc779e721b86c146c26264ccd3a98322e03991"
+      "sha256": "dcf826e4825733cc9f9038b18ad6d27cb50058ed8a17f05cbc6e9963bca920c9"
     },
     "channel_erp_provenance.json": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/data/channel_erp_provenance.json",
-      "sha256": "c4786272c3449acacd1c7e2ee3a709080937c0a6a35dbe75bdc32593ec0c57f7"
+      "sha256": "74a3cf801a91ea9c587fa7bb4c98d2b9bcf6ae9c3482328a9cc0fe6b0ecf30c1"
     }
   },
   "outputs": {
     "pdf": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/outputs/figure_2_roving.pdf",
-      "sha256": "3e0551a55d172ff3285a7b90bdc5f4f763a4696627d8b16e57b7954910d31855"
+      "sha256": "5686fc00fe065e65724c46e8943abb7b4fe7b9c5fd5f460c690ba434d2f464cf"
     },
     "svg": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/outputs/figure_2_roving.svg",
-      "sha256": "9e5722d6d608c8321f9e1734b89ec4035a8761fadffd197534a6a92325eebfe7"
+      "sha256": "a68d925724c7b37e5175c33092c2436de33d99f1c6782a6940ad25f92c5212f4"
     },
     "png": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/outputs/figure_2_roving.png",
-      "sha256": "b4dd05f799008ef4764e0d710dc42fa1a6fbf34932494c4d47d793f448f3b2f6"
+      "sha256": "568d0aaddbb2bf73681444274acffe5b80ed9239b6a74c27b9fb1b06459ea440"
     }
   },
   "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/make_figure_2.py",

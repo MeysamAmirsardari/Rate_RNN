@@ -20,7 +20,7 @@
     "start_inclusive": -100,
     "stop_exclusive": 360
   },
-  "analysis_id": "b9a7cda3ec902c056c7c4e2f30f47d01ef7d1638706d9541ef4617ce95d8e170",
+  "analysis_id": "3ff2d9364a079d3ec8b3c687a48f8a9f95ade105b35a0d6594d61cb33341465f",
   "condition_configs": {
     "intact": {
       "a1_config": {
@@ -28,7 +28,7 @@
         "N": 5,
         "U": 0.5,
         "U_std": 0.001,
-        "W_decay": 0.0005,
+        "W_decay": 0.02,
         "W_init_scale": 0.0,
         "W_max": 0.25,
         "W_max_self": 0.25,
@@ -69,7 +69,7 @@
         "N": 5,
         "U": 0.5,
         "U_std": 0.001,
-        "W_decay": 0.0005,
+        "W_decay": 0.02,
         "W_init_scale": 0.0,
         "W_max": 0.25,
         "W_max_self": 0.25,
@@ -110,7 +110,7 @@
         "N": 5,
         "U": 0.5,
         "U_std": 0.001,
-        "W_decay": 0.0005,
+        "W_decay": 0.02,
         "W_init_scale": 0.0,
         "W_max": 0.25,
         "W_max_self": 0.25,
@@ -151,7 +151,7 @@
         "N": 5,
         "U": 0.5,
         "U_std": 0.001,
-        "W_decay": 0.0005,
+        "W_decay": 0.02,
         "W_init_scale": 0.0,
         "W_max": 0.25,
         "W_max_self": 0.25,
@@ -199,23 +199,23 @@
     "plasticity_frozen",
     "uniform_inhibition"
   ],
-  "created_utc": "2026-07-31T22:00:10.970510+00:00",
+  "created_utc": "2026-08-13T06:55:13.140763+00:00",
   "equation_source": "model0.model.simulate",
   "n_blocks_per_session": 30,
   "n_blocks_per_word": 10,
   "n_repetitions_per_block": 15,
   "n_words": 3,
   "output_file_bytes": {
-    "model_figure2_buildup.csv": 153339,
-    "model_figure2_data.npz": 17783774,
+    "model_figure2_buildup.csv": 153110,
+    "model_figure2_data.npz": 14941489,
     "model_figure2_sessions.csv": 55998,
-    "model_figure2_timecourses.csv": 7239601
+    "model_figure2_timecourses.csv": 7234919
   },
   "output_file_sha256": {
-    "model_figure2_buildup.csv": "d4d5c63749037868588d4fb6808cdf3e6be9838ddc8b41672527f18768be1c67",
-    "model_figure2_data.npz": "5e061c4a92c6b6142792822f68d087bb6dcf5ad7d7a2f29c17eeb4cd130740f3",
-    "model_figure2_sessions.csv": "9c138e803d9391c707f9ccbf9bc139617adc6b5f6acbe2d2eecc39533626a611",
-    "model_figure2_timecourses.csv": "2af0935cadbc1e4fc78288ebb4fb0ec0db1d7f83ceedf514923ac6641838702a"
+    "model_figure2_buildup.csv": "f79f020528b1f515d51e16d893fe2fe8db6ff00446b5a23160f563f5c9fd12a1",
+    "model_figure2_data.npz": "4e3249f0ccdfdcfb89ca185d03237b4ab6c14df59c52943121521d2df7ab24c9",
+    "model_figure2_sessions.csv": "dd87a3a1bb8cf8e6e1593f7281f2bbf2ddcdfcf95fac3c8fd1fd4ecdbe35c294",
+    "model_figure2_timecourses.csv": "a6c8b783f039be13a338f87b65a880e2eeb56926ccd8d783002fdd100113bf01"
   },
   "output_schema": {
     "response_sem_blocks": "descriptive within-session SEM over 30 blocks; not the model replication uncertainty used for inference",
@@ -316,8 +316,8 @@
         "max_abs_W": 4.336808689942018e-19
       },
       "no_depression": {
-        "max_abs_E": 1.7763568394002505e-15,
-        "max_abs_W": 8.673617379884035e-19
+        "max_abs_E": 8.881784197001252e-16,
+        "max_abs_W": 4.336808689942018e-19
       }
     },
     "fastmath": false,
@@ -336,14 +336,14 @@
     97
   ],
   "software": {
-    "numba": "0.62.1",
-    "numpy": "2.3.5",
+    "numba": "0.65.1",
+    "numpy": "2.4.6",
     "platform": "macOS-26.5.2-arm64-arm-64bit-Mach-O",
-    "python": "3.13.9"
+    "python": "3.14.0"
   },
-  "source_bundle_sha256": "1a0eee94c20c75c2ea15cb2896658bc750f13bdb755cff283c417e9af3a0d66e",
+  "source_bundle_sha256": "c253716732300d54584790975429896f238e80aaee2bae08fdd2da562065cca6",
   "source_file_sha256": {
-    "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/model_data.py": "7eef3efd9840b042e2e56f4fae6501264e97cd32166f515f0bf770170da07348",
+    "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_2/model_data.py": "c1732faf655d8b5894a5dbf0f4cd9c9c1c3873d73d3314a693915779e22448ec",
     "/Users/eminent/Projects/Rate_RNN_py/model0/config.py": "2e91dbdacb93bb7cabe55d5e197bf3c5ca84baa6ffa6fa790ed330e59d8433db",
     "/Users/eminent/Projects/Rate_RNN_py/model0/model.py": "05512636cfe7acf02b0cbc9edb2d53f7b9f8f642aa9b451689edf8f9b264d628",
     "/Users/eminent/Projects/Rate_RNN_py/tasks/roving/config.py": "2caf9ce40edc0259fcb4c3919f13b87c3902600807f8f65c1f530c5e8817ae78",
