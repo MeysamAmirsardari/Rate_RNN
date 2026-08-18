@@ -514,7 +514,8 @@ def main(argv=None) -> int:
         figures.mechanism_figure(d["ex_p"], d["ex_groups"], d["pos_all"],
                                  d["pos_bg"], d["dec_all"], d["rates"],
                                  poscur=d.get("poscur"),
-                                 tests=d.get("tests"))
+                                 tests=d.get("tests"),
+                                 tests_pool=d.get("tests_pool"))
         figures.results_figure(d["table"], d["levels"], d["curves"])
         print(f"re-rendered from {cache.name}")
         return 0
@@ -588,6 +589,10 @@ def main(argv=None) -> int:
     # the right null.
     tests = {k: paired_sign_flip(poscur[k][:, 2] - poscur[k][:, 0])
              for k in CURRENTS}
+    # Figure minus background, same currents, same pairing.
+    tests_pool = {k: paired_sign_flip(dec_all[f"{k}_fig"]
+                                      - dec_all[f"{k}_bg"])
+                  for k in CURRENTS}
 
     print(f"\n  [layer 1]  n = {len(seeds)} seeds")
     print(f"    thalamic change        {dec_all['tm_in_fig'].mean():+.2e} "
@@ -601,6 +606,13 @@ def main(argv=None) -> int:
         m = poscur[k].mean(axis=0)
         print(f"      {name:<11} {m[0]:+.4f} -> {m[2]:+.4f}   "
               f"delta {d:+.4f}   P = {pv:.4f}")
+    print(f"    figure minus background (exact sign-flip, n = {len(seeds)}):")
+    for k, name in zip(CURRENTS, ("thalamic", "recurrent", "inhibition",
+                                  "net")):
+        d, pv = tests_pool[k]
+        print(f"      {name:<11} fig {dec_all[k + '_fig'].mean():+.4f}  "
+              f"bg {dec_all[k + '_bg'].mean():+.4f}   "
+              f"delta {d:+.4f}   P = {pv:.4f}")
     print(f"    modulation by position "
           + "  ".join(f"tok{i+1} {pos_all[:, i].mean():+.2f}%"
                       for i in range(3))
@@ -609,7 +621,8 @@ def main(argv=None) -> int:
     figures.mechanism_figure(ex_p, ex_groups, pos_all,
                              np.asarray(pos_bg), dec_all,
                              {k: np.asarray(v) for k, v in rates.items()},
-                             poscur=poscur, tests=tests)
+                             poscur=poscur, tests=tests,
+                             tests_pool=tests_pool)
 
     # ---- robustness ----
     levels = [0.25, 0.5, 1.0, 2.0, 4.0]
@@ -641,6 +654,7 @@ def main(argv=None) -> int:
                          ex_p={k: ex_p[k] for k in ("W_final", "cfg")},
                          ex_groups=ex_groups, scfg=scfg,
                          poscur=poscur, tests=tests,
+                         tests_pool=tests_pool,
                          pack=build_stimulus(
                              scfg, np.random.default_rng(scfg.seed))), fh)
 

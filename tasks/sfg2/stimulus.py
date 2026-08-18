@@ -87,6 +87,16 @@ N_FIG_OPTS = (4, 6, 8, 10)
 # Frozen Baphy realization, 0-indexed (Baphy [17 36 24 10 28 3 22 5 33 14] - 1).
 # Each condition uses the first n_fig of these ten -> nested figure sets.
 FIG_CHANNELS_10     = np.array([16, 35, 23, 9, 27, 2, 21, 4, 32, 13])
+
+# ---------------------------------------------------------------------
+#  Drive matching
+# ---------------------------------------------------------------------
+# Every channel receives exactly this many pips in every 5 s epoch, figure
+# and ground alike.  Sampling each channel independently at a nominal 4 Hz
+# left a residual imbalance (19.0 pips on figure channels against 18.2 on
+# ground, with a +/-1.5 spread across channels), so figure and ground were
+# not quite matched on drive and a raw rate comparison was not clean.
+PIPS_PER_EPOCH = int(round(TONE_RATE_HZ * PRE_MS / 1000.0))      # 20
 FIG_FORCE_FIRST_MS  = 0
 FIG_FORCE_LAST_MS   = 4950
 
@@ -94,22 +104,96 @@ FIG_FORCE_LAST_MS   = 4950
 # =====================================================================
 #  Onset generators
 # =====================================================================
-def channel_cloud_onsets(rng: np.random.Generator,
-                         duration_ms: int = 6000) -> np.ndarray:
-    """Onset times (ms) for one channel of the tone cloud.
+#: Slots are drawn at least this far apart so that +/-25 ms of jitter can
+#: never make two pips in a channel overlap.  Drawing on the bare 50 ms grid
+#: cannot guarantee that, because a tone is itself 50 ms long: adjacent picks
+#: are already touching, and any jitter makes them collide.  Repairing the
+#: collision afterwards pushed later pips off the end of the epoch and lost
+#: two or three per channel, which is what left the counts unequal.
+MIN_PICK_SEPARATION_MS = 2 * MIN_ONSET_GAP_MS
 
-    Three 2 s windows; in each, 8 onsets are drawn without replacement
-    from the 40 50-ms slots (guaranteeing >= 50 ms spacing), then
-    jittered +/- 25 ms.
+
+def _greedy_slots(rng: np.random.Generator, allowed: np.ndarray,
+                  n_onsets: int, separation: float) -> np.ndarray | None:
+    order = rng.permutation(allowed)
+    chosen: List[float] = []
+    for candidate in order:
+        if all(abs(candidate - taken) >= separation for taken in chosen):
+            chosen.append(float(candidate))
+            if len(chosen) == n_onsets:
+                return np.sort(np.asarray(chosen))
+    return None
+
+
+def chord_slot_weight(n_fig: int, n_slots: int = PRE_MS // MIN_ONSET_GAP_MS,
+                      n_chord: int = PIPS_PER_EPOCH) -> float:
+    """How often a ground pip may still land on a chord slot.
+
+    Excluding chord slots outright leaves the chord moments *emptier* than the
+    rest of the epoch, which is as good a cue as leaving them fuller. What
+    should stay flat is the expected number of simultaneously active channels.
+    A slot holds ``target`` active channels on average; the figure already
+    supplies ``n_fig`` of them at a chord, so the ground should supply
+    ``target - n_fig`` there and the usual amount elsewhere. Solving for the
+    sampling weight gives the expression below, which is zero once the figure
+    alone already exceeds the target -- for large figures a residual bump is
+    unavoidable.
     """
-    n_per_window = int(round(2.0 * TONE_RATE_HZ))               # 8
-    slots = np.arange(0, 2000, MIN_ONSET_GAP_MS)                # 40 slots
-    out: List[float] = []
-    for w0 in range(0, duration_ms, 2000):
-        picks = np.sort(rng.choice(slots, size=n_per_window, replace=False))
-        jit = rng.uniform(-ONSET_JITTER_MS, ONSET_JITTER_MS, size=n_per_window)
-        out.extend((w0 + picks + jit).tolist())
-    return np.asarray(out)
+
+    target = N_CHANNELS * PIPS_PER_EPOCH / n_slots      # 7.4 channels
+    wanted = max(0.0, target - n_fig)
+    if wanted <= 0.0:
+        return 0.0
+    share = wanted / (N_CHANNELS - n_fig)               # per ground channel
+    others = n_slots - n_chord
+    denominator = n_chord * (1.0 - share)
+    if denominator <= 0.0:
+        return 1.0
+    return float(np.clip(share * others / denominator, 0.0, 1.0))
+
+
+def sample_onsets(rng: np.random.Generator, n_onsets: int, duration_ms: int,
+                  avoid: np.ndarray | None = None,
+                  avoid_weight: float = 0.0) -> np.ndarray:
+    """Exactly ``n_onsets`` pip onsets on the 50 ms grid, then jittered.
+
+    ``avoid`` lists chord onsets whose 50 ms windows the pip should not
+    overlap.  Excluding those slots is what lets the ground cloud fill the
+    silences *between* chords instead of piling on top of them, which is
+    what keeps the number of simultaneously active channels roughly flat
+    across the epoch.  Jitter that would push a pip back onto a chord is
+    dropped for that pip rather than allowed to reintroduce the overlap.
+    """
+
+    slots = np.arange(0, duration_ms - TONE_DUR_MS + 1, MIN_ONSET_GAP_MS,
+                      dtype=float)
+    slots = slots[(slots >= ONSET_JITTER_MS)
+                  & (slots <= duration_ms - TONE_DUR_MS - ONSET_JITTER_MS)]
+    if avoid is not None and np.size(avoid):
+        clash = np.min(np.abs(slots[:, None] - np.asarray(avoid, float)[None, :]),
+                       axis=1) < TONE_DUR_MS + ONSET_JITTER_MS
+        keep = ~clash | (rng.random(slots.size) < avoid_weight)
+        if keep.sum() >= n_onsets:
+            slots = slots[keep]
+
+    picked = None
+    for _attempt in range(400):
+        picked = _greedy_slots(rng, slots, n_onsets, MIN_PICK_SEPARATION_MS)
+        if picked is not None:
+            break
+    if picked is None:                       # never seen; kept as a guard
+        picked = np.sort(rng.choice(slots, size=n_onsets, replace=False))
+
+    jittered = picked + rng.uniform(-ONSET_JITTER_MS, ONSET_JITTER_MS,
+                                    size=picked.size)
+    return np.sort(jittered)
+
+
+def channel_cloud_onsets(rng: np.random.Generator,
+                         duration_ms: int = PRE_MS) -> np.ndarray:
+    """Onset times (ms) for one channel of the tone cloud."""
+
+    return sample_onsets(rng, PIPS_PER_EPOCH, duration_ms)
 
 
 def figure_onsets(rng: np.random.Generator) -> np.ndarray:
@@ -117,16 +201,20 @@ def figure_onsets(rng: np.random.Generator) -> np.ndarray:
 
     Mean 4 Hz over the 5 s figure, >= 50 ms spacing, +/- 25 ms jitter.
     """
-    onsets = {float(FIG_FORCE_FIRST_MS), float(FIG_FORCE_LAST_MS)}
-    target_n = int(round((FIGURE_MS / 1000.0) * TONE_RATE_HZ))  # ~20
-    grid = np.arange(MIN_ONSET_GAP_MS, FIGURE_MS - MIN_ONSET_GAP_MS, MIN_ONSET_GAP_MS)
-    rng.shuffle(grid)
-    for cand in grid:
-        if len(onsets) >= target_n:
+    forced = np.array([float(FIG_FORCE_FIRST_MS), float(FIG_FORCE_LAST_MS)])
+    grid = np.arange(MIN_PICK_SEPARATION_MS,
+                     FIGURE_MS - TONE_DUR_MS - MIN_PICK_SEPARATION_MS,
+                     MIN_ONSET_GAP_MS, dtype=float)
+    picked = None
+    for _attempt in range(400):
+        picked = _greedy_slots(rng, grid, PIPS_PER_EPOCH - forced.size,
+                               MIN_PICK_SEPARATION_MS)
+        if picked is not None:
             break
-        if all(abs(cand - o) >= MIN_ONSET_GAP_MS for o in onsets):
-            onsets.add(cand + float(rng.uniform(-ONSET_JITTER_MS, ONSET_JITTER_MS)))
-    return np.asarray(sorted(onsets))
+    jittered = picked + rng.uniform(-ONSET_JITTER_MS, ONSET_JITTER_MS,
+                                    size=picked.size)
+    return np.sort(np.clip(np.r_[forced, jittered], 0.0,
+                           FIGURE_MS - TONE_DUR_MS))
 
 
 # =====================================================================
@@ -134,7 +222,9 @@ def figure_onsets(rng: np.random.Generator) -> np.ndarray:
 # =====================================================================
 def make_cloud(rng: np.random.Generator, dur_ms: int = 5000,
                drop_onsets_ms: np.ndarray = None,
-               drop_radius_ms: int = TONE_DUR_MS) -> np.ndarray:
+               drop_radius_ms: int = TONE_DUR_MS,
+               avoid: np.ndarray = None,
+               avoid_weight: float = 0.0) -> np.ndarray:
     """``(dur_ms, N_CHANNELS)`` binary tone-cloud (independent channels).
 
     ``drop_onsets_ms`` : figure-chord onsets to avoid -- any background
@@ -144,7 +234,8 @@ def make_cloud(rng: np.random.Generator, dur_ms: int = 5000,
     M = np.zeros((dur_ms, N_CHANNELS), dtype=np.uint8)
     drops = None if drop_onsets_ms is None else np.asarray(drop_onsets_ms, float)
     for ch in range(N_CHANNELS):
-        for onset in channel_cloud_onsets(rng, 6000):
+        for onset in sample_onsets(rng, PIPS_PER_EPOCH, dur_ms, avoid=avoid,
+                                   avoid_weight=avoid_weight):
             t0 = int(round(onset)); t1 = t0 + TONE_DUR_MS
             if t0 < 0 or t1 > dur_ms:
                 continue
@@ -198,7 +289,12 @@ def make_figure_epoch(rng_fig: np.random.Generator,
     starts = np.asarray(starts)
 
     if rate_matched:
-        cloud = make_cloud(rng_cloud, FIGURE_MS)       # independent, no drop
+        # Ground pips avoid the chord windows, so they fill the silences
+        # between chords rather than stacking on them.  Each ground channel
+        # still receives exactly PIPS_PER_EPOCH pips, so the per-channel
+        # drive stays matched to the figure channels.
+        cloud = make_cloud(rng_cloud, FIGURE_MS, avoid=starts,
+                           avoid_weight=chord_slot_weight(n_fig))
         gnd_mask = np.ones(N_CHANNELS, dtype=bool)
         gnd_mask[fig_channels] = False
         M[:, gnd_mask] = cloud[:, gnd_mask]            # ground only; figure = chord

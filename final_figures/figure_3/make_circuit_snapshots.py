@@ -60,44 +60,44 @@ OUTPUT_STEM = OUTPUT_DIR / "ab_ba_circuit_snapshots"
 
 #: Excitatory and inhibitory cells get separate, clearly-labelled ramps.
 EXC_CMAP = LinearSegmentedColormap.from_list(
-    "exc_colorbrewer_ord",
-    ["#FFF7EC", "#FDD49E", "#FC8D59", "#D7301F", "#7F0000"],
+    "exc_manuscript_warm",
+    ["#F7F4EF", "#FDDBC7", "#D98E7B", "#A63A50", "#7C102A"],
     N=256,
 )
 INH_CMAP = LinearSegmentedColormap.from_list(
-    "inh_colorbrewer_blues",
-    ["#F7FBFF", "#C6DBEF", "#6BAED6", "#2171B5", "#08306B"],
+    "inh_manuscript_cool",
+    ["#F7F4EF", "#E2E7EF", "#A9BED6", "#5C87B8", "#2166AC"],
     N=256,
 )
-#: Established ColorBrewer RdBu ramp for the frequent-minus-rare activity row.
+#: Established colorblind-safe ColorBrewer PuOr ramp for signed activity.
 #: Excitatory and inhibitory differences retain separate symmetric norms
 #: because their magnitudes differ by roughly an order of magnitude.
 DIFF_CMAP = LinearSegmentedColormap.from_list(
-    "signed_colorbrewer_rdbu",
+    "signed_colorbrewer_puor",
     [
-        "#2166AC",
-        "#67A9CF",
-        "#D1E5F0",
+        "#542788",
+        "#8073AC",
+        "#B2ABD2",
         "#F7F7F7",
-        "#FDDBC7",
-        "#EF8A62",
-        "#B2182B",
+        "#FDB863",
+        "#E08214",
+        "#B35806",
     ],
     N=256,
 )
 
-# Conventional, colorblind-safe circuit semantics (Okabe-Ito family):
-# every excitatory projection is warm and every inhibitory projection is cool.
-COL_PLASTIC = "#D55E00"             # plastic recurrent E->E
-COL_EI = "#E69F00"                  # fixed E->I
-COL_IE = "#0072B2"                  # fixed I->E
-COL_EXC_TRACE = COL_PLASTIC
-COL_INH_TRACE = COL_IE
-CONTEXT_COLORS = ("#0072B2", "#D55E00")
-EXC_OUTLINE = "#A33A16"
-INH_OUTLINE = "#005A8D"
-DIFF_POS_EDGE = "#B2182B"
-DIFF_NEG_EDGE = "#D6604D"
+# Manuscript semantics: every excitatory projection is warm and every
+# inhibitory projection is cool, while condition colors match Figures 2/4.
+COL_PLASTIC = "#9B2E45"             # plastic recurrent E->E
+COL_EI = "#BD6B6B"                  # fixed E->I
+COL_IE = "#2166AC"                  # fixed I->E
+COL_EXC_TRACE = "#7C102A"
+COL_INH_TRACE = "#2166AC"
+CONTEXT_COLORS = ("#2166AC", "#7C102A")
+EXC_OUTLINE = "#7C102A"
+INH_OUTLINE = "#2166AC"
+DIFF_POS_EDGE = "#9B2E45"
+DIFF_NEG_EDGE = "#BD6B6B"
 WINDOW_GREY = "#E5E7E9"
 WINDOW_PEACH = "#F4D6C4"
 
@@ -178,19 +178,31 @@ def _arrow(ax, start, end, *, width, colour, rad, shrink_a, shrink_b,
            alpha=1.0, zorder=3, dashed=False):
     ax.add_patch(FancyArrowPatch(
         start, end, connectionstyle=f"arc3,rad={rad}",
-        arrowstyle="-|>", mutation_scale=5.2 + 1.6 * width,
+        arrowstyle="-|>", mutation_scale=7.0 + 1.8 * width,
         lw=width, color=colour, alpha=alpha, zorder=zorder,
-        shrinkA=shrink_a, shrinkB=shrink_b, capstyle="round",
+        shrinkA=shrink_a + 0.35 * width,
+        shrinkB=shrink_b + 0.85 * width,
+        capstyle="round",
         linestyle=(0, (2.2, 1.6)) if dashed else "solid"))
 
 
 def _self_loop(ax, centre, radius, *, width, colour, zorder=3):
     x, y = centre
-    loop = np.linspace(0, 2 * np.pi, 90)
-    rx, ry = radius * 0.62, radius * 0.62
-    cx, cy = x, y + radius + ry * 0.72
-    ax.plot(cx + rx * np.cos(loop), cy + ry * np.sin(loop), color=colour,
-            lw=width, zorder=zorder, solid_capstyle="round")
+    start = (x - 0.46 * radius, y + 0.82 * radius)
+    end = (x + 0.46 * radius, y + 0.82 * radius)
+    ax.add_patch(FancyArrowPatch(
+        start,
+        end,
+        connectionstyle="arc3,rad=-1.55",
+        arrowstyle="-|>",
+        mutation_scale=7.0 + 1.8 * width,
+        lw=width,
+        color=colour,
+        zorder=zorder,
+        shrinkA=0,
+        shrinkB=0,
+        capstyle="round",
+    ))
 
 
 def _draw_circuit(ax, excitatory, inhibitory, weights, *, exc_norm, inh_norm,
@@ -218,19 +230,19 @@ def _draw_circuit(ax, excitatory, inhibitory, weights, *, exc_norm, inh_norm,
     # --- fixed inhibitory loop, constant width -------------------------------
     for src, dst, rad in ((a_e, a_i, 0.0), (b_e, b_i, 0.0)):
         _arrow(ax, src, dst, width=FIXED_LW, colour=COL_EI, rad=rad,
-               shrink_a=R_E * 100 * 0.62, shrink_b=R_I * 100 * 0.62,
+               shrink_a=R_E * 100 * 0.95, shrink_b=R_I * 100 * 0.95,
                alpha=0.85 * fixed_alpha, zorder=2)
     for src, dst in ((a_e, b_i), (b_e, a_i)):
         _arrow(ax, src, dst, width=FIXED_LW * 0.55, colour=COL_EI, rad=0.30,
-               shrink_a=R_E * 100 * 0.62, shrink_b=R_I * 100 * 0.62,
+               shrink_a=R_E * 100 * 0.95, shrink_b=R_I * 100 * 0.95,
                alpha=0.45 * fixed_alpha, zorder=2)
     for src, dst in ((a_i, a_e), (b_i, b_e)):
         _arrow(ax, src, dst, width=FIXED_LW * 1.5, colour=COL_IE, rad=0.42,
-               shrink_a=R_I * 100 * 0.62, shrink_b=R_E * 100 * 0.62,
+               shrink_a=R_I * 100 * 0.95, shrink_b=R_E * 100 * 0.95,
                alpha=0.9 * fixed_alpha, zorder=2)
     for src, dst in ((a_i, b_e), (b_i, a_e)):
         _arrow(ax, src, dst, width=FIXED_LW * 0.55, colour=COL_IE, rad=-0.30,
-               shrink_a=R_I * 100 * 0.62, shrink_b=R_E * 100 * 0.62,
+               shrink_a=R_I * 100 * 0.95, shrink_b=R_E * 100 * 0.95,
                alpha=0.4 * fixed_alpha, zorder=2)
 
     # --- plastic recurrent excitation, width = learned weight ----------------
@@ -251,7 +263,7 @@ def _draw_circuit(ax, excitatory, inhibitory, weights, *, exc_norm, inh_norm,
                width=_plastic_width(abs(weight) if signed_weights else weight,
                                     w_reference),
                colour=colour, rad=rad,
-               shrink_a=R_E * 100 * 0.62, shrink_b=R_E * 100 * 0.62,
+               shrink_a=R_E * 100 * 0.95, shrink_b=R_E * 100 * 0.95,
                zorder=5, dashed=signed_weights and weight < 0)
         if show_weight_labels:
             text = (f"\u0394{name}  {weight:+.3f}" if signed_weights
@@ -362,9 +374,9 @@ def _panel_timecourse(ax, data, name, label, *, show_ylabel, show_legend) -> Non
     ax.axvspan(0, TONE_MS, color=WINDOW_GREY, alpha=0.72, lw=0, zorder=0)
     ax.axvspan(TONE_MS + GAP_MS, 2 * TONE_MS + GAP_MS, color=WINDOW_PEACH,
                alpha=0.68, lw=0, zorder=0)
-    ax.text(TONE_MS / 2, 10.4, "A", ha="center", va="top", fontsize=5.6,
+    ax.text(TONE_MS / 2, 11.35, "A", ha="center", va="top", fontsize=5.6,
             color=COLORS["ash"], fontweight="bold")
-    ax.text(1.5 * TONE_MS + GAP_MS, 10.4, "B", ha="center", va="top",
+    ax.text(1.5 * TONE_MS + GAP_MS, 11.35, "B", ha="center", va="top",
             fontsize=5.6, color=COLORS["charcoal"], fontweight="bold")
 
     for row, colour, style, name_ in ((0, COL_EXC_TRACE, "-", "E$_A$"),
@@ -379,11 +391,11 @@ def _panel_timecourse(ax, data, name, label, *, show_ylabel, show_legend) -> Non
     for moment, _title, _sub in SNAPSHOTS:
         ax.axvline(moment, color=COLORS["charcoal"], lw=0.5, ls=(0, (1.6, 1.6)),
                    alpha=0.65, zorder=2)
-        ax.text(moment, 10.95, f"{moment}", ha="center", va="top",
+        ax.text(moment, 12.05, f"{moment}", ha="center", va="top",
                 fontsize=4.8, color=COLORS["charcoal"])
 
     ax.set_xlim(-8, 175)
-    ax.set_ylim(0, 11.2)
+    ax.set_ylim(0, 12.45)
     ax.set_xticks([0, 50, 80, 130])
     ax.set_yticks([0, 5, 10])
     ax.set_xlabel("Time from sequence onset (ms)")

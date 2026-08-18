@@ -1,6 +1,6 @@
 {
   "figure": "Figure 4 - stochastic figure-ground",
-  "generated_utc": "2026-08-09T04:14:24.401621+00:00",
+  "generated_utc": "2026-08-10T07:29:21.680869+00:00",
   "measure_note": "All quantities are tone-triggered: the mean over the 50 ms following each of a channel's own pip onsets. The reported modulation is 100*(plastic-frozen)/frozen on runs sharing a seed and therefore an identical stimulus, so short-term depression and epoch transients cancel and only the learned recurrent weights remain.",
   "paradigm_source": "tasks/sfg2 - faithful SFG generator: 37 channels over three octaves, 5 s pre / 5 s figure / 5 s post, figure chords at ~4/s, figure frozen within a session and redrawn across seeds. Rate-matched: figure channels carry only the coherent chord and ground channels an independent cloud at the same mean rate, so the two sets differ in temporal coherence and nothing else.",
   "replication_unit": "Session seed: redraws the ground cloud and the figure channel set.",

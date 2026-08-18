@@ -54,7 +54,7 @@ calculations and the retained non-displayed model decoder. Without this flag,
 the cache is reused only when the complete analysis specification and source
 hashes match.
 
-The submission canvas is fixed at **183 x 225 mm**. Every time-resolved panel
+The submission canvas is fixed at **183 x 245 mm**, matching Figure 2. Every time-resolved panel
 uses the complete **0-600-ms sequence clock**: item 1 occupies 0-180 ms and
 item 2 occupies 180-360 ms in the displayed long-timing regime.
 
@@ -71,17 +71,15 @@ item 2 occupies 180-360 ms in the displayed long-timing regime.
 - **D:** AB-rich and BA-rich recurrent-weight trajectories with their final
   2 x 2 recurrent matrices. Matrix cells report their values directly, and
   both matrices use one common normalization without a separate colorbar.
-- **E:** full-clock target-channel model responses for held-fixed AB
-  (population B) and held-fixed BA (population A), with rare-minus-regular
-  target-channel differences beneath. Ribbons are s.e.m. across 12 paired
-  seeds; violet rails are jointly cluster-FWER-corrected across both physical
-  sequences and the complete time family.
-- **F:** a full-width vertical repeated-measures summary of the absolute
-  target-channel mismatch under selective inhibition (intact), no short-term
-  depression, no recurrent learning and uniform inhibition. All paired-seed
-  observations remain visible; diamonds and vertical intervals show means
-  and 95% Student-*t* intervals, and labels give exact lesion-versus-selective
-  max-|t|-corrected *P*<sub>FWER</sub> values without stars.
+- **E:** recurrent excitation, inhibition and the intact rare-minus-regular
+  population response, presented across the full fourth row as the principal
+  mechanistic result.
+- **F:** discovery-half 4 x 8 ECoG maps for held-fixed AB and BA. White dots
+  mark the independently selected maxima used for the held-out ERPs in B; the
+  horizontal boundary separates A1 from PEG.
+- **G:** the compact Figure-2-scale perturbation summary. Individual paired
+  seeds, means and 95% Student-*t* intervals remain visible without the former
+  full-width trajectory field.
 
 ## ECoG analysis contract
 

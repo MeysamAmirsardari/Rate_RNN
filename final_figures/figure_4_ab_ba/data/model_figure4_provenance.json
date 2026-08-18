@@ -1,16 +1,16 @@
 {
-  "created_utc": "2026-08-09T08:37:33.425975+00:00",
+  "created_utc": "2026-08-10T03:29:23.027924+00:00",
   "leakage_guard": "identical balanced held-out test stream; learning disabled during test",
   "outputs": {
     "figure_4_inference.csv": "93ea588d9a6b84dc901bd20abf6b78c6b4e93f130c11db2d0a2e6a0781ada607",
-    "figure_4_summary.csv": "410923deb47042fc53fb134bda256725bb04d001e331d260ff0fb29e95e9e3ec",
-    "model_figure4_ab_ba.npz": "1a37549afcd63dd2cdea450ee92eee56f20f90d6681495fbccfefcd59b8e0325",
-    "model_figure4_context_decoder.csv": "f3a6206b0a157d7ae06e4465d9698f70710c0d2a8db025e1635176de6e459d59",
-    "model_figure4_mechanism_timecourses.csv": "5c42953eed65954eee7c0874f9865b5babfe6ab113d689f9a6c59ec1b281aa26",
-    "model_figure4_runs.csv": "8486af81ba85099b871c5ce8a6252090792197331caf98cd95a82e1d6895d950",
-    "model_figure4_surprisal_response.csv": "b43acc923b89013bc1c188b5ec6e0f20832b9663198d812a7797b94e8f65630f",
-    "model_figure4_surprise_timecourses.csv": "9224d879700dab963ff98994b8352a71803a0d02ff089d887f5fd677ceedefb4",
-    "model_figure4_weight_trajectory.csv": "51161276c729a9946edd82926b69c575bffd9158a4900a530cd6187ad6e4ff1a"
+    "figure_4_summary.csv": "607170b8fddf4fc68283bdf82537f3f099baed919dec9cf345dcf5eafda5dfd5",
+    "model_figure4_ab_ba.npz": "496d564b865b173c8555ede0194ae1a1b781f3b0d55d9489816926d081cea116",
+    "model_figure4_context_decoder.csv": "f9d2bdd26696071572010c77284062cfbfedc6f77bda86b5a8cc72964f8ff095",
+    "model_figure4_mechanism_timecourses.csv": "bada620d11ccc5c4cd3447c6c77dac01f24f59547e8a285d66f5bcb75386075b",
+    "model_figure4_runs.csv": "dc916b0bcf6c6882d6dac4976d5761ab72b5677191854f6cbf1d825ed771fb15",
+    "model_figure4_surprisal_response.csv": "55fc033f814bcacb1fe7edd77129a946d89d6e11557e0395956a0ebe68155b06",
+    "model_figure4_surprise_timecourses.csv": "63aad7c0816a2c30e0e6ceb8364790df34ad231ae970b8bde550530115b0bdf8",
+    "model_figure4_weight_trajectory.csv": "909716e56adb8734f12713870b53a8b0928f3ef9c50fcf03210545ea3682923b"
   },
   "replication_unit": "paired training/test seed; trials averaged within seed; sequence identities retained for time-resolved analyses and averaged only for prespecified scalar effects",
   "self_test": {
@@ -211,7 +211,7 @@
       }
     },
     "inter_gap_ms": 1500,
-    "intra_gap_ms": 30,
+    "intra_gap_ms": 0,
     "model_decoder_bootstraps": 4999,
     "model_decoder_cluster_family": "both physical sequences and all time samples",
     "model_decoder_exact_p": "exceedance count / 2^n paired seeds",
@@ -364,16 +364,16 @@
     "source_hashes": {
       "final_figures/figure_2/inference.py": "406470836af70cfaf31d1ba3812e11d4ae464aff4b746f5732ad43d9808c7652",
       "final_figures/figure_2/model_data.py": "7eef3efd9840b042e2e56f4fae6501264e97cd32166f515f0bf770170da07348",
-      "final_figures/figure_4_ab_ba/model_data.py": "6f14c2d351ba3c00f0f536a5aba6f9de5243f5e25298c05f3902a250955678d4",
+      "final_figures/figure_4_ab_ba/model_data.py": "0b30b88b69c4a1d80fa04a46ef64c04e8f0ac13c3a105ae58b1c63dff871bbc1",
       "final_figures/figure_7/figure7_data.py": "c5f0de3f2f029478fe0a8f0c0dcfe3c822fec33ac94c391093a272c596cc6d90",
       "model0/config.py": "2e91dbdacb93bb7cabe55d5e197bf3c5ca84baa6ffa6fa790ed330e59d8433db",
       "model0/model.py": "05512636cfe7acf02b0cbc9edb2d53f7b9f8f642aa9b451689edf8f9b264d628",
       "tasks/ab_ba_model0/ab_ba.py": "71102aa095b55e909c64403b86b81513a65f4a5a42a40e53fc660f5416a324de"
     },
-    "target_onset_ms": 80,
+    "target_onset_ms": 180,
     "target_window_ms": [
       0,
-      50
+      180
     ],
     "test_p_ab": 0.5,
     "test_trials": 120,
@@ -384,15 +384,15 @@
     },
     "timing_model_seconds": {
       "inter_gap": 1.5,
-      "intra_gap": 0.03,
-      "tone_dur": 0.05
+      "intra_gap": 0.0,
+      "tone_dur": 0.18
     },
     "timing_short_seconds": {
       "inter_gap": 1.5,
       "intra_gap": 0.1,
       "tone_dur": 0.05
     },
-    "tone_duration_ms": 50,
+    "tone_duration_ms": 180,
     "train_p_ab": {
       "AB_context": 0.85,
       "BA_context": 0.15000000000000002
@@ -418,5 +418,5 @@
       400
     ]
   },
-  "specification_sha256": "2e38cc5bd2ae16ee3d9f62b1aa8d34bc5a6c8a31c762e0484588ec663fec5049"
+  "specification_sha256": "906546b3d92bc6a748469f89b7867e40913696e7762e2b8f437f98a900a8ccea"
 }

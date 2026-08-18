@@ -17,13 +17,13 @@ connections retain constant width. Excitatory and inhibitory nodes use the two
 separately labelled positive-only scales at right.
 
 **d**, Signed identity-controlled contrast, AB frequent minus AB rare, at the
-same snapshots. Node fill is the rate difference: red indicates frequent >
-rare, blue frequent < rare, and white no difference. Excitatory populations
+same snapshots. Node fill is the rate difference: orange indicates frequent >
+rare, purple frequent < rare, and white no difference. Excitatory populations
 are warm-outlined circles and inhibitory populations are blue-outlined rounded
 squares, so neuron class remains visible independently of sign. Recurrent E→E
 connections remain warm; width denotes difference magnitude and solid versus
 dashed style denotes sign. Excitatory and inhibitory rate differences use
-separate symmetric zero-centred ColorBrewer RdBu scales. The learned A→B link
+separate symmetric zero-centred ColorBrewer PuOr scales. The learned A→B link
 first raises E_B during tone A (+1.17 a.u. at
 45 ms), then leaves I_B elevated in the silent gap (+0.181 a.u. at 65 ms),
 before the target response reverses sign during tone B (ΔE_B = -0.33 a.u. at

@@ -43,8 +43,11 @@ class Figure4ContractTests(unittest.TestCase):
             self.assertEqual(item.time_ms[0], 0.0)
             self.assertEqual(item.decoder_time_ms[0], 0.0)
 
-    def test_main_page_has_contiguous_a_through_f_panel_map(self):
-        self.assertEqual(DISPLAYED_PANELS, ("A", "B", "C", "D", "E", "F"))
+    def test_main_page_has_contiguous_a_through_g_panel_map(self):
+        self.assertEqual(
+            DISPLAYED_PANELS,
+            ("A", "B", "C", "D", "E", "F", "G"),
+        )
 
     def test_erp_smoothing_is_fixed_zero_phase_and_display_only(self):
         self.assertEqual(ERP_DISPLAY_SMOOTHING_SIGMA_MS, 3.0)

@@ -38,29 +38,29 @@ required. Directional weight alignment was tested by an exhaustive two-sided
 paired sign-flip test with max-|t| correction jointly over the two planned
 contexts.
 
-**e,** Sequence-evoked network dynamics after learning. Both context-specific
-networks received the same balanced held-out sequences with plasticity
-disabled. The left and middle columns show population A and B activity for AB
-and BA sequences (upper axes) and the corresponding recurrent excitatory and
-inhibitory drives (lower axes). These order-resolved traces are averaged over
-probability role, isolating the learned directional link. The right column
-shows the intact network's mean excitatory activity for regular and rare
-sequences and their paired rare-minus-regular difference. Lines and shading
-denote mean ± s.e.m. across 12 paired seeds. The violet rail identifies times
-significant for both physical sequence identities after exhaustive two-sided
-paired sign-flip cluster-mass inference with family-wise correction. Rails
-show corrected cluster extent rather than a precise physiological onset.
+**e,** Synaptic origin of sequence surprisal. The first two axes show recurrent
+excitatory and inhibitory drive to populations A and B; solid and dashed traces
+denote AB and BA input order. The third axis shows the intact rare-minus-regular
+population response, with positive and negative regions filled by context and
+the violet curve and band denoting mean +/- s.e.m. across paired seeds. The rail
+marks time points belonging to a corrected cluster common to both physical
+sequence identities.
 
-**f,** Causal perturbations of the target-channel mismatch response. The
-repeated-measures plot shows the rare-minus-regular target response under four
-prespecified conditions: the intact network, no short-term depression, frozen
-recurrent plasticity and row-sum-matched uniform inhibition. Faint lines join
-the four observations from each of 12 paired seeds; translucent points show
-individual seeds, and diamonds and vertical bars show means and 95% Student-*t*
-intervals. Asterisks compare each perturbation with the intact network using
-exhaustive two-sided paired sign flips and max-|t| family-wise correction over
-the three planned contrasts (***, *P*<sub>FWER</sub> < 0.001; exact corrected
-probability = 0.000488 for each contrast).
+**f,** Spatial distribution of the discovery-half rare-regular ECoG response
+magnitude for held-fixed AB and BA. Each map is normalized to its own maximum
+on the verified 4 x 8 auditory-cortical electrode grid. The horizontal line
+separates A1 (contacts 1-16) from PEG (contacts 17-32); white dots identify the
+map maxima selected independently for the held-out ERPs in panel b.
+
+**g,** Causal perturbations of the target-channel mismatch response. The
+rare-minus-regular response is shown under four prespecified conditions: the
+intact network, no short-term depression, frozen recurrent plasticity and
+row-sum-matched uniform inhibition. Translucent points show individual paired
+seeds; diamonds and vertical bars show means and 95% Student-*t* intervals.
+Asterisks compare each perturbation with the intact network using exhaustive
+two-sided paired sign flips and max-|t| family-wise correction over the three
+planned contrasts (***, *P*<sub>FWER</sub> < 0.001; exact corrected probability
+= 0.000488 for each contrast).
 
 The paired training/test seed is the replication unit for every model test;
 trials are averaged within seed and are never counted as independent

@@ -1,13 +1,18 @@
 {
   "figure": "Figure 4",
   "title": "Probability-reversal sequence oddball",
+  "final_size_mm": [
+    183,
+    245
+  ],
   "displayed_panels": [
     "A",
     "B",
     "C",
     "D",
     "E",
-    "F"
+    "F",
+    "G"
   ],
   "configuration": {
     "ab_ba_overrides": {
@@ -28,8 +33,8 @@
       "intra_gap": 0.1,
       "inter_gap": 1.5
     },
-    "tone_duration_ms": 50,
-    "target_onset_ms": 80,
+    "tone_duration_ms": 180,
+    "target_onset_ms": 180,
     "inter_sequence_gap_ms": 1500
   },
   "ecog": {
@@ -66,15 +71,15 @@
   "outputs": {
     "pdf": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.pdf",
-      "sha256": "9d32bc7441b7381996822d561fcc5f4766de62e8fc8918c53d9d2c7bd611814b"
+      "sha256": "81331bde04da57dcf7494df2a91a085ef78316fa4a39962d379b827bc886f603"
     },
     "svg": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.svg",
-      "sha256": "a0a2eb9ba7580c076c69e35af5b76179e0b4eb3fa82dfe319bee41e683d58e11"
+      "sha256": "8a46066ec2615ea9a6b43f4a28976848e215167a9cc748bc2e23e386289a5489"
     },
     "png": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4_ab_ba/outputs/figure_4_ab_ba.png",
-      "sha256": "799fdf3fe78f4366cb552d41de474ad2eafc8a82a290046d760d8fe419a47a10"
+      "sha256": "6a08e1ebc31ae2156bc0b7896d6c0b7db3b1e50fc194fc63915a5aad07ac0c1c"
     }
   }
 }

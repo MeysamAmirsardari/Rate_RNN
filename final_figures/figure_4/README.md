@@ -84,13 +84,13 @@ result worth stating, since the same control matters in Figure 2 and not here.
 
 | | Claim | Source |
 |---|---|---|
-| **A** | Figure and ground differ in temporal coherence, not drive | exemplar stimulus, plus the per-channel pip count as a drive check |
-| **B** | Coherent co-firing strengthens the figure block | learned `W`, and the `W_FF`/`W_GG`/`W_FG` trajectory |
-| **C** | Enhancement tracks the figure, on and off | 500 ms tone-triggered time course across pre/figure/post |
-| **D** | Structure and its consequence both scale with figure size | assembly drive `(n−1)·W_FF`, and figure-epoch change |
-| **E** | The enhancement is recurrent, not thalamic | tone-triggered Δcurrents, with the thalamic term at exactly zero |
-| **F** | Binding accumulates over repeated exposures | modulation per presentation, one curve per figure size |
-| **G** | A weaker trace survives into the cloud | cloud-epoch modulation vs figure size |
+| **A** | Stimulus design and drive balance | exemplar stimulus, plus the per-channel pip count as a drive check |
+| **B** | Figure-specific recurrent learning | learned `W`, and the `W_FF`/`W_GG`/`W_FG` trajectory |
+| **C** | Time course of figure enhancement | 500 ms tone-triggered time course across pre/figure/post |
+| **D** | Dependence on figure size | assembly drive `(n−1)·W_FF`, and figure-epoch change |
+| **E** | Synaptic contributions to figure enhancement | tone-triggered Δcurrents, with the thalamic term at exactly zero |
+| **F** | Figure enhancement across presentations | modulation per presentation, one curve per figure size |
+| **G** | Modulation during cloud epochs | cloud-epoch modulation vs figure size |
 
 ## Statements this figure must not make
 

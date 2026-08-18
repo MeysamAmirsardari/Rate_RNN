@@ -241,7 +241,7 @@ def _panel_stimulus(fig, spec, data) -> None:
     _epoch_labels(ax, -1.4)
 
     _heading(ax,
-             "Figure and ground differ in when their tones fall, not how many",
+             "Stimulus design and drive balance",
              "one presentation - 37 channels over three octaves - 5 s cloud, "
              "5 s figure, 5 s cloud, chords at about 4 per s - figure channels "
              "in green, ground cloud in grey", dy=25.0)
@@ -358,7 +358,7 @@ def _panel_structure(fig, spec, data) -> None:
     colourbar.outline.set_visible(False)
     bar.tick_params(length=1.4, pad=1.2)
 
-    _heading(panel_anchor, "Coherent co-firing strengthens the figure block",
+    _heading(panel_anchor, "Figure-specific recurrent learning",
              f"exemplar session - {EXEMPLAR_SIZE}-tone figure - "
              "complete recurrent matrix", dy=25.0)
     _letter(panel_anchor, "B", dx=-30.0, dy=25.0)
@@ -421,7 +421,7 @@ def _panel_dynamics(fig, spec, data, inference) -> None:
         )
     ax.legend(loc="upper left", bbox_to_anchor=(0.0, 0.80))
 
-    _heading(ax, "Enhancement tracks the figure, on and off",
+    _heading(ax, "Time course of figure enhancement",
              f"{EXEMPLAR_SIZE}-tone figure - tone-triggered, 500 ms bins - "
              f"mean +/- SEM, {N_SEEDS} seeds", dy=25.0)
     _letter(ax, "C", dx=-30.0, dy=25.0)
@@ -490,7 +490,7 @@ def _panel_size(fig, spec, data, inference) -> None:
         columnspacing=0.42,
     )
 
-    _heading(panel_anchor, "Structure and consequence both scale with figure size",
+    _heading(panel_anchor, "Dependence on figure size",
              f"mean +/- SEM over {N_SEEDS} session seeds", dy=25.0)
     _letter(panel_anchor, "D", dx=-30.0, dy=25.0)
 
@@ -591,7 +591,7 @@ def _panel_mechanism(fig, spec, data, inference) -> None:
                 xytext=(0, 6), ha="center", va="bottom", fontsize=5.3,
                 color=COLORS["ash"], linespacing=1.35)
 
-    _heading(ax, "The enhancement is recurrent, not thalamic",
+    _heading(ax, "Synaptic contributions to figure enhancement",
              f"{EXEMPLAR_SIZE}-tone figure - tone-triggered currents, figure "
              f"epoch - mean +/- SEM, {N_SEEDS} seeds", dy=25.0)
     _letter(ax, "E", dx=-30.0, dy=25.0)
@@ -648,7 +648,7 @@ def _panel_buildup(fig, spec, data, inference) -> None:
     size_legend._legend_box.align = "left"
     ax.add_artist(size_legend)
 
-    _heading(ax, "Binding accumulates over repeated exposures",
+    _heading(ax, "Figure enhancement across presentations",
              "figure channels - the ferret buildup is within one figure, "
              "this model's across them", dy=25.0)
     _letter(ax, "F", dx=-30.0, dy=25.0)
@@ -708,7 +708,7 @@ def _panel_persistence(fig, spec, data, inference) -> None:
     clean_axis(ax)
     ax.legend(loc="lower left", bbox_to_anchor=(-0.01, 1.025), ncol=2)
 
-    _heading(ax, "A weaker trace persists into the cloud",
+    _heading(ax, "Modulation during cloud epochs",
              "pre- and post-figure epochs pooled - no chord is present",
              dy=25.0)
     _letter(ax, "G", dx=-30.0, dy=25.0)

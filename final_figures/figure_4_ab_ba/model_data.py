@@ -77,17 +77,11 @@ SEEDS = np.arange(12, dtype=int)
 TRAIN_TRIALS = 400
 TEST_TRIALS = 120
 TRAIN_P_AB = {"AB_context": P_REGULAR, "BA_context": 1.0 - P_REGULAR}
-#: Timing the model is simulated at.  The ECoG recordings used 180 ms notes
-#: with no gap (``TIMING_LONG``), which is a poor regime for this mechanism:
-#: 180 ms is nine membrane time constants, so the excitatory rate saturates
-#: into a plateau instead of a transient, and with no gap the predictive
-#: pre-activation of the target channel is immediately overwritten by the
-#: target's own thalamic drive.  A 50 ms note leaves a genuine transient, and a
-#: 30 ms gap is short relative to ``tau_I`` (80 ms), so the inhibition that the
-#: pre-activation recruits is still near its peak when the target arrives.
-#: Measured suppression: 3.11% here against 1.63% at 180/0 and 0.80% with a
-#: 100 ms gap.  The recordings will be repeated at this timing.
-TIMING_MODEL = {"tone_dur": 0.05, "intra_gap": 0.03, "inter_gap": 1.5}
+#: Figure 4 uses the recorded Experiment-1 timing without substitution:
+#: two contiguous 180-ms tones and a 1.5-s inter-sequence interval.  Keeping
+#: this as an explicit copy prevents model-side display or cache code from
+#: silently drifting away from the ECoG-matched task definition.
+TIMING_MODEL = dict(TIMING_LONG)
 TONE_DURATION_MS = int(round(1000 * TIMING_MODEL["tone_dur"]))
 INTRA_GAP_MS = int(round(1000 * TIMING_MODEL["intra_gap"]))
 INTER_GAP_MS = int(round(1000 * TIMING_MODEL["inter_gap"]))

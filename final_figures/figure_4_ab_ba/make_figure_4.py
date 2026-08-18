@@ -14,7 +14,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.colors import LinearSegmentedColormap
+from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import FancyArrowPatch, FancyBboxPatch
 from matplotlib.transforms import ScaledTranslation
 
@@ -43,6 +43,7 @@ from final_figures.figure_4_ab_ba.model_data import (
 )
 from final_figures.style import (
     COLORS,
+    PATTERN_CMAP,
     clean_axis,
     export_figure,
     manuscript_style,
@@ -55,17 +56,17 @@ DATA_DIR = HERE / "data"
 OUTPUT_DIR = HERE / "outputs"
 OUTPUT_STEM = OUTPUT_DIR / "figure_4_ab_ba"
 ECOG_PANEL_PATH = DATA_DIR / "ecog_exp1_legacy_panel_data.csv.gz"
-DISPLAYED_PANELS = ("A", "B", "C", "D", "E", "F")
+DISPLAYED_PANELS = ("A", "B", "C", "D", "E", "F", "G")
 
 TIME_LIMITS = (0.0, 600.0)
 TIME_TICKS = (0.0, 180.0, 360.0, 600.0)
 ROLE_COLORS = {"predicted": COLORS["rep15"], "unexpected": COLORS["rep1"]}
 ROLE_LABELS = {"predicted": "regular", "unexpected": "rare"}
 CONDITION_COLORS = {
-    "intact": COLORS["decoder"],
-    "no_depression": COLORS["terracotta"],
-    "no_recurrent_learning": "#7E8792",
-    "uniform_inhibition": COLORS["teal"],
+    "intact": COLORS["model"],
+    "no_depression": "#7E8792",
+    "no_recurrent_learning": COLORS["rep15"],
+    "uniform_inhibition": COLORS["terracotta"],
 }
 CHARCOAL = COLORS["charcoal"]
 MID_GREY = "#7E8792"
@@ -76,6 +77,19 @@ WEIGHT_CMAP = LinearSegmentedColormap.from_list(
     "weight_linen_violet_oxblood",
     [COLORS["linen"], "#D6D0E1", COLORS["decoder"], COLORS["rep1"]],
     N=256,
+)
+ELECTRODE_GRID = np.array(
+    [
+        [4, 3, 2, 1],
+        [8, 7, 6, 5],
+        [12, 11, 10, 9],
+        [16, 15, 14, 13],
+        [17, 18, 19, 20],
+        [24, 23, 22, 21],
+        [28, 27, 26, 25],
+        [32, 31, 30, 29],
+    ],
+    dtype=int,
 )
 
 
@@ -505,15 +519,16 @@ def panel_c(fig, spec, comparisons: tuple[LegacyComparison, ...]) -> list[plt.Ax
     the curve is descriptive and carries no interval.
     """
 
-    inner = spec.subgridspec(1, 2, wspace=0.18)
-    axes = [fig.add_subplot(inner[0, index]) for index in range(2)]
+    inner = spec.subgridspec(2, 1, hspace=0.12)
+    axes = [fig.add_subplot(inner[index, 0]) for index in range(2)]
 
     for index, (ax, (_key, folder, title)) in enumerate(zip(axes, DECODER_FACETS)):
         data = np.load(MATLAB_REPLICATION / folder / "matlab_replication.npz")
         accuracy = np.asarray(data["smoothed"], dtype=float)
         time_ms = np.arange(1, accuracy.size + 1, dtype=float)
         note_ms = float(data["note_ms"])
-        peak = int(data["peak_index"])
+        visible = time_ms <= TIME_LIMITS[1]
+        peak = int(np.nanargmax(np.where(visible, accuracy, -np.inf)))
 
         _tone_context(ax, first_stop=note_ms, second_start=note_ms,
                       second_stop=2 * note_ms)
@@ -521,10 +536,14 @@ def panel_c(fig, spec, comparisons: tuple[LegacyComparison, ...]) -> list[plt.Ax
         ax.plot(time_ms, accuracy, color=COLORS["decoder"], lw=1.15)
         ax.plot(time_ms[peak], accuracy[peak], marker="o", ms=2.6,
                 color=COLORS["decoder"], zorder=5)
-        ax.annotate(f"{accuracy[peak]:.2f} at {int(time_ms[peak])} ms",
-                    (time_ms[peak], accuracy[peak]),
-                    textcoords="offset points", xytext=(4, 4), fontsize=5.4,
-                    color=COLORS["decoder"])
+        ax.annotate(
+            f"{accuracy[peak]:.2f}",
+            (time_ms[peak], accuracy[peak]),
+            textcoords="offset points",
+            xytext=(4, 2),
+            fontsize=5.2,
+            color=COLORS["decoder"],
+        )
 
         inference = np.load(DECODER_INFERENCE)
         _significance_rail(
@@ -535,27 +554,118 @@ def panel_c(fig, spec, comparisons: tuple[LegacyComparison, ...]) -> list[plt.Ax
             color=CHARCOAL,
         )
 
-        ax.set_xlim(0, time_ms[-1])
-        ax.set_xticks((0.0, 360.0, 800.0, 1200.0))
+        ax.set_xlim(*TIME_LIMITS)
+        ax.set_xticks(TIME_TICKS)
         ax.set_ylim(0.38, 0.86)
         ax.set_yticks((0.4, 0.5, 0.6, 0.7, 0.8))
-        ax.set_xlabel("sequence time (ms)")
-        ax.set_title(title, loc="left", fontsize=6.6, pad=3)
+        ax.set_title(title.replace("  |  ", "  ·  "), loc="left", fontsize=6.1, pad=1.8)
         clean_axis(ax)
         if index == 0:
             ax.set_ylabel("decoding accuracy")
-            ax.text(1340, 0.505, "chance", ha="right", va="bottom",
-                    fontsize=5.3, color="#747C85")
+            ax.tick_params(labelbottom=False)
+            ax.spines["bottom"].set_visible(False)
+            ax.tick_params(axis="x", length=0)
+            ax.text(590, 0.505, "chance", ha="right", va="bottom",
+                    fontsize=5.1, color="#747C85")
         else:
-            ax.tick_params(labelleft=False)
+            ax.set_xlabel("Sequence time (ms)")
 
-    axes[0].text(
-        0.0, 1.06,
-        "replication of scripts_AB_BA.m - rails: cluster-corrected vs chance",
-        transform=axes[0].transAxes, ha="left", va="bottom", fontsize=5.4,
-        color=COLORS["ash"], clip_on=False,
+    _panel_heading(axes[0], "C", "Regular versus rare decoding")
+    return axes
+
+
+def panel_d_topography(fig, spec) -> list[plt.Axes]:
+    """Discovery-half spatial maps with the held-out ERP contacts marked."""
+
+    with np.load(AB_BA_CHANNEL_ERP, allow_pickle=False) as loaded:
+        data = {key: loaded[key] for key in loaded.files}
+    nested = spec.subgridspec(
+        2,
+        2,
+        height_ratios=(1.0, 0.065),
+        hspace=0.25,
+        wspace=0.20,
     )
-    _panel_heading(axes[0], "C", "Rep 1 versus Rep 15 decoding")
+    axes = [fig.add_subplot(nested[0, index]) for index in range(2)]
+    image = None
+    for index, (ax, (key, sequence)) in enumerate(zip(axes, SEQUENCE_FACETS)):
+        score = np.asarray(data[f"{key}_selection_score"], dtype=float)
+        relative = score / max(float(np.nanmax(score)), np.finfo(float).eps)
+        grid = np.empty(ELECTRODE_GRID.shape, dtype=float)
+        for row in range(ELECTRODE_GRID.shape[0]):
+            for column in range(ELECTRODE_GRID.shape[1]):
+                grid[row, column] = relative[ELECTRODE_GRID[row, column] - 1]
+        image = ax.imshow(
+            grid,
+            cmap=PATTERN_CMAP,
+            norm=Normalize(0, 1),
+            interpolation="nearest",
+            aspect="equal",
+            origin="upper",
+            rasterized=True,
+        )
+        ax.set_title(sequence, fontsize=6.4, pad=1.8)
+        ax.set_xticks(np.arange(-0.5, 4, 1), minor=True)
+        ax.set_yticks(np.arange(-0.5, 8, 1), minor=True)
+        ax.grid(which="minor", color=COLORS["white"], linewidth=0.48)
+        ax.tick_params(
+            which="both",
+            bottom=False,
+            left=False,
+            labelbottom=False,
+            labelleft=False,
+        )
+        ax.axhline(3.5, color=COLORS["white"], lw=2.35, zorder=5)
+        ax.axhline(3.5, color=CHARCOAL, lw=0.70, zorder=6)
+        marked_channel = int(data[f"{key}_channel_matlab"])
+        marked_rows, marked_columns = np.where(ELECTRODE_GRID == marked_channel)
+        if marked_rows.size != 1 or marked_channel != int(np.argmax(score)) + 1:
+            raise AssertionError(f"{sequence}: spatial map and ERP contact disagree")
+        ax.scatter(
+            float(marked_columns[0]),
+            float(marked_rows[0]),
+            s=13.5,
+            facecolor=COLORS["white"],
+            edgecolor=CHARCOAL,
+            linewidth=0.48,
+            zorder=9,
+        )
+        for spine in ax.spines.values():
+            spine.set_visible(False)
+        if index == 0:
+            ax.text(
+                -0.13,
+                0.76,
+                "A1",
+                transform=ax.transAxes,
+                ha="right",
+                va="center",
+                fontsize=5.7,
+                fontweight="semibold",
+                color=CHARCOAL,
+                clip_on=False,
+            )
+            ax.text(
+                -0.13,
+                0.24,
+                "PEG",
+                transform=ax.transAxes,
+                ha="right",
+                va="center",
+                fontsize=5.7,
+                fontweight="semibold",
+                color=CHARCOAL,
+                clip_on=False,
+            )
+
+    colorbar_axis = fig.add_subplot(nested[1, :])
+    assert image is not None
+    colorbar = fig.colorbar(image, cax=colorbar_axis, orientation="horizontal")
+    colorbar.set_ticks((0, 1), labels=("low", "high"))
+    colorbar.set_label("Relative rare-regular response magnitude", fontsize=5.8, labelpad=-1.3)
+    colorbar.ax.tick_params(labelsize=5.5, length=1.4, width=0.45, pad=0.7)
+    colorbar.outline.set_linewidth(0.45)
+    _panel_heading(axes[0], "F", "Distributed ECoG pattern", title_gap_pt=18.0)
     return axes
 
 
@@ -975,7 +1085,151 @@ def _panel_e_target(fig, spec, model: dict[str, np.ndarray]) -> list[plt.Axes]:
     return list(axes.ravel())
 
 
-def panel_f(fig, spec, model: dict[str, np.ndarray]) -> list[plt.Axes]:
+def panel_g_mechanism(fig, spec, model: dict[str, np.ndarray]) -> list[plt.Axes]:
+    """Compact drive and surprisal summary for the lower editorial row."""
+
+    time_ms = np.asarray(model["time_ms"], dtype=float)
+    sequences = [str(s) for s in np.asarray(model["sequences"])]
+    channel_recurrent = np.asarray(model["channel_recurrent"], dtype=float)
+    channel_inhibitory = np.asarray(model["channel_inhibitory"], dtype=float)
+    surprise = np.asarray(model["population_surprise_response"], dtype=float)
+    significant = np.asarray(model["population_time_significant"], dtype=bool)
+
+    heading_axis = fig.add_subplot(spec)
+    heading_axis.axis("off")
+    inner = spec.subgridspec(1, 3, wspace=0.42)
+    axes = [fig.add_subplot(inner[0, index]) for index in range(3)]
+    for channel, ax in enumerate(axes[:2]):
+        ax.axhline(0.0, color=MID_GREY, lw=0.5, zorder=0)
+        for index, sequence in enumerate(sequences):
+            style = "-" if sequence == "AB" else (0, (3, 2))
+            recurrent, _ = _mean_sem(
+                channel_recurrent[index, :, :, channel].mean(axis=0)
+            )
+            inhibitory, _ = _mean_sem(
+                channel_inhibitory[index, :, :, channel].mean(axis=0)
+            )
+            ax.plot(
+                time_ms,
+                recurrent,
+                color=CURRENT_COLORS["recurrent"],
+                lw=1.0,
+                ls=style,
+                label=(
+                    "recurrent excitation"
+                    if sequence == "AB" and channel == 0
+                    else None
+                ),
+            )
+            ax.plot(
+                time_ms,
+                -inhibitory,
+                color=CURRENT_COLORS["inhibitory"],
+                lw=1.0,
+                ls=style,
+                label=(
+                    "inhibition"
+                    if sequence == "AB" and channel == 0
+                    else None
+                ),
+            )
+        _target_context(ax, labels=False)
+        _mechanism_axis(
+            ax,
+            time_ms,
+            ylabel="Synaptic drive (a.u.)" if channel == 0 else "",
+            xlabel=False,
+            headroom=0.18,
+        )
+        ax.tick_params(labelbottom=True)
+        ax.set_title(f"Population {'A' if channel == 0 else 'B'}", loc="left", fontsize=6.1, pad=1.8)
+        if channel == 0:
+            ax.legend(
+                loc="lower left",
+                bbox_to_anchor=(0.0, 1.02),
+                ncol=2,
+                handlelength=1.2,
+                columnspacing=0.65,
+                borderaxespad=0,
+            )
+        else:
+            ax.tick_params(labelleft=False)
+            ax.plot([], [], color=CHARCOAL, lw=0.95, ls="-", label="AB")
+            ax.plot([], [], color=CHARCOAL, lw=0.95, ls=(0, (3, 2)), label="BA")
+            ax.legend(
+                loc="upper right",
+                bbox_to_anchor=(1.0, 0.99),
+                ncol=2,
+                handlelength=1.2,
+                columnspacing=0.65,
+                borderaxespad=0,
+            )
+
+    difference = axes[2]
+    mean, sem = _mean_sem(surprise.mean(axis=0))
+    difference.axhline(0.0, color=MID_GREY, lw=0.5, zorder=0)
+    difference.fill_between(
+        time_ms,
+        0,
+        mean,
+        where=mean >= 0,
+        color=ROLE_COLORS["unexpected"],
+        alpha=0.26,
+        lw=0,
+        interpolate=True,
+    )
+    difference.fill_between(
+        time_ms,
+        0,
+        mean,
+        where=mean <= 0,
+        color=ROLE_COLORS["predicted"],
+        alpha=0.24,
+        lw=0,
+        interpolate=True,
+    )
+    difference.fill_between(
+        time_ms,
+        mean - sem,
+        mean + sem,
+        color=COLORS["decoder"],
+        alpha=0.18,
+        lw=0,
+    )
+    difference.plot(time_ms, mean, color=COLORS["decoder"], lw=1.2)
+    _significance_rail(
+        difference,
+        time_ms,
+        significant.all(axis=0),
+        y_axes=0.94,
+        color=CHARCOAL,
+    )
+    _target_context(difference, labels=False)
+    _mechanism_axis(
+        difference,
+        time_ms,
+        ylabel="Rare - regular",
+        xlabel=False,
+        headroom=0.18,
+    )
+    difference.tick_params(labelbottom=True)
+    difference.set_title("Sequence surprisal", loc="left", fontsize=6.1, pad=1.8)
+    heading_axis.text(
+        0.5,
+        -0.15,
+        "Time from second-tone onset (ms)",
+        transform=heading_axis.transAxes,
+        ha="center",
+        va="top",
+        fontsize=7.2,
+        color=CHARCOAL,
+        clip_on=False,
+    )
+    _panel_heading(heading_axis, "E", "Synaptic origin of sequence surprisal", title_gap_pt=18.0)
+    return axes
+
+
+def panel_h(fig, spec, model: dict[str, np.ndarray]) -> list[plt.Axes]:
     heading_axis = fig.add_subplot(spec)
     heading_axis.axis("off")
     perturbation_ax = fig.add_subplot(spec)
@@ -987,22 +1241,13 @@ def panel_f(fig, spec, model: dict[str, np.ndarray]) -> list[plt.Axes]:
     labels = ("Intact", "No\ndepression", "Plasticity\nfrozen", "Uniform\ninhibition")
     x_positions = np.arange(len(labels), dtype=float)
     rng = np.random.default_rng(12)
-    for seed_index in range(differences.shape[1]):
-        perturbation_ax.plot(
-            x_positions,
-            differences[:, seed_index],
-            color="#C7CBD0",
-            lw=0.48,
-            alpha=0.34,
-            zorder=1,
-        )
     for row, (condition, x) in enumerate(zip(CONDITIONS, x_positions)):
         color = CONDITION_COLORS[condition]
         jitter = rng.uniform(-0.10, 0.10, size=differences.shape[1])
         perturbation_ax.scatter(
             x + jitter,
             differences[row],
-            s=7,
+            s=8,
             color=color,
             alpha=0.33,
             edgecolors="none",
@@ -1041,13 +1286,13 @@ def panel_f(fig, spec, model: dict[str, np.ndarray]) -> list[plt.Axes]:
             fontweight="semibold",
             color=CHARCOAL,
         )
-    perturbation_ax.set_xlim(-0.72, 3.72)
+    perturbation_ax.set_xlim(-0.48, 3.48)
     perturbation_ax.set_xticks(x_positions, labels=labels)
     perturbation_ax.set_ylabel("Rare - regular target response")
     perturbation_ax.tick_params(axis="x", length=0)
     clean_axis(perturbation_ax)
 
-    _panel_heading(heading_axis, "F", "Causal perturbations")
+    _panel_heading(heading_axis, "G", "Causal perturbations", title_gap_pt=18.0)
     return [perturbation_ax]
 
 
@@ -1061,7 +1306,7 @@ def build_figure(*, force_data: bool = False) -> tuple[plt.Figure, dict[str, Pat
     export_panel_data(comparisons, ECOG_PANEL_PATH)
 
     with manuscript_style():
-        fig = plt.figure(figsize=(mm(183), mm(225)), constrained_layout=False)
+        fig = plt.figure(figsize=(mm(183), mm(245)), constrained_layout=False)
         outer = fig.add_gridspec(
             5,
             12,
@@ -1071,21 +1316,23 @@ def build_figure(*, force_data: bool = False) -> tuple[plt.Figure, dict[str, Pat
             bottom=0.045,
             hspace=0.56,
             wspace=0.78,
-            height_ratios=(0.40, 1.42, 0.98, 1.58, 1.13),
+            height_ratios=(0.40, 1.35, 1.05, 1.35, 1.18),
         )
 
         panel_a(fig, outer[0, :])
         panel_b(fig, outer[1, 0:5], comparisons)
         panel_c(fig, outer[1, 6:12], comparisons)
         panel_d(fig, outer[2, :], model)
-        panel_mechanism(fig, outer[3, :], model)
-        panel_f(fig, outer[4, :], model)
+        panel_g_mechanism(fig, outer[3, :], model)
+        panel_d_topography(fig, outer[4, 0:5])
+        panel_h(fig, outer[4, 8:12], model)
 
         outputs = export_figure(fig, OUTPUT_STEM, fixed_bounds=True)
 
     metadata = {
         "figure": "Figure 4",
         "title": "Probability-reversal sequence oddball",
+        "final_size_mm": [183, 245],
         "displayed_panels": list(DISPLAYED_PANELS),
         "configuration": {
             "ab_ba_overrides": dict(AB_BA_OVERRIDES),

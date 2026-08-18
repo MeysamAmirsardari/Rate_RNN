@@ -90,8 +90,8 @@ def _panel_heading(
     letter: str,
     title: str,
     *,
-    dy: float = 18.0,
-    dx: float = -23.0,
+    dy: float = 15.5,
+    dx: float = -20.5,
 ) -> None:
     """Place panel letter and title on one print-stable baseline."""
 
@@ -205,7 +205,7 @@ def _panel_stream(fig, spec, data) -> None:
     _panel_heading(
         panel_anchor,
         "A",
-        "An isochronous stream contains only statistical boundaries",
+        "Structured exposure stream",
     )
 
 
@@ -256,7 +256,7 @@ def _panel_tape(fig, spec, data) -> None:
     _panel_heading(
         panel_anchor,
         "B",
-        "Whole-word units activate at their learned items",
+        "Whole-word unit activity",
     )
 
 
@@ -316,7 +316,7 @@ def _panel_transitions(fig, spec, data) -> list:
     colorbar.ax.tick_params(labelsize=5.6, length=1.4, width=0.45, pad=1.0)
     colorbar.outline.set_linewidth(0.45)
 
-    _panel_heading(panel_anchor, "E", "Layer 1 learns pairwise transitions")
+    _panel_heading(panel_anchor, "E", "Pairwise transition learning")
     return [ax_true, ax_learned]
 
 
@@ -383,7 +383,7 @@ def _panel_metrics(fig, spec, data) -> list:
     _panel_heading(
         panel_anchor,
         "D",
-        "Only ordered structure distinguishes the readouts",
+        "Readout requirements for composition",
     )
     return axes
 
@@ -444,7 +444,7 @@ def _panel_filterbank(fig, spec, data) -> list:
     _panel_heading(
         panel_anchor,
         "F",
-        "Multiscale traces add an elapsed-time code",
+        "Multiscale temporal representation",
     )
     return [ax_bank, ax_code]
 
@@ -467,7 +467,7 @@ def _panel_kernels(fig, spec, data) -> list:
     if "exemplar_span_masks" not in data:
         ax = fig.add_subplot(spec)
         ax.axis("off")
-        _panel_heading(panel_anchor, "C", "Whole-word templates in the learned masks")
+        _panel_heading(panel_anchor, "C", "Learned whole-word templates")
         ax.text(0.5, 0.5, "no spanning unit in the exemplar seed",
                 transform=ax.transAxes, ha="center", va="center",
                 fontsize=6.0, color=COLORS["ash"])
@@ -543,7 +543,7 @@ def _panel_kernels(fig, spec, data) -> list:
     _panel_heading(
         panel_anchor,
         "C",
-        "Whole-word templates in the learned masks",
+        "Learned whole-word templates",
     )
     return axes
 
@@ -596,7 +596,7 @@ def _panel_controls(fig, spec, data) -> list:
     _panel_heading(
         panel_anchor,
         "G",
-        "Composition survives layer-1 controls",
+        "Composition under layer 1 controls",
     )
     return [ax_span, ax_auc]
 
@@ -719,7 +719,7 @@ def _panel_synthesis(fig, spec, data) -> list:
     _panel_heading(
         panel_anchor,
         "H",
-        "Multiscale context adds ordered composition",
+        "Familiarity and ordered composition",
     )
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
@@ -754,8 +754,8 @@ def build_figure(*, force_data: bool = False) -> dict[str, Path]:
         # A and B are one stacked unit on a shared stream clock, so they get
         # their own grid with a small internal gap.
         stack = fig.add_gridspec(
-            2, 1, left=0.088, right=0.972, top=0.922, bottom=0.730,
-            hspace=0.46, height_ratios=(0.62, 1.00),
+            2, 1, left=0.088, right=0.972, top=0.925, bottom=0.735,
+            hspace=0.56, height_ratios=(0.62, 1.00),
         )
         _panel_stream(fig, stack[0, 0], data)
         _panel_tape(fig, stack[1, 0], data)
@@ -764,8 +764,8 @@ def build_figure(*, force_data: bool = False) -> dict[str, Path]:
         # templates, while D compares the same three conditions on three
         # distinct scientific questions.
         grid = fig.add_gridspec(
-            4, 12, left=0.088, right=0.972, top=0.670, bottom=0.040,
-            wspace=0.92, hspace=0.92,
+            4, 12, left=0.088, right=0.972, top=0.662, bottom=0.040,
+            wspace=0.92, hspace=0.86,
             height_ratios=(1.25, 1.00, 0.95, 0.95),
         )
         _panel_kernels(fig, grid[0, :], data)

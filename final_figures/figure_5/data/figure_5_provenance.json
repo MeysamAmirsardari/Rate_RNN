@@ -40,17 +40,17 @@
   "outputs": {
     "pdf": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/outputs/figure_5_composition.pdf",
-      "sha256": "55bc5fc34aa881cae0306b0f319db8a92dc1784485e43119601fbd1e144cde3b"
+      "sha256": "812d628c668e4d7708d2a98943508da67745914af224d0b5a4a5db8429f00241"
     },
     "svg": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/outputs/figure_5_composition.svg",
-      "sha256": "6fa1798fd735f50120b6a1d51fe5c4b414e7d371916b047a3477fc5590bbb9e2"
+      "sha256": "7d5b54b3b8d0e7338f3ccea2934c8252e57af7d2cf19f2d230ca907e24d88daf"
     },
     "png": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/outputs/figure_5_composition.png",
-      "sha256": "36613d71d2c83ade4b4eea153190d6e95a299fce15c0573d062a9c005d14dd58"
+      "sha256": "bfad48345ba7c9fe9702af3ff120a6a50ed2f641d168776087b96d8c2dcbeef1"
     }
   },
   "generator": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_5/make_figure_5.py",
-  "generator_sha256": "1a32991e777ef3294fd4ccf77cf0f899c29539e0cc123629c8905ef482d0fbcd"
+  "generator_sha256": "dc1c86624ec282acfc52c5e5d6be5a860a8989062de428659ea270c007d19d5e"
 }

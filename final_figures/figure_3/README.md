@@ -25,10 +25,11 @@ file.
 The visual system follows the manuscript figures: neutral gray and soft peach
 mark the two stimulus windows; excitatory projections are always warm and
 inhibitory projections are always cool; and frequent and rare conditions use
-the colorblind-safe Okabe-Ito blue and vermillion pair. Absolute excitatory and
-inhibitory activity use the established ColorBrewer OrRd and Blues scales. The
-signed activity row uses the standard symmetric ColorBrewer RdBu scale. Panel
-letters and titles use the same physical alignment as Figures 2 and 4.
+the established manuscript slate-blue and oxblood pair. Absolute excitatory
+and inhibitory activity use restrained sequential ramps derived from the same
+palette. Signed activity uses the standard symmetric, colorblind-safe
+ColorBrewer PuOr scale. Panel letters and titles use the same physical
+alignment as Figures 2 and 4.
 
 ## The contrast is identity controlled
 
@@ -54,8 +55,8 @@ display. Excitatory and inhibitory differences use separate symmetric,
 zero-centred scales because their physical magnitudes differ by roughly an
 order of magnitude. Thus node-fill colour sign has one meaning in both scales:
 
-- red: frequent > rare;
-- blue: frequent < rare;
+- orange: frequent > rare;
+- purple: frequent < rare;
 - near-white: no difference.
 
 Neuron class remains independent of the signed fill: excitatory populations

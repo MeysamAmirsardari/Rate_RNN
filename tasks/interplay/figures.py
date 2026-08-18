@@ -117,7 +117,13 @@ def _letter(fig, ax, s: str) -> None:
     keeps the offset constant whatever the panel's width.
     """
     bb = ax.get_position()
-    fig.text(bb.x0 - 0.026, bb.y1 + 0.085, s, fontsize=10.0,
+    # A FIXED offset in millimetres, converted to figure fraction.  A
+    # constant fraction looks right on one canvas and drifts far above the
+    # panel on a taller one, which is what a fraction means: it scales
+    # with the figure rather than with the type it sits next to.
+    dx = mm(2.6) / fig.get_figwidth()
+    dy = mm(4.2) / fig.get_figheight()
+    fig.text(bb.x0 - dx, bb.y1 + dy, s, fontsize=10.0,
              fontweight="bold", color=C_INK, va="top", ha="left")
 
 
@@ -203,7 +209,9 @@ def results_figure(table: Dict[str, List[Dict[str, float]]],
                 ax.plot(lv, arr[:, j], color=col_, lw=0.4, alpha=0.35,
                         zorder=2)
         _reference(ax, 0.0, "0")
-        ax.set_xscale("log")
+        if np.any(np.isfinite(np.array(curves["structured"]["seg_index"],
+                                       dtype=float))):
+            ax.set_xscale("log")     # skipped when the sweep was not run
         ax.set_xticks(lv)
         ax.set_xticklabels([f"{v:g}" for v in lv])
         ax.set_xlabel("Background level (× drive-matched)")
@@ -251,6 +259,7 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
                      rates: Dict[str, np.ndarray],
                      poscur: Dict[str, np.ndarray] | None = None,
                      tests: Dict[str, tuple] | None = None,
+                     tests_pool: Dict[str, tuple] | None = None,
                      stem: str = "interplay_mechanism") -> Dict[str, Path]:
     """``pos`` is (seed, 3); ``poscur[k]`` is (seed, 3) per current."""
     cfg = exemplar_p["cfg"]
@@ -258,13 +267,13 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
     W = exemplar_p["W_final"]
 
     with manuscript_style():
-        fig = plt.figure(figsize=(mm(183), mm(66)))
-        gs = fig.add_gridspec(1, 4, left=0.052, right=0.980, top=0.785,
-                              bottom=0.225, wspace=0.50,
-                              width_ratios=(0.92, 0.95, 0.95, 1.25))
+        fig = plt.figure(figsize=(mm(183), mm(115)))
+        gs = fig.add_gridspec(2, 6, left=0.060, right=0.980, top=0.925,
+                              bottom=0.095, wspace=0.85, hspace=0.52,
+                              height_ratios=(1.0, 1.12))
 
         # A -- weight matrix
-        ax = fig.add_subplot(gs[0, 0])
+        ax = fig.add_subplot(gs[0, 0:2])
         # box_aspect makes the AXES square, so an aspect="auto" image
         # fills it exactly.  Leaving the image on aspect="equal" instead
         # would shrink the drawn area inside a wider box, and the title
@@ -285,7 +294,7 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
         ax.set_title("Learned weights")
 
         # B -- growth
-        ax = fig.add_subplot(gs[0, 1])
+        ax = fig.add_subplot(gs[0, 2:4])
         for key, lab, c in (("within", "within-word", C_STRUCT),
                             ("boundary", "boundary", COLORS["teal"]),
                             ("ground", "background", C_BG),
@@ -293,13 +302,16 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
             ax.plot(groups["t"], groups[key], color=c, lw=1.2, label=lab)
         ax.set_xlabel("Session time (s)")
         ax.set_ylabel("Mean weight")
-        ax.legend(loc="lower right")
+        ax.set_ylim(bottom=-0.035)
+        ax.legend(loc="lower center", ncol=2, fontsize=5.9,
+                  handlelength=1.1, columnspacing=0.7, labelspacing=0.25,
+                  borderpad=0.15)
         clean_axis(ax)
         _letter(fig, ax, "b")
         ax.set_title("Weight growth")
 
         # C -- modulation by position in the word
-        ax = fig.add_subplot(gs[0, 2])
+        ax = fig.add_subplot(gs[0, 4:6])
         _dots(ax, [pos[:, i] for i in range(3)],
               [C_STRUCT] * 3, ["1", "2", "3"],
               ylabel="Response modulation (%)")
@@ -309,7 +321,7 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
         ax.set_title("Enhancement")
 
         # D -- how the enhancement is built, resolved by position
-        ax = fig.add_subplot(gs[0, 3])
+        ax = fig.add_subplot(gs[1, 0:3])
         series = (("rec_E", "Recurrent"), ("inh_to_E", "Inhibition"),
                   ("net", "Net"))
         xs = np.arange(len(series))
@@ -361,6 +373,50 @@ def mechanism_figure(exemplar_p: Dict, groups: Dict[str, np.ndarray],
         clean_axis(ax)
         _letter(fig, ax, "d")
         ax.set_title("Mechanism")
+
+        # E -- the pooled comparison, which is the one that fails
+        ax = fig.add_subplot(gs[1, 3:6])
+        pools = (("fig", "figure", C_STRUCT), ("bg", "background", C_BG))
+        w2 = 0.34
+        rng = np.random.default_rng(2)
+        hi2 = 0.0
+        for gi, (key, _lab) in enumerate(series):
+            for pi, (suf, plab, c) in enumerate(pools):
+                v = np.asarray(dec[f"{key}_{suf}"], dtype=float)
+                xc = xs[gi] + (pi - 0.5) * w2
+                ax.bar(xc, v.mean(), w2 * 0.9, color=c, edgecolor="none",
+                       zorder=2, label=plab if gi == 0 else None)
+                ax.scatter(xc + rng.uniform(-0.06, 0.06, v.size), v, s=5.5,
+                           facecolors="none", edgecolors=C_INK,
+                           linewidths=0.4, alpha=0.8, zorder=4,
+                           clip_on=False)
+                hi2 = max(hi2, float(v.max()))
+
+        span2 = hi2 if hi2 > 0 else 1.0
+        for gi, (key, _lab) in enumerate(series):
+            top = max(float(np.asarray(dec[f"{key}_{s_}"]).max())
+                      for s_ in ("fig", "bg"))
+            d, pval = tests_pool[key] if tests_pool else (np.nan, np.nan)
+            _bracket(ax, xs[gi] - 0.5 * w2, xs[gi] + 0.5 * w2,
+                     top + 0.05 * span2, 0.030 * span2,
+                     f"{_stars(pval)} \u0394{d:+.3f}")
+
+        ax.axhline(0.0, color=COLORS["ash"], lw=0.5)
+        ax.set_ylim(0, hi2 + 0.34 * span2)
+        ax.set_xticks(xs)
+        ax.set_xticklabels([lab for _k, lab in series])
+        ax.set_ylabel("Change from frozen (a.u.)")
+        ax.legend(loc="upper center", bbox_to_anchor=(0.55, 1.02), ncol=2,
+                  handlelength=0.8, handleheight=0.8, columnspacing=0.6,
+                  fontsize=6.0, borderpad=0.15)
+        ax.annotate("background is never silent, so its channels always\n"
+                    "carry a trace: this contrast is not drive-matched",
+                    xy=(0.5, -0.235), xycoords="axes fraction",
+                    fontsize=5.7, color=COLORS["ash"], va="top",
+                    ha="center", annotation_clip=False, linespacing=1.35)
+        clean_axis(ax)
+        _letter(fig, ax, "e")
+        ax.set_title("Figure vs background")
 
         paths = export_figure(fig, OUT_DIR / stem)
         plt.close(fig)

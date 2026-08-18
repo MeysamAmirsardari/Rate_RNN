@@ -1,26 +1,31 @@
 panel,family,contrast,index_start,index_stop,direction,statistic,p_corrected,significant
-C,figure_minus_ground_timecourse,figure channels - ground channels,0,29,positive,419.1182170762937,0.0078125,True
-D,response_points_vs_zero,fig_4 vs zero,,,two-sided,21.10483808345097,0.0078125,True
-D,response_points_vs_zero,fig_6 vs zero,,,two-sided,32.637729666750154,0.0078125,True
-D,response_points_vs_zero,fig_8 vs zero,,,two-sided,36.77523488128553,0.0078125,True
-D,response_points_vs_zero,fig_10 vs zero,,,two-sided,39.70114205198577,0.0078125,True
-D,response_points_vs_zero,gnd_4 vs zero,,,two-sided,-11.00313884572568,0.0078125,True
-D,response_points_vs_zero,gnd_6 vs zero,,,two-sided,-19.83457080028099,0.0078125,True
-D,response_points_vs_zero,gnd_8 vs zero,,,two-sided,-22.06665556021841,0.0078125,True
-D,response_points_vs_zero,gnd_10 vs zero,,,two-sided,-22.01839352977227,0.0078125,True
-D,size_trends,fig linear slope vs zero,,,two-sided,48.40806625132957,0.0078125,True
-D,size_trends,gnd linear slope vs zero,,,two-sided,-22.644775706465236,0.0078125,True
-E,non_thalamic_currents_vs_zero,rec_fig vs zero,,,two-sided,52.53944137435778,0.0078125,True
-E,non_thalamic_currents_vs_zero,inh_fig vs zero,,,two-sided,76.81530411141166,0.0078125,True
-E,non_thalamic_currents_vs_zero,net_fig vs zero,,,two-sided,39.4736993010871,0.0078125,True
-E,non_thalamic_currents_vs_zero,rec_gnd vs zero,,,two-sided,318.3106414791521,0.0078125,True
-E,non_thalamic_currents_vs_zero,inh_gnd vs zero,,,two-sided,122.48789127231804,0.0078125,True
-E,non_thalamic_currents_vs_zero,net_gnd vs zero,,,two-sided,61.975799371060745,0.0078125,True
-F,buildup_slopes,size 4 linear slope vs zero,,,two-sided,47.35931037319924,0.0078125,True
-F,buildup_slopes,size 6 linear slope vs zero,,,two-sided,55.465599407689574,0.0078125,True
-F,buildup_slopes,size 8 linear slope vs zero,,,two-sided,54.9953215535296,0.0078125,True
-F,buildup_slopes,size 10 linear slope vs zero,,,two-sided,50.50165469867038,0.0078125,True
-G,figure_minus_ground_cloud,size 4: figure - ground,,,two-sided,3.1738419533737465,0.03125,True
-G,figure_minus_ground_cloud,size 6: figure - ground,,,two-sided,7.336550083627966,0.0078125,True
-G,figure_minus_ground_cloud,size 8: figure - ground,,,two-sided,10.385286567773624,0.0078125,True
-G,figure_minus_ground_cloud,size 10: figure - ground,,,two-sided,11.688505995415834,0.0078125,True
+C,figure_minus_ground_timecourse,figure channels - ground channels,10,19,positive,64.91090387190155,0.0078125,True
+C,figure_minus_ground_timecourse,figure channels - ground channels,0,0,negative,3.8982068838279322,0.1796875,False
+C,figure_minus_ground_timecourse,figure channels - ground channels,4,5,negative,5.134568364744505,0.1328125,False
+C,figure_minus_ground_timecourse,figure channels - ground channels,20,20,negative,2.922069020635269,0.3203125,False
+C,figure_minus_ground_timecourse,figure channels - ground channels,23,23,negative,2.570948415782389,0.3828125,False
+C,figure_minus_ground_timecourse,figure channels - ground channels,27,28,negative,5.881474760715873,0.0859375,False
+D,response_points_vs_zero,fig_4 vs zero,,,two-sided,8.762067975073611,0.0078125,True
+D,response_points_vs_zero,fig_6 vs zero,,,two-sided,9.678552464270792,0.0078125,True
+D,response_points_vs_zero,fig_8 vs zero,,,two-sided,8.529866129132783,0.0078125,True
+D,response_points_vs_zero,fig_10 vs zero,,,two-sided,10.868717902209301,0.0078125,True
+D,response_points_vs_zero,gnd_4 vs zero,,,two-sided,-1.7347422095112919,0.3125,False
+D,response_points_vs_zero,gnd_6 vs zero,,,two-sided,2.2070556322687533,0.171875,False
+D,response_points_vs_zero,gnd_8 vs zero,,,two-sided,6.382068330136668,0.0078125,True
+D,response_points_vs_zero,gnd_10 vs zero,,,two-sided,4.5162624729015235,0.0078125,True
+D,size_trends,fig linear slope vs zero,,,two-sided,9.89664601966285,0.0078125,True
+D,size_trends,gnd linear slope vs zero,,,two-sided,5.733864838039031,0.0078125,True
+E,non_thalamic_currents_vs_zero,rec_fig vs zero,,,two-sided,32.75196867023793,0.0078125,True
+E,non_thalamic_currents_vs_zero,inh_fig vs zero,,,two-sided,29.88928218234861,0.0078125,True
+E,non_thalamic_currents_vs_zero,net_fig vs zero,,,two-sided,23.748375005752766,0.0078125,True
+E,non_thalamic_currents_vs_zero,rec_gnd vs zero,,,two-sided,37.9162406895533,0.0078125,True
+E,non_thalamic_currents_vs_zero,inh_gnd vs zero,,,two-sided,151.23198293541066,0.0078125,True
+E,non_thalamic_currents_vs_zero,net_gnd vs zero,,,two-sided,17.008254949526975,0.0078125,True
+F,buildup_slopes,size 4 linear slope vs zero,,,two-sided,63.98279075776643,0.0078125,True
+F,buildup_slopes,size 6 linear slope vs zero,,,two-sided,42.39911052627927,0.0078125,True
+F,buildup_slopes,size 8 linear slope vs zero,,,two-sided,24.37267057154005,0.0078125,True
+F,buildup_slopes,size 10 linear slope vs zero,,,two-sided,29.71887090938732,0.0078125,True
+G,figure_minus_ground_cloud,size 4: figure - ground,,,two-sided,0.9869892868046989,0.78125,False
+G,figure_minus_ground_cloud,size 6: figure - ground,,,two-sided,-0.48732031868225334,0.96875,False
+G,figure_minus_ground_cloud,size 8: figure - ground,,,two-sided,-16.379756357782313,0.0078125,True
+G,figure_minus_ground_cloud,size 10: figure - ground,,,two-sided,-3.739505100851273,0.015625,True

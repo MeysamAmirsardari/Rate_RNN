@@ -5,8 +5,8 @@
 The page should be understandable before the caption is opened:
 
 **probability reversal -> same-sequence ECoG response and decoding -> reversed
-transition weights -> held-fixed target-population mismatch -> causal
-requirements across four model conditions.**
+transition weights -> synaptic origin of sequence surprisal -> spatial recording
+context and causal requirements.**
 
 The critical comparison never changes physical sequence identity. It is AB
 rare versus AB regular and, separately, BA rare versus BA regular.
@@ -39,32 +39,30 @@ local and global factors were not independently orthogonalized.
 
 ## Page architecture
 
-The submission page is fixed at **183 x 225 mm** and uses five editorial rows
+The submission page is fixed at **183 x 245 mm**, exactly matching Figure 2,
+and uses five editorial rows
 on a 12-column grid.
 
 1. **A, full width:** intentionally blank for the final paradigm illustration;
    only the aligned panel tag is retained.
-2. **B-C:** B and C each use six columns. Each contains only two aligned
-   Experiment 1 facets, held-fixed AB and held-fixed BA. B shows independently
-   selected, held-out block ERPs; C shows cross-session deviance decoding.
+2. **B-C:** B uses five columns and C uses six, reproducing Figure 2's empirical
+   balance. Each contains two aligned Experiment 1 facets, held-fixed AB and
+   held-fixed BA. B shows independently selected, held-out block ERPs; C shows
+   cross-session deviance decoding.
 3. **D, full width:** two trajectory-to-matrix units. AB-rich and BA-rich
    learning histories sit immediately beside their terminal 2 x 2 recurrent
    matrices. Every matrix cell is labelled directly, and both matrices use one
    common normalization without a separate colorbar.
-4. **E, full width:** the dominant model-behaviour panel. Regular and rare
-   target-channel responses sit above dedicated rare-minus-regular
-   target-channel differences for held-fixed AB and BA, all on the 0-600-ms
-   sequence clock; corrected clusters are marked by violet rails.
-5. **F, full width:** one vertical repeated-measures plot shows the absolute
-   mismatch response under selective inhibition, no short-term depression,
-   no recurrent learning and uniform inhibition. Paired-seed trajectories,
-   means, 95% intervals and exact corrected lesion-versus-selective
-   probabilities occupy one coherent axis.
+4. **E, full width:** recurrent excitation, inhibition and sequence surprisal
+   form three aligned mechanism axes. This is the principal model result and
+   therefore receives the complete editorial row.
+5. **F-G:** F reproduces Figure 2's spatial ECoG treatment with two 4 x 8 maps,
+   an A1/PEG boundary and white marks at the independently selected ERP
+   contacts. G uses Figure 2's compact causal-panel footprint, with seed
+   points, means, 95% intervals and corrected asterisks.
 
-This allocation keeps the target-channel model response visually dominant,
-removes the former formal-surprisal and mechanism panels, and gives the causal
-comparison enough width for four readable conditions without a bracket
-forest.
+This allocation gives the mechanistic surprisal result visual priority while
+preserving Figure 2's compact spatial and causal summaries in the closing row.
 
 ## Visual grammar
 
@@ -77,14 +75,13 @@ forest.
 - item 2: soft peach (`#FDDBC7`);
 - axes, headings and annotation text: dark charcoal.
 
-Role colors repeat from A through E. Violet remains reserved for decoding and
+Role colors repeat across response panels. Violet remains reserved for decoding and
 the principal mismatch trajectory, separating representational readout from
 response magnitude. D uses direct structural labels, common matrix
 normalization and printed cell values rather than a redundant weight
-colorbar. F combines categorical position, faint paired-seed trajectories,
-translucent seed points, mean markers and intervals, so no conclusion depends
-on color alone. Large fields remain neutral; green is not used as a stimulus
-background.
+colorbar. G combines categorical position, translucent seed points, mean
+markers and intervals, so no conclusion depends on color alone. Large fields
+remain neutral; green is not used as a stimulus background.
 
 Panel headings are concise, title-only statements. Analysis units, intervals,
 smoothing and inferential status belong in the caption and methods, not in
@@ -114,7 +111,9 @@ inferential detail is kept out of the plotting field.
    displayed held-out block traces. Unsmoothed block means enter inference.
 6. Exact two-sided cluster-mass inference enumerates all `C(16,8)=12,870`
    assignments and uses one maximum-cluster family over AB, BA and 0–600 ms.
-7. Both recordings used the same planned 85/15 probability. Contextual role
+7. F maps the discovery-half response magnitude over the verified A1/PEG grid
+   and marks the independently selected contacts used in B.
+8. Both recordings used the same planned 85/15 probability. Contextual role
    remains assigned between recordings, so the provisional same-session test
    is conditional on the experimenter's assumption and this one animal.
 
@@ -128,19 +127,14 @@ inferential detail is kept out of the plotting field.
    are the replication units.
 5. D shows the complete prespecified 0-400-pair learning history at 25-pair
    checkpoints and all entries of each terminal recurrent matrix.
-6. E preserves AB and BA as separate target-channel time courses: population
-   B is fixed for AB and population A for BA. The target channel is specified
-   by stimulus identity, not selected from the observed effect. One exact
-   cluster family spans both rare-minus-regular sequence contrasts and all 601
-   samples.
-7. F shows the four absolute condition effects, so the intact selective-
+6. E displays recurrent excitation and inhibition for both population channels
+   together with the intact rare-minus-regular population response. The exact
+   cluster family spans both physical sequence identities and all 601 samples.
+7. G shows the four absolute condition effects, so the intact selective-
    inhibition estimate remains visible rather than being reduced to a zero
-   reference. Faint lines connect the four observations from each paired seed,
-   and mean diamonds carry 95% intervals.
-8. The three printed lesion-versus-selective probabilities use exact max-|t|
-   correction over the planned perturbation family; no stars or long brackets
-   are used. Formal-surprisal response and mechanism time courses remain
-   archived but are not displayed.
+   reference. Seed points remain visible and mean diamonds carry 95% intervals.
+8. Asterisks in G use exact max-|t| correction over the three planned
+   lesion-versus-intact contrasts; no bracket forest is added.
 9. Native ECoG and model units remain separate. No cross-system
    normalization, pooled uncertainty or ECoG-versus-model test is used.
 

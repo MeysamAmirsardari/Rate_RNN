@@ -1,6 +1,6 @@
 {
   "schema_version": "figure-4-sfg-exact-paired-v1",
-  "created_utc": "2026-08-09T08:14:46.997614+00:00",
+  "created_utc": "2026-08-10T07:29:32.834998+00:00",
   "unit": "paired simulated session seed",
   "n_seeds": 8,
   "randomization": "exhaustive 2^8 paired-seed sign flips",
@@ -15,16 +15,16 @@
   "alpha": 0.05,
   "source": {
     "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4/data/sfg_figure4_data.npz",
-    "sha256": "55eb8f9b8c68cede1bbc399d3bfa66d7e42516da230b4bb2384b828a72ca6c59"
+    "sha256": "3df268e4dbfb6f5f38fca80190a84b141ace420764931e8b0bb1879b26c90e93"
   },
   "outputs": {
     "figure_4_inference.npz": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4/data/figure_4_inference.npz",
-      "sha256": "d50cc0ed0cc9ce37affc22fdf4eae63a8123eb0a2c88138cbecf8af715b35750"
+      "sha256": "1c455914e29f9c7e61e28e3d34691db285895fa64ab7cd5f91ffd1c50e4a493a"
     },
     "figure_4_inference.csv": {
       "path": "/Users/eminent/Projects/Rate_RNN_py/final_figures/figure_4/data/figure_4_inference.csv",
-      "sha256": "a813e60b1c271bb24e9cf7669f1f1fd8d9db2a24ddfad65e18079841a6168d1d"
+      "sha256": "5fcd905177e64aa7bb62ffbe8eb2cfaafb8790e3c8f71765963b29aeae2d8de0"
     }
   }
 }

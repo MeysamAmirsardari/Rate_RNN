@@ -9,15 +9,15 @@
   "outputs": {
     "pdf": {
       "path": "outputs/figure_4_sfg.pdf",
-      "sha256": "93fdcf67b23e8def661f050f8a398bd943956ddcb93a01a8bea7f003d43c5d12"
+      "sha256": "fcbe53704557cbe1476d508cc5c100d65f6f77287bf81ffd06e250f889ed0b81"
     },
     "png": {
       "path": "outputs/figure_4_sfg.png",
-      "sha256": "246fbca9361a4d63dba5d6442b52e6063ccef30d589991e140509b9a5d993124"
+      "sha256": "8119c851833e5e43df00cc4e10b6d731eefcba442ffe69e531d24c13473c86bd"
     },
     "svg": {
       "path": "outputs/figure_4_sfg.svg",
-      "sha256": "3d97833280169e55ee92e2d4eff572f5e448372502aaeef7a76597052ca7e5ff"
+      "sha256": "7cf4422ddfca3e168e0a25126de543ccc412c1bfa85f75fc4c3129c75005d989"
     }
   },
   "physiology_reference": "Lu, Dutta, Mohammed, Elhilali & Shamma (2025) iScience 28:111991. Cited, not reproduced: every panel here is model output.",
