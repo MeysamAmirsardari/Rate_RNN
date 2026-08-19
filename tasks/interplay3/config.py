@@ -130,8 +130,17 @@ N_UNITS = 5
 #:     units on a word channel    1      4      5      4
 #:     words spanned              0      1      2      1
 #:
-#: At 24 units on the sparser earlier version of this stimulus the optimum
-#: was 5e-4; the population size moved it.  Re-measure it if either changes.
+#: The optimum moves with the population size, because a unit in a population
+#: of five wins five times as often as one in a population of twenty-four:
+#:
+#:     units \ eta   2e-4   5e-4   1e-3   2e-3
+#:     5                2      1      0     --
+#:     12               1      1      2     collapse
+#:     24               2      2      3     collapse
+#:
+#: Above the optimum the population collapses onto ONE committed unit at every
+#: size tested.  Re-measure this if ``N_UNITS`` or the cloud density changes;
+#: a units sweep at fixed eta measures the tuning, not the capacity.
 ETA = 2e-4
 LAM = ETA / 50.0
 GATE_FRAC = 0.15

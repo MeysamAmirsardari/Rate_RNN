@@ -51,7 +51,9 @@ Three processes, one per condition, merged afterwards — about four minutes.
 | `sync` | 1.00 ± 0.00 | 0.333 ± 0.000 | 0.333 |
 
 Coverage separates the conditions and the mechanism is intact. Three things
-have to be said against it, though, and none of them should be dressed up:
+have to be said against it, though, and none of them should be dressed up.
+Note that five units is a real constraint: see the capacity table below, where
+twenty-four units on this same stimulus reach 3/3.
 
 **The read-out is dead.** `shuffled` decodes nominally *above* `paired`, and
 both sit at their own fitted-assignment nulls. With five units and three
@@ -67,21 +69,33 @@ co-occurrence alone. Requiring each predecessor to beat the **cloud band**
 rather than a fraction of the row peak would close it, and can be computed
 from the stored masks without re-running.
 
-**The cloud density is the binding constraint, not the population size.** At a
-fixed eta of 2e-4 on this stimulus, seed 0:
+**Five units is the limit here, and the learning rate has to be tuned to the
+population size.** Words spanned, on the dense cloud, seed 0:
 
-| units | 5 | 12 | 24 |
-|---|---|---|---|
-| on a word channel | 5 | 5 | 7 |
-| words spanned | 2 | 1 | 2 |
+| units \ eta | 1e-4 | 2e-4 | 5e-4 | 1e-3 | 2e-3 |
+|---|---|---|---|---|---|
+| 5 | 1 | **2** | 1 | 0 | -- |
+| 12 | -- | 1 | 1 | **2** | collapse |
+| 24 | -- | 2 | 2 | **3** | collapse |
 
-More units do not help. Full coverage (3/3, every seed) was obtained on the
-*earlier* version of this stimulus, which had two simultaneous cloud tones
-rather than five. Raising the cloud from 2 to 5 is what cost the third word.
-One caveat on the table above: eta was tuned at five units, and because eta is
-per winning step the optimum rises with population size, so the 12- and
-24-unit points are probably under-tuned. They bound the effect rather than
-measure it.
+Two things fall out of this table and neither is optional to state.
+
+The optimum **moves with the population size** -- 2e-4 at five units, 1e-3 at
+twelve and twenty-four -- because ``eta`` is per winning step and a unit in a
+population of five wins five times as often as one in a population of
+twenty-four. A units sweep at fixed ``eta`` therefore measures the tuning, not
+the capacity. An earlier draft of this file reported exactly that mistake, and
+concluded that the denser cloud had cost the third word; it had not.
+
+Above the optimum the failure is not graceful. At 2e-3 the whole population
+collapses onto a single committed unit at every size tested: with the cloud
+dominating the map every unit chases the same average, and whichever pulls
+ahead first keeps winning.
+
+So the dense cloud is fine, and twenty-four units properly tuned still cover
+all three words (17 commit, 10 on a word channel, 3/3 spanned). Five units
+reach two of three at their own optimum. That is a capacity result, measured
+with the rate tuned at each size rather than held fixed.
 
 ## The parameter that had to move
 
