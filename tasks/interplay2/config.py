@@ -39,7 +39,7 @@ What could produce the answer for the wrong reason, and what stops it
 **Frequency.**  If A, B, C and D were on more often than a background
 channel, the units would find them by rate and order would be irrelevant.
 Every one of the twenty channels is therefore on for *exactly* the same total
-time: one 100 ms tone per 800 ms block, a duty cycle of 12.5% for the token
+time: one 50 ms tone per 480 ms block, a duty cycle of 10.4% for the token
 channels and the background channels alike.  This is enforced by construction
 and asserted at build time, not left to expectation.
 
@@ -65,8 +65,8 @@ four channels are then one object rather than two, and a layer that is really
 allocating *per object* should collapse onto fewer units.  This is the
 condition that says whether "two units" means anything.
 
-Timing, and why the tone is 100 ms
-----------------------------------
+Timing
+------
 Tones tile the timeline with no gap, so the tone duration IS the lag inside a
 token, and the slow conductance has to be large at that lag and small at every
 other.  What sets how well the token stands out is the width of the
@@ -76,21 +76,21 @@ for the same mask entry, and there are only sixteen background channels to
 share them out between.
 
 That ratio is scale-free: sweeping tone duration from 50 to 150 ms with the
-kinetics scaled alongside gives the same contrast to three significant
-figures (3.44 at ``tau_rise/tone = 0.36``, ``tau_decay/tone = 0.50``,
-identically at every duration, with and without layer 1 in the loop).  The
-duration is therefore free, and it is spent on making the kinetics
-biological rather than on making the stimulus fast:
+kinetics scaled alongside gives the same peak contrast to three significant
+figures (3.44-3.45 at every duration, with and without layer 1 in the loop).
+So the timing is set by the paradigm and the kinetics follow from it, not the
+other way round:
 
-    tone 50 ms   ->  tau_rise 18 ms, tau_decay 25 ms   too fast to be NMDA
-    tone 100 ms  ->  tau_rise 36 ms, tau_decay 50 ms   GluN2A-like
+    tone  50 ms + 10 ms gap  (slot  60 ms)  ->  22 / 30 ms   fast dendritic
+    tone 100 ms, no gap      (slot 100 ms)  ->  36 / 50 ms   GluN2A-like
 
-A 36 ms rise and a 50 ms decay are the kinetics of a GluN2A-dominated NMDA
-current, which is what a coincidence subunit reading a slow afferent should
-have.  Widening the kernel instead is not free: at ``tau_decay = 120 ms`` the
-token pair is only 1.9 times a flat mask entry, because sixteen background
-channels are inside the window at comparable amplitude, and the population
-never differentiates.
+The 50/10 timing used here therefore buys the same contrast with kinetics
+faster than NMDA -- worth stating, because the NMDA reading of the
+coincidence subunit is not available at this slot.  What is NOT free is
+widening the kernel: at ``tau_decay = 120 ms`` the token pair is only 1.9
+times a flat mask entry, because sixteen cloud channels are inside the
+coincidence window at comparable amplitude, and the population never
+differentiates at all.
 
 Layer 1
 -------
@@ -129,11 +129,20 @@ LAYER1_MODES = ("raw", "frozen", "full")
 # =====================================================================
 #  Layer 2
 # =====================================================================
-#: GluN2A-like: 36 ms rise, 50 ms decay, i.e. 0.36 and 0.50 of the tone.
-#: See the module docstring -- the ratio to the tone is what matters and the
-#: absolute values are then chosen to be biological.
-TAU_RISE  = 36e-3
-TAU_DECAY = 50e-3
+#: Chosen by sweeping the contrast at the 60 ms slot, with layer 1 in the
+#: loop.  The surface is broad and flat -- 3.42 to 3.45 anywhere in
+#: tau_rise 20-30 ms crossed with tau_decay 18-30 ms -- and 22/30 is the
+#: slowest decay inside that plateau, within 1% of the maximum.
+#:
+#: These are faster than NMDA.  That is a consequence of the 50 ms tone and
+#: 10 ms gap, not a free choice: the kernel has to be narrow relative to the
+#: slot or too many cloud channels sit inside the coincidence window, and the
+#: slot is now 60 ms.  At the 100 ms tone the same geometry landed on
+#: GluN2A-like 36/50 ms; here it lands on a fast dendritic conductance
+#: instead.  The contrast at the optimum is the same either way (3.45), so
+#: nothing is lost except the NMDA reading of the mechanism.
+TAU_RISE  = 22e-3
+TAU_DECAY = 30e-3
 
 #: Four units, two tokens.  The population is deliberately not larger than
 #: twice the number of tokens: with eight units the question "did each token
@@ -155,15 +164,18 @@ GATE_FRAC = 0.15
 #: map has of order ten comparable entries at every moment and a short memory
 #: leaves the mask tracking whichever background pair happened to be on.
 #:
-#: Measured, 400 blocks, layer 1 in the loop, the top mask entry of each unit:
+#: The right value depends on the slot, because ``eta`` is per time step
+#: while the thing being averaged is per token.  Measured, layer 1 in the
+#: loop, as the token entries in units of a flat mask:
 #:
-#:     eta      2e-3      1e-3      5e-4      2.5e-4
-#:     result   nothing   nothing   AB + CD   AB + CD
+#:     slot 100 ms, 400 blocks    2e-3 / 1e-3 nothing;  5e-4 -> 10x;  2.5e-4 -> 15-20x
+#:     slot  60 ms, 700 blocks    5e-4 -> 16-19x;  2.5e-4 -> 7-15x;  1.5e-4 -> 6-15x
 #:
-#: with the token entries reaching 10x a flat mask at 5e-4 and 15-20x at
-#: 2.5e-4.  ``lam`` keeps the published ratio to ``eta`` (1/50), so the
-#: pruning competition is unchanged; only the averaging window moved.
-ETA = 2.5e-4
+#: The 60 ms block is 480 steps rather than 800, so the same per-step rate
+#: spans more blocks and the optimum moves up.  ``lam`` keeps the published
+#: ratio to ``eta`` (1/50), so the pruning competition is unchanged; only the
+#: averaging window moves.
+ETA = 5e-4
 LAM = ETA / 50.0
 COMMIT_FRAC = 0.20
 
@@ -207,11 +219,12 @@ class Interplay2Config:
     n_background: int = 16         # the cloud
 
     # ---- Timing (ms) ----
-    tone_dur: int = 100            # tones abut, so this is also the slot
+    tone_dur: int = 50
+    tone_gap: int = 10             # silent gap after every tone, all channels
     block_slots: int = 8           # slots per block; one token of each per block
 
     # ---- Exposure ----
-    n_blocks: int = 400            # 400 x 800 ms = 320 s, i.e. 400 of each token
+    n_blocks: int = 700            # 700 x 480 ms = 336 s, i.e. 700 of each token
 
     # ---- Design ----
     condition: str = "paired"
@@ -238,8 +251,14 @@ class Interplay2Config:
 
     @property
     def slot(self) -> int:
-        """Onset-to-onset interval.  Equal to ``tone_dur``: no gaps."""
-        return self.tone_dur
+        """Onset-to-onset interval: a tone plus the gap that follows it.
+
+        The gap is the same for every channel, token and cloud alike, so it
+        adds no cue that could mark a token boundary -- the stream stays
+        perfectly isochronous and only the transition statistics distinguish
+        a token from the cloud.
+        """
+        return self.tone_dur + self.tone_gap
 
     @property
     def offset(self) -> int:

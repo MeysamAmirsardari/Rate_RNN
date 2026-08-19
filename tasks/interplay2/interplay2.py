@@ -154,14 +154,19 @@ def _check(cfg: Interplay2Config, stim: np.ndarray, T: int) -> None:
         f"channels unbalanced: totals span {np.ptp(totals)} samples "
         f"(min {totals.min()}, max {totals.max()})")
 
-    # Exactly two background tones at every sample of the interior.  The two
-    # 25 ms edges are excluded because the offset clock has not started at
-    # t = 0 and has not finished at t = T; 50 ms out of the whole stream.
+    # The cloud is never silent, and never carries more than one tone per
+    # voice.  With a gap after every tone the count is no longer constant --
+    # the two voices are half a slot apart, so their gaps do not coincide and
+    # the total alternates between one and two.  What must hold is that it
+    # never reaches zero, because a silent moment would let the layer-2 trace
+    # reset and hand the model a segmentation cue the stimulus is meant to
+    # withhold.  The two half-slot edges are excluded: the offset clock has
+    # not started at t = 0 and has not finished at t = T.
     interior = slice(cfg.offset, T - cfg.offset)
     bgc = on[cfg.n_token_channels:, interior].sum(axis=0)
-    assert bgc.min() == cfg.n_voices and bgc.max() == cfg.n_voices, (
-        f"background must have exactly {cfg.n_voices} tones on at every "
-        f"sample; got min {bgc.min()}, max {bgc.max()}")
+    assert bgc.min() >= 1, "the cloud must never fall silent"
+    assert bgc.max() <= cfg.n_voices, (
+        f"at most {cfg.n_voices} cloud tones at once; got {bgc.max()}")
 
     # The two tones of a token never overlap: a token is an order, not a
     # chord.  (In `sync` the two TOKENS overlap each other by design; the

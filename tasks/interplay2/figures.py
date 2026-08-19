@@ -240,6 +240,89 @@ def stimulus_figure(ex: Dict, stem: str = "interplay2_stimulus"):
 
 
 # ---------------------------------------------------------------------
+#  Figure 1b -- the cloud, as a listener would be shown it
+# ---------------------------------------------------------------------
+def cloud_figure(ex: Dict, stem: str = "interplay2_cloud",
+                 n_blocks: int = 6, seed: int = 7):
+    """The stimulus drawn the way a tone cloud is normally drawn.
+
+    One dash per tone, channels on the vertical axis, time on the
+    horizontal, nothing else on the page.  Two things differ from the raster
+    in ``stimulus_figure``, and both are deliberate:
+
+    * **The channel order is shuffled.**  A, B, C and D are the first four
+      indices in the code, so an ordered plot puts all four tokens in a band
+      at the top and the eye groups them for reasons the model never sees.
+      Shuffling scatters them through the cloud, which is how they are
+      scattered in frequency for a listener.  The permutation is seeded, so
+      the picture is reproducible.
+    * **No axes.**  This panel is the stimulus, not a measurement; a reader
+      should be able to look for the repeating pair and fail to find it,
+      which is the point.  A scale bar carries the one quantity that matters.
+    """
+    cfg, dt = ex["cfg"], ex["dt"]
+    stim = ex["stim"]
+    show = min(stim.shape[1], n_blocks * cfg.block_samples)
+    n = stim.shape[0]
+
+    # A seeded permutation of the rows, so the tokens sit at unremarkable
+    # heights instead of in a block at the top.  Among candidate
+    # permutations, take the one that pushes the four token channels
+    # furthest apart: adjacent rows would let the reader group them by
+    # proximity, which is a cue the model does not have and the listener
+    # does not have either.
+    rng = np.random.default_rng(seed)
+    n_tok = cfg.n_token_channels
+    best, order = -1.0, None
+    for _ in range(400):
+        cand = rng.permutation(n)
+        rows = np.sort([int(np.flatnonzero(cand == c)[0])
+                        for c in range(n_tok)])
+        spread = float(np.diff(rows).min())
+        if spread > best:
+            best, order = spread, cand
+    row_of = {int(ch): int(r) for r, ch in enumerate(order)}
+
+    with manuscript_style():
+        fig = plt.figure(figsize=(mm(88), mm(100)))
+        ax = fig.add_axes([0.02, 0.075, 0.96, 0.895])
+
+        for ch in range(n):
+            on = stim[ch, :show] > 0
+            if not on.any():
+                continue
+            edges = np.flatnonzero(np.diff(np.concatenate(
+                [[0], on.view(np.int8), [0]])))
+            col = (C_AB if ch < 2 else C_CD) if ch < 4 else C_INK
+            y = row_of[ch]
+            for a, b in zip(edges[0::2], edges[1::2]):
+                ax.plot([a * dt, b * dt], [y, y], color=col, lw=3.0,
+                        solid_capstyle="butt")
+
+        ax.set_xlim(-0.02 * show * dt, show * dt * 1.02)
+        ax.set_ylim(-1.2, n + 0.4)
+        ax.set_axis_off()
+
+        # Scale bar, in place of an axis.
+        bar = 0.5
+        ax.plot([0.0, bar], [-0.9, -0.9], color=C_INK, lw=1.2,
+                solid_capstyle="butt")
+        ax.annotate(f"{bar:.1f} s", xy=(bar / 2, -1.15), ha="center",
+                    va="top", fontsize=6.5, color=C_INK)
+
+        for label, col, x in (("A \u2192 B", C_AB, 0.0),
+                              ("C \u2192 D", C_CD, 0.22),
+                              ("cloud", C_INK, 0.44)):
+            ax.annotate(label, xy=(x, 1.005), xycoords="axes fraction",
+                        ha="left", va="bottom", fontsize=7.0, color=col,
+                        fontweight="bold")
+
+        paths = export_figure(fig, OUT_DIR / stem)
+        plt.close(fig)
+    return paths
+
+
+# ---------------------------------------------------------------------
 #  Figure 2 -- the tape: unit activity along the input
 # ---------------------------------------------------------------------
 def tape_figure(ex: Dict, stem: str = "interplay2_tape", n_blocks: int = 3):
@@ -498,6 +581,7 @@ def make_figures(store: Dict) -> Dict[str, Dict[str, Path]]:
     out = {}
     ex = store["example"]
     out["stimulus"] = stimulus_figure(ex)
+    out["cloud"] = cloud_figure(ex)
     out["tape"] = tape_figure(ex)
     out["allocation"] = allocation_figure(store)
     for name, paths in out.items():
