@@ -437,7 +437,9 @@ def summarise(res: Dict) -> Dict:
                 verdict=alloc["verdict"], n_committed=alloc["n_committed"],
                 unit_AB=alloc["unit_AB"], unit_CD=alloc["unit_CD"],
                 n_ab=alloc["n_ab"], n_cd=alloc["n_cd"], n_both=alloc["n_both"],
-                rows=rows, masks=res["l2"].M.copy(), selectivity=np.array(sel),
+                rows=rows, masks=res["l2"].M.copy(),
+                W1=None if res["W1"] is None else np.asarray(res["W1"]).copy(),
+                selectivity=np.array(sel),
                 auc_vs_cloud=np.array(above),
                 decode_acc=dec["acc"], decode_null=dec["null"],
                 decode_null_hi=dec["null_hi"], resp=resp)
@@ -547,7 +549,14 @@ def _example(res: Dict, n_blocks: int = 6) -> Dict:
         lags={f"{b} after {a}": (on[b] - on[a]) * res["a1cfg"].dt * 1e3
               for a, b in (("A", "B"), ("C", "D"))},
     )
+    # Layer 1's own connectivity: the learned recurrent map, and the fixed
+    # E<->I architecture it sits inside.
+    from model0.model import _build_inh_matrices
+    M_EI, M_IE = _build_inh_matrices(res["a1cfg"])
+
     return dict(checks=checks,
+                W1=None if res["W1"] is None else np.asarray(res["W1"]).copy(),
+                M_EI=M_EI.copy(), M_IE=M_IE.copy(),
                 stim=res["test"]["stim"][:, t0:t1],
                 E=res["E_test"][:, t0:t1],
                 s=res["te"]["s"][:, t0:t1],

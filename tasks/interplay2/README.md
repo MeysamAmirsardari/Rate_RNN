@@ -41,7 +41,8 @@ python -m tasks.interplay2.interplay2 --seeds 5 --layer1-sweep
 `--figures-only` redraws from `results.pkl`. Figures are written next to this
 file: `interplay2_cloud` (the stimulus as a tone cloud, channel order shuffled),
 `interplay2_stimulus` (the same stimulus with its constraints measured),
-`interplay2_tape` (unit activity along the input), `interplay2_allocation`.
+`interplay2_tape` (unit activity along the input), `interplay2_allocation`,
+`interplay2_layer1` (the recurrent map layer 1 learns).
 
 ## The two constants that had to move
 
@@ -93,6 +94,41 @@ of the other channels (flat = 5.3%), a ratio of 4.4. C before D is the same
 This also rules out the obvious alternative, that the layer simply assigns one
 unit per salient channel: in `shuffled`, B and D fire exactly as often and for
 exactly as long, and no unit forms on either. The contingency is required.
+
+### Layer 1's own connection map
+
+`interplay2_layer1` shows the recurrent E→E matrix after exposure. `W_init_scale`
+is zero, so every weight in it was learned from the stream. `W[i, j]` is the
+weight from j onto i — row is "now", column is "recently", the same convention
+as a layer-2 mask.
+
+| condition | A→B, C→D | the reverse | A→D, C→B | cloud pair |
+|---|---|---|---|---|
+| `paired` | **0.0922** | **0.0000** | 0.0108 | 0.0099 |
+| `shuffled` | 0.0064 | 0.0055 | 0.0112 | 0.0098 |
+| `sync` | **0.0883** | 0.0000 | **0.0883** | 0.0099 |
+
+Three things worth reading off it:
+
+- **The map is strictly directional.** In `paired`, A→B sits at 9.3× the cloud
+  level while B→A is rectified to *exactly* zero — not merely smaller. The
+  cross pairings that the stimulus never contains (A→D, C→B) sit at the cloud
+  level, so the potentiation is specific to the pair, not to the four token
+  channels.
+- **`shuffled` kills it, and slightly overshoots.** Forward 0.0064 vs reverse
+  0.0055 — no direction — and both sit *below* the cloud at 0.65× it. The two
+  tones of a token are constrained never to overlap, while two cloud channels
+  on opposite clocks routinely do, and near-simultaneous pairs collect
+  potentiation a strictly ordered pair cannot. So the within-condition
+  token-vs-cloud gap is **not drive-matched**; the across-condition comparison
+  (0.0922 vs 0.0064) is the one that carries the claim.
+- **`sync` merges in layer 1 too**, with the same signature as in layer 2:
+  A→B and A→D are equal to four decimal places (0.0883 / 0.0883). Layer 1's
+  weights cannot tell the two tokens apart either when they are simultaneous.
+
+Layer 1's map is in fact *more* selective than a layer-2 mask: the input onto B
+is 7.9× the mean input from the other channels, against 4.3× for the
+corresponding row of the layer-2 mask.
 
 ### Layer 1's contribution
 

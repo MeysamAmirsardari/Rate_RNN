@@ -12,6 +12,7 @@ Three figures, in the order a reader needs them:
     interplay2_stimulus     what is in the stream, and the constraints on it
     interplay2_tape         every unit's activity along the input
     interplay2_allocation   how the population divided itself, across seeds
+    interplay2_layer1       the recurrent map layer 1 learns from the same stream
 
 Titles name the quantity and stop; chance and null levels are drawn as rules
 inside the axes rather than asserted in a title; every seed is a dot.
@@ -577,6 +578,158 @@ def allocation_figure(store: Dict, stem: str = "interplay2_allocation"):
 
 
 # ---------------------------------------------------------------------
+#  Figure 4 -- layer 1's connectivity
+# ---------------------------------------------------------------------
+def _weight_panel(ax, W: np.ndarray, title: str, vmax: float,
+                  *, mark: bool = True, cbar_label: str = "") -> None:
+    """One connectivity matrix, drawn as the map it is."""
+    n = W.shape[0]
+    im = ax.imshow(W, cmap="Greys", norm=PowerNorm(0.5, vmin=0.0, vmax=vmax),
+                   interpolation="nearest", aspect="equal")
+    if mark:
+        # Solid = the ordering the stimulus contains, dashed = its reverse.
+        # Drawing both is the point: the rule is directional, so the reverse
+        # entry is not merely smaller, it is driven to zero.
+        for (i, j), c in (((1, 0), C_AB), ((3, 2), C_CD)):
+            ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
+                                   edgecolor=c, lw=1.0, zorder=5))
+            ax.add_patch(Rectangle((i - 0.5, j - 0.5), 1, 1, fill=False,
+                                   edgecolor=c, lw=0.8, ls=(0, (1.6, 1.2)),
+                                   zorder=5))
+    ax.set_xticks([0, 3, n - 1])
+    ax.set_xticklabels(["A", "D", f"{n - 1}"], fontsize=5.8)
+    ax.set_yticks([0, 3, n - 1])
+    ax.set_yticklabels(["A", "D", f"{n - 1}"], fontsize=5.8)
+    ax.set_xlabel("presynaptic", labelpad=1.5)
+    ax.set_ylabel("postsynaptic", labelpad=1.5)
+    ax.set_title(title, pad=3)
+    ax.tick_params(length=1.4)
+    return im
+
+
+def layer1_figure(store: Dict, stem: str = "interplay2_layer1"):
+    """The recurrent map layer 1 learns, and the architecture it sits in.
+
+    Layer 2 is not the only place the token shows up: layer 1's own
+    trace-based rate-STDP on the recurrent E->E weights is driven by the same
+    contingency, and it finds it.  This figure is that map.  It matters for
+    two reasons -- it says the contingency is visible in the cortex itself
+    and not only in the readout, and it says what layer 2 is reading when the
+    `raw` control loses the effect.
+
+    ``W[i, j]`` is the weight from channel j onto channel i, the same
+    convention as a layer-2 mask: row is "now", column is "recently".
+    ``W_init_scale`` is zero in this configuration, so every weight drawn
+    here was learned from the stream; none of it is initialisation.
+    """
+    conds = [c for c in ("paired", "shuffled", "sync")
+             if c in store["conditions"]]
+    ex = store["example"]
+    n_tok = ex["cfg"].n_token_channels
+
+    def stack(cond: str) -> np.ndarray:
+        Ws = [r["W1"] for r in store["conditions"][cond]
+              if r.get("W1") is not None]
+        return np.stack(Ws) if Ws else np.empty((0, 0, 0))
+
+    mats = {c: stack(c) for c in conds}
+    have = [c for c in conds if mats[c].size]
+    if not have:
+        return {}
+
+    # One colour scale across all three, or "shuffled looks empty" would be a
+    # property of its own normalisation rather than of the weights.
+    vmax = max(float(mats[c].mean(axis=0).max()) for c in have)
+
+    with manuscript_style():
+        fig = plt.figure(figsize=(mm(183), mm(112)))
+        gs = fig.add_gridspec(2, 3, left=0.068, right=0.958, top=0.90,
+                              bottom=0.115, wspace=0.46, hspace=0.62)
+
+        # a-c -- the learned map, one per condition, seed-averaged
+        im = None
+        for i, cond in enumerate(have[:3]):
+            ax = fig.add_subplot(gs[0, i])
+            im = _weight_panel(ax, mats[cond].mean(axis=0),
+                               f"W after {cond}", vmax)
+            _letter(fig, ax, "abc"[i])
+        cax = fig.add_axes([0.966, 0.60, 0.008, 0.26])
+        fig.colorbar(im, cax=cax)
+        cax.set_ylabel("weight", labelpad=3, fontsize=6.0)
+        cax.tick_params(labelsize=5.4, length=1.4)
+        fig.text(0.068, 0.925, "solid: A\u2192B and C\u2192D    "
+                 "dashed: the reverse", fontsize=6.0, color=COLORS["ash"],
+                 va="bottom", ha="left")
+
+        # d -- presynaptic profile of the two token rows
+        ax = fig.add_subplot(gs[1, 0])
+        Wp = mats[have[0]].mean(axis=0)
+        n = Wp.shape[0]
+        for k, (now, prev, col, nm) in enumerate(
+                ((1, 0, C_AB, "onto B"), (3, 2, C_CD, "onto D"))):
+            row = Wp[now].copy()
+            # The self weight IS plastic in this configuration, but it is not
+            # a transition -- it is sustained activity in one channel -- so it
+            # does not belong in a plot of what precedes B.
+            row[now] = 0.0
+            ax.bar(np.arange(n) + (k - 0.5) * 0.42, row, width=0.40,
+                   color=col, lw=0, label=nm)
+            ax.annotate(["A", "B", "C", "D"][prev], xy=(prev, 0.0),
+                        xytext=(0, -9), textcoords="offset points",
+                        ha="center", va="top", fontsize=6.4, color=col,
+                        fontweight="bold", annotation_clip=False)
+        ax.set_xlabel("Presynaptic channel", labelpad=7)
+        ax.set_ylabel("Recurrent weight")
+        ax.set_xticks([0, 5, 10, 15, n - 1])
+        ax.legend(loc="upper right", handlelength=1.0, borderpad=0.2,
+                  fontsize=5.8)
+        ax.set_title("Input to the token rows")
+        clean_axis(ax)
+        _letter(fig, ax, "d")
+
+        # e -- the token weight itself, one dot per seed, per condition
+        #
+        # The comparison that carries the claim is ACROSS conditions, not
+        # token-against-cloud within one.  The two tones of a token are
+        # constrained never to overlap, while two cloud channels on opposite
+        # clocks routinely do, and near-simultaneous pairs collect
+        # potentiation a strictly ordered pair cannot.  So the cloud level is
+        # drawn as a reference rule rather than as a matched column: it says
+        # where an unstructured pair sits, not what the token would have been.
+        ax = fig.add_subplot(gs[1, 1])
+        series = []
+        clouds = []
+        for cond in have:
+            Ws = mats[cond]
+            series.append(np.array([(w[1, 0] + w[3, 2]) / 2.0 for w in Ws]))
+            clouds.append(np.mean([w[n_tok:, n_tok:][
+                ~np.eye(w.shape[0] - n_tok, dtype=bool)].mean() for w in Ws]))
+        _dots(ax, series, [C_MODEL] * len(have), have,
+              ylabel="Recurrent weight, token pair")
+        _reference(ax, float(np.mean(clouds)), "cloud pair (not drive-matched)")
+        ax.set_ylim(bottom=0.0)
+        ax.set_title("Token pair weight")
+        _letter(fig, ax, "e")
+
+        # f -- the fixed architecture the learning sits inside
+        ax = fig.add_subplot(gs[1, 2])
+        M_IE = ex.get("M_IE")
+        if M_IE is not None:
+            _weight_panel(ax, M_IE, "I to E (fixed)", float(M_IE.max()),
+                          mark=False)
+            ax.annotate("selective: strong on the diagonal,\n"
+                        "weak and uniform off it",
+                        xy=(0.5, -0.30), xycoords="axes fraction",
+                        ha="center", va="top", fontsize=5.8,
+                        color=COLORS["ash"], annotation_clip=False)
+        _letter(fig, ax, "f")
+
+        paths = export_figure(fig, OUT_DIR / stem)
+        plt.close(fig)
+    return paths
+
+
+# ---------------------------------------------------------------------
 def make_figures(store: Dict) -> Dict[str, Dict[str, Path]]:
     out = {}
     ex = store["example"]
@@ -584,6 +737,9 @@ def make_figures(store: Dict) -> Dict[str, Dict[str, Path]]:
     out["cloud"] = cloud_figure(ex)
     out["tape"] = tape_figure(ex)
     out["allocation"] = allocation_figure(store)
+    layer1 = layer1_figure(store)
+    if layer1:
+        out["layer1"] = layer1
     for name, paths in out.items():
         print(f"  wrote {paths['png']}")
     return out
