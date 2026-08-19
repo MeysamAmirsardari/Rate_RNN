@@ -97,52 +97,64 @@ all three words (17 commit, 10 on a word channel, 3/3 spanned). Five units
 reach two of three at their own optimum. That is a capacity result, measured
 with the rate tuned at each size rather than held fixed.
 
-## Why the responses look weak, and what fixes it
+## Why the responses looked weak, and what actually fixes it
 
-The raw unit traces sit on a large floor: baseline 10, peak 25, so only about
-40% of the peak is modulation. The cause is measurable and is not noise --
-**over half of every mask sits on cloud-by-cloud entries**:
+The raw traces sat on a large floor -- baseline 10, peak 25, 45% modulation --
+and the cause is measurable. **Over half of every mask ends up on
+cloud-by-cloud entries**, against about 2% on the block that codes its word.
+Not because any single cloud entry is large -- they sit at 0.13 of a row peak
+against 1.00 for the immediately preceding tone -- but because there are
+38 x 6 cloud columns and 38 cloud rows, so the small entries win on count.
+Five cloud tones sound at every instant, so that half of the mask is driven
+continuously and contributes a constant floor.
 
-| unit | its own row | row x word columns | cloud x cloud | baseline | peak |
-|---|---|---|---|---|---|
-| 2 (H, depth 3) | 0.106 | 0.025 | **0.572** | 10.1 | 24.9 |
-| 0 (L, depth 3) | 0.045 | 0.010 | **0.631** | 10.7 | 19.9 |
-| 4 (K, depth 2) | 0.087 | 0.020 | **0.539** | 9.6 | 24.8 |
+**The published rule has no pressure against weak synapses.** ``lam`` decays
+every synapse equally and prunes whole *units*; nothing prunes *synapses*, so
+a mask can carry unlimited numbers of arbitrarily weak ones. Hebbian
+competition in cortex does eliminate weak synapses, and that term was simply
+missing. Adding it -- zero every entry below a fraction of the unit's largest,
+after each update -- fixes the masks at source rather than at read-out. Five
+units, paired, seed 0:
 
-Five cloud tones sound at every instant, so those entries are driven
-continuously and contribute a constant floor. Only ~2% of each mask is on the
-block that codes its word.
+| threshold | 0 | 0.05 | 0.10 | 0.15 | **0.20** | 0.25 |
+|---|---|---|---|---|---|---|
+| cloud mass | 0.57 | 0.56 | 0.25 | 0.24 | **0.12** | 0.10 |
+| mass on own row | 0.09 | 0.11 | 0.52 | 0.59 | **0.80** | 0.83 |
+| raw modulation | 45% | 46% | 96% | 81% | **91%** | 55% |
 
-The pedestal is **common to every unit**, which says what to do about it.
-Layer 2 as published has no inhibition of any kind -- no lateral, no
-feedforward -- while layer 1 is built entirely around selective inhibition.
-Subtracting the population mean is what a normalising interneuron would do,
-and it recovers the signal:
+The transition sits exactly at the cloud band: 0.05 is below it and changes
+nothing, 0.25 is above the deepest predecessor (0.33 of a row peak) and starts
+cutting the staircase itself. `PRUNE_FRAC = 0.20`.
 
-| read-out | modulation depth |
-|---|---|
-| raw | 41% of peak |
-| **minus the population mean** | **238%** |
-| divided by the population mean | 35% |
+Lateral inhibition in the competition -- letting a unit win when it stands out
+from the population rather than when its absolute match is largest -- was tried
+in the same sweep and **does nothing** (cloud mass 0.572, modulation 42%).
+Changing who wins does not change what the winner learns, because the instar
+target is still the raw coincidence map.
 
-Subtractive works and divisive does not, because the pedestal is additive.
-`interplay3_tape` therefore plots the centred signal with the raw trace behind
-it, labelled -- it is a read-out step standing in for a missing piece of the
-model, not a cosmetic choice, and the proper fix is to put the normalisation
-inside layer 2 and re-learn.
+### What pruning bought, across 3 seeds
 
-Two things this does **not** fix, so they are not to be claimed:
+| | words covered | word decoding | its own null |
+|---|---|---|---|
+| baseline `paired` | 1.67 ± 0.47 | 0.399 ± 0.087 | 0.348 |
+| **pruned `paired`** | 1.00 ± 0.00 | **0.584 ± 0.034** | 0.369 |
+| pruned `shuffled` | 0.00 ± 0.00 | 0.487 ± 0.076 | 0.371 |
+| pruned `sync` | 1.00 ± 0.00 | 0.333 ± 0.000 | 0.333 |
 
-* **Decoding is unchanged** (0.399 raw, 0.399 centred). The read-out is
-  winner-take-all across units, which is already invariant to a per-event
-  additive constant. The decoding failure is the coverage problem, not the
-  pedestal: with five units the population piles onto one or two words, so no
-  unit is selective for the third.
-* **Unit 0 stays weak** despite passing the span test at depth 3 -- it holds
-  only 0.045 of its mask on its own row against 0.106 for unit 2. That is the
-  same soft spot as the `shuffled` false positive: the span criterion is
-  relative to a unit's own row peak and says nothing about whether the unit
-  responds.
+It is a genuine trade, and both halves have to be reported.
+
+**Decoding recovers.** Baseline sat at its own null (0.399 vs 0.348) and was
+not worth showing; pruned it clears it by a wide margin (0.584 vs 0.369), and
+the variance drops threefold. The units that do form are far more selective.
+
+**Coverage falls**, from 1.67 to exactly 1.00 in every seed. Sharper masks
+mean a unit commits harder to what it already has, so five units spread even
+less. Pruning does not solve the capacity limit -- it deepens it.
+
+**The control tightened.** Baseline `shuffled` produced a spurious spanning
+unit in one seed of three; pruned it produces none in any, and `sync` still
+gives exactly one. The false positive came from cloud-driven mass, which is
+what pruning removes.
 
 ## The parameter that had to move
 

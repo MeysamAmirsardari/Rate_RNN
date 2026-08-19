@@ -150,6 +150,25 @@ COMMIT_FRAC = 0.20
 #: represented, in ``span_depth``.  The package value.
 SPAN_THRESH = 0.25
 
+#: Synaptic elimination: after each instar update, mask entries below this
+#: fraction of the unit's largest are set to zero.  ``0.0`` is the published
+#: rule.  See ``learn_variants.py`` -- the published rule has no pressure at
+#: all against weak synapses (``lam`` decays every synapse equally and prunes
+#: whole units), so a mask fills with the cloud on sheer count: 38 x 6 cloud
+#: columns at 0.13 of a row peak outweigh three word columns at 1.00.
+#:
+#: Measured, five units, paired, seed 0:
+#:
+#:     threshold    0      0.05   0.10   0.15   0.20   0.25
+#:     cloud mass   0.57   0.56   0.25   0.24   0.12   0.10
+#:     own row      0.09   0.11   0.52   0.59   0.80   0.83
+#:     modulation   45%    46%    96%    81%    91%    55%
+#:
+#: The transition sits exactly at the cloud band: 0.05 is below it and does
+#: nothing, 0.25 is above the deepest predecessor (0.33 of a row peak) and
+#: starts cutting the staircase itself.
+PRUNE_FRAC = 0.20
+
 
 def layer2_config(**overrides) -> MRConfig:
     """Multi-rate layer-2 population for this task."""

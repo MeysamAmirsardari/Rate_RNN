@@ -31,12 +31,14 @@ if __package__:
     from .config import (CHANNEL_NAMES, CONDITIONS, Interplay3Config,
                          LAYER1_MODES, SPAN_THRESH, WORD_LEN, WORD_NAMES,
                          WORDS, get_preset, layer1_config, layer2_config)
-    from .fast_layer2 import FastLayer2MR
+    from .config import PRUNE_FRAC
+    from .learn_variants import VariantLayer2MR
 else:
     from tasks.interplay3.config import (  # type: ignore
         CHANNEL_NAMES, CONDITIONS, Interplay3Config, LAYER1_MODES, SPAN_THRESH,
         WORD_LEN, WORD_NAMES, WORDS, get_preset, layer1_config, layer2_config)
-    from tasks.interplay3.fast_layer2 import FastLayer2MR  # type: ignore
+    from tasks.interplay3.config import PRUNE_FRAC  # type: ignore
+    from tasks.interplay3.learn_variants import VariantLayer2MR  # type: ignore
 
 
 OUT_DIR = Path(__file__).resolve().parent
@@ -256,7 +258,7 @@ def train_and_test(cfg: Interplay3Config, *, mode: str = "full", seed: int = 0,
     E_train, W1 = layer1_rates(train["stim"], a1cfg, mode=mode, seed=seed)
     E_test, _ = layer1_rates(test["stim"], a1cfg, mode=mode, seed=seed)
 
-    l2 = FastLayer2MR(cfg.n_channels, l2cfg)
+    l2 = VariantLayer2MR(cfg.n_channels, l2cfg, prune_frac=PRUNE_FRAC)
     l2.run(E_train, a1cfg.dt, learn=True)
     l2.reset_state()                     # clear the filterbank, keep weights
     te = l2.run(E_test, a1cfg.dt, learn=False)
