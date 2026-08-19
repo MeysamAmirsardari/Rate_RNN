@@ -97,6 +97,53 @@ all three words (17 commit, 10 on a word channel, 3/3 spanned). Five units
 reach two of three at their own optimum. That is a capacity result, measured
 with the rate tuned at each size rather than held fixed.
 
+## Why the responses look weak, and what fixes it
+
+The raw unit traces sit on a large floor: baseline 10, peak 25, so only about
+40% of the peak is modulation. The cause is measurable and is not noise --
+**over half of every mask sits on cloud-by-cloud entries**:
+
+| unit | its own row | row x word columns | cloud x cloud | baseline | peak |
+|---|---|---|---|---|---|
+| 2 (H, depth 3) | 0.106 | 0.025 | **0.572** | 10.1 | 24.9 |
+| 0 (L, depth 3) | 0.045 | 0.010 | **0.631** | 10.7 | 19.9 |
+| 4 (K, depth 2) | 0.087 | 0.020 | **0.539** | 9.6 | 24.8 |
+
+Five cloud tones sound at every instant, so those entries are driven
+continuously and contribute a constant floor. Only ~2% of each mask is on the
+block that codes its word.
+
+The pedestal is **common to every unit**, which says what to do about it.
+Layer 2 as published has no inhibition of any kind -- no lateral, no
+feedforward -- while layer 1 is built entirely around selective inhibition.
+Subtracting the population mean is what a normalising interneuron would do,
+and it recovers the signal:
+
+| read-out | modulation depth |
+|---|---|
+| raw | 41% of peak |
+| **minus the population mean** | **238%** |
+| divided by the population mean | 35% |
+
+Subtractive works and divisive does not, because the pedestal is additive.
+`interplay3_tape` therefore plots the centred signal with the raw trace behind
+it, labelled -- it is a read-out step standing in for a missing piece of the
+model, not a cosmetic choice, and the proper fix is to put the normalisation
+inside layer 2 and re-learn.
+
+Two things this does **not** fix, so they are not to be claimed:
+
+* **Decoding is unchanged** (0.399 raw, 0.399 centred). The read-out is
+  winner-take-all across units, which is already invariant to a per-event
+  additive constant. The decoding failure is the coverage problem, not the
+  pedestal: with five units the population piles onto one or two words, so no
+  unit is selective for the third.
+* **Unit 0 stays weak** despite passing the span test at depth 3 -- it holds
+  only 0.045 of its mask on its own row against 0.106 for unit 2. That is the
+  same soft spot as the `shuffled` false positive: the span criterion is
+  relative to a unit's own row peak and says nothing about whether the unit
+  responds.
+
 ## The parameter that had to move
 
 Layer 2's instar rate, 5e-3 → 5e-4. Measured on 300 blocks with layer 1 in the

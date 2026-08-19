@@ -329,19 +329,34 @@ def tape_figure(ex: Dict, stem: str = "interplay3_tape", n_show: int = 6):
         mark(ax)
         ax.set_xlim(0, ts[-1])
         ax.tick_params(labelbottom=False)
-        ax.set_title("Stimulus and the deepest layer-2 units on one clock")
+        ax.set_title("Stimulus, and layer-2 units with the population mean "
+                     "removed")
         _letter(fig, ax, "a")
 
-        ymax = max(ex["y"].max(), 1e-9) * 1.15
+        # Layer 2 has no inhibition of any kind -- no lateral, no feedforward
+        # -- so every unit carries the same cloud-driven pedestal, and it is
+        # large: over half of each mask sits on cloud-by-cloud entries, which
+        # are driven at every instant because five cloud tones always sound.
+        # Subtracting the population mean removes exactly that common mode and
+        # is what a normalising interneuron would do.  It is a read-out step
+        # standing in for a missing piece of the model, so it is labelled as
+        # one rather than folded in silently; the raw trace is drawn behind.
+        raw = ex["y"]
+        sig = raw - raw.mean(axis=0, keepdims=True)
+        ymax = max(sig.max(), 1e-9) * 1.15
+        ymin = min(sig.min(), 0.0) * 1.15
         for i, r in enumerate(rows):
             ax = fig.add_subplot(gs[1 + i])
             col = (WORD_COLORS[r["word"]] if r["spans"] and r["word"] is not None
                    else C_CLOUD)
-            ax.fill_between(ts, 0, ex["y"][r["unit"]], color=col, lw=0,
+            ax.plot(ts, raw[r["unit"]] - raw.mean(), color=COLORS["ash"],
+                    lw=0.5, alpha=0.55, zorder=2)
+            ax.fill_between(ts, 0, sig[r["unit"]], color=col, lw=0,
                             alpha=0.85, zorder=3)
+            ax.axhline(0.0, color=C_INK, lw=0.4, zorder=1)
             mark(ax)
             ax.set_xlim(0, ts[-1])
-            ax.set_ylim(0, ymax)
+            ax.set_ylim(ymin, ymax)
             ax.set_ylabel(f"unit {r['unit']}", rotation=0, ha="right",
                           va="center", labelpad=6, color=col)
             tag = (f"{WORD_NAMES[r['word']]}, depth {r['depth']}"
@@ -353,6 +368,10 @@ def tape_figure(ex: Dict, stem: str = "interplay3_tape", n_show: int = 6):
                 ax.tick_params(labelbottom=False)
             else:
                 ax.set_xlabel("Time (s)")
+            if i == n_rows // 2:
+                ax.set_ylabel("response - population mean", rotation=90,
+                              ha="center", va="bottom", labelpad=14,
+                              color=C_INK)
             clean_axis(ax)
             if i == 0:
                 _letter(fig, ax, "b")
