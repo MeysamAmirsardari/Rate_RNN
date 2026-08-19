@@ -27,7 +27,6 @@ from typing import Dict, List, Sequence
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.colors import PowerNorm
-from matplotlib.patches import Rectangle
 
 _ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_ROOT) not in sys.path:
@@ -427,9 +426,6 @@ def _mask_panel(ax, M: np.ndarray, cfg, title: str, col: str) -> None:
     im = ax.imshow(M, cmap="Greys", norm=PowerNorm(0.45, vmin=0.0,
                                                    vmax=max(M.max(), 1e-12)),
                    interpolation="nearest", aspect="equal")
-    for (i, j), c in (((1, 0), C_AB), ((3, 2), C_CD)):
-        ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
-                               edgecolor=c, lw=1.0, zorder=5))
     ax.set_xticks([0, 3, n - 1])
     ax.set_xticklabels(["A", "D", f"{n - 1}"], fontsize=5.8)
     ax.set_yticks([0, 3, n - 1])
@@ -581,21 +577,11 @@ def allocation_figure(store: Dict, stem: str = "interplay2_allocation"):
 #  Figure 4 -- layer 1's connectivity
 # ---------------------------------------------------------------------
 def _weight_panel(ax, W: np.ndarray, title: str, vmax: float,
-                  *, mark: bool = True, cbar_label: str = "") -> None:
+                  *, cbar_label: str = "") -> None:
     """One connectivity matrix, drawn as the map it is."""
     n = W.shape[0]
     im = ax.imshow(W, cmap="Greys", norm=PowerNorm(0.5, vmin=0.0, vmax=vmax),
                    interpolation="nearest", aspect="equal")
-    if mark:
-        # Solid = the ordering the stimulus contains, dashed = its reverse.
-        # Drawing both is the point: the rule is directional, so the reverse
-        # entry is not merely smaller, it is driven to zero.
-        for (i, j), c in (((1, 0), C_AB), ((3, 2), C_CD)):
-            ax.add_patch(Rectangle((j - 0.5, i - 0.5), 1, 1, fill=False,
-                                   edgecolor=c, lw=1.0, zorder=5))
-            ax.add_patch(Rectangle((i - 0.5, j - 0.5), 1, 1, fill=False,
-                                   edgecolor=c, lw=0.8, ls=(0, (1.6, 1.2)),
-                                   zorder=5))
     ax.set_xticks([0, 3, n - 1])
     ax.set_xticklabels(["A", "D", f"{n - 1}"], fontsize=5.8)
     ax.set_yticks([0, 3, n - 1])
@@ -657,9 +643,6 @@ def layer1_figure(store: Dict, stem: str = "interplay2_layer1"):
         fig.colorbar(im, cax=cax)
         cax.set_ylabel("weight", labelpad=3, fontsize=6.0)
         cax.tick_params(labelsize=5.4, length=1.4)
-        fig.text(0.068, 0.925, "solid: A\u2192B and C\u2192D    "
-                 "dashed: the reverse", fontsize=6.0, color=COLORS["ash"],
-                 va="bottom", ha="left")
 
         # d -- presynaptic profile of the two token rows
         ax = fig.add_subplot(gs[1, 0])
@@ -715,8 +698,7 @@ def layer1_figure(store: Dict, stem: str = "interplay2_layer1"):
         ax = fig.add_subplot(gs[1, 2])
         M_IE = ex.get("M_IE")
         if M_IE is not None:
-            _weight_panel(ax, M_IE, "I to E (fixed)", float(M_IE.max()),
-                          mark=False)
+            _weight_panel(ax, M_IE, "I to E (fixed)", float(M_IE.max()))
             ax.annotate("selective: strong on the diagonal,\n"
                         "weak and uniform off it",
                         xy=(0.5, -0.30), xycoords="axes fraction",
