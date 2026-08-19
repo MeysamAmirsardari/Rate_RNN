@@ -111,25 +111,28 @@ LAYER1_MODES = ("raw", "frozen", "full")
 #: -- the package default -- sits inside that, so it is kept unchanged.
 RATES = default_rates(n=6, lo=0.030, hi=0.500)
 
-#: Generous relative to three words, as in the package: how many units stay
-#: committed is a result, not a setting.  A four-tone word also has three
-#: within-word transitions, so a population that only ever learned pairs would
-#: need nine units before it could cover the vocabulary.
-N_UNITS = 24
+#: Five units, three words.  Deliberately tight -- barely more than the
+#: vocabulary -- so that "each word got a unit" is a real competition rather
+#: than an inevitability, and so that the fifty channels cannot simply be
+#: tiled one unit per channel.
+N_UNITS = 5
 
-#: Re-measured for this stimulus rather than inherited.  The package default
-#: of 5e-3 was set on a stream with nothing in it but words; here fifty
-#: channels are live and the coincidence map has many comparable entries at
-#: every moment.  Measured on 300 blocks with layer 1 in the loop:
+#: Re-measured for this stimulus and this population size.  The package
+#: default of 5e-3 was set on a stream with nothing in it but words; here
+#: fifty channels are live, five cloud tones sound at every instant, and the
+#: coincidence map has many comparable entries at every moment.  The right
+#: value also depends on how many units there are, because ``eta`` is per
+#: winning step and five units each win a fifth of the steps.
 #:
-#:     eta       5e-3   2e-3   1e-3    5e-4
-#:     committed    1      1     13      24
-#:     spanning     0      0      0       3   (all three words)
+#: Measured, 280 blocks, five units, layer 1 in the loop, seed 0:
 #:
-#: The two fast rates do not merely fail to span -- they collapse the whole
-#: population onto one unit, because with the cloud dominating the map every
-#: unit chases the same average and the first to pull ahead keeps winning.
-ETA = 5e-4
+#:     eta                     1e-3   5e-4   2e-4   1e-4
+#:     units on a word channel    1      4      5      4
+#:     words spanned              0      1      2      1
+#:
+#: At 24 units on the sparser earlier version of this stimulus the optimum
+#: was 5e-4; the population size moved it.  Re-measure it if either changes.
+ETA = 2e-4
 LAM = ETA / 50.0
 GATE_FRAC = 0.15
 COMMIT_FRAC = 0.20
@@ -172,8 +175,14 @@ class Interplay3Config:
     tone_gap: int = 10
 
     # ---- Block ----
-    #: Forced by exact duty matching; see the module docstring.
+    #: Slots per block, and how many times each word occurs in one.
     block_slots: int = 19
+    words_per_block: int = 3
+
+    #: Simultaneous cloud tones.  This is the density knob, and it is bounded
+    #: by exact duty matching: ``n_voices * block_slots`` must equal
+    #: ``n_background * words_per_block``, i.e. 6 x 19 = 38 x 3.
+    n_voices: int = 6
 
     # ---- Exposure ----
     n_blocks: int = 280             # exposure: 280 x 1.14 s = 319 s
@@ -225,28 +234,26 @@ class Interplay3Config:
                      for k in range(self.n_clocks))
 
     @property
-    def n_voices(self) -> int:
-        """Cloud voices.  Two, because 38 factorises as 2 x 19."""
-        n = self.n_background
-        for v in (2, 1):
-            if n % v == 0 and n // v == self.block_slots:
-                return v
-        raise ValueError(
-            f"{n} cloud channels cannot be dealt one per channel per block "
-            f"over {self.block_slots} slots")
+    def voice_offsets(self) -> Tuple[int, ...]:
+        """Onset offsets of the cloud voices, evenly spread across one slot.
 
-    @property
-    def voice_clocks(self) -> Tuple[int, ...]:
-        """Which clocks the two cloud voices sit on.  Fixed, and adjacent.
-
-        Adjacent because that is what makes the cloud gapless.  A tone is
-        50 ms in a 60 ms slot, so one voice alone leaves a 10 ms hole every
-        slot; a second voice a third of a slot later covers it, and the two
-        together tile the timeline exactly.  A voice pair a *further* third
-        apart -- clocks 0 and 2 -- would not, and rotating the pair by block
-        opens a hole at every block boundary where the rotation lands.
+        Six voices ten milliseconds apart, with 50 ms tones in a 60 ms slot,
+        means each voice is silent for one tenth of the cycle and the silences
+        are staggered: **exactly five cloud tones are on at every instant**,
+        with no fluctuation to be mistaken for structure.
         """
-        return tuple(range(self.n_voices))
+        return tuple(v * self.slot // self.n_voices
+                     for v in range(self.n_voices))
+
+    def _check_duty(self) -> None:
+        """Exact duty matching relates density, block length and word rate."""
+        lhs = self.n_voices * self.block_slots
+        rhs = self.n_background * self.words_per_block
+        if lhs != rhs:
+            raise ValueError(
+                f"n_voices * block_slots ({lhs}) must equal n_background * "
+                f"words_per_block ({rhs}) for every channel to have the same "
+                f"duty")
 
     def last_slot(self, clock: int) -> int:
         """Last slot on this clock whose tone still ends inside the block.

@@ -42,34 +42,46 @@ python -m tasks.interplay3.run_parallel --seeds 3
 Three processes, one per condition, merged afterwards — about four minutes.
 `python -m tasks.interplay3.interplay3 --figures-only` redraws from the cache.
 
-## Result (3 seeds each)
+## Result (5 units, 3 seeds each)
 
-| condition | words with a spanning unit | word decoding | shuffled-label null |
+| condition | words with a spanning unit | word decoding | its own shuffled null |
 |---|---|---|---|
-| `paired` | **3.00 ± 0.00 of 3** | 0.844 ± 0.028 | 0.405 |
-| `shuffled` | 0.00 ± 0.00 | 0.462 ± 0.010 | 0.475 |
+| `paired` | **1.67 ± 0.47** of 3 | 0.399 ± 0.087 | 0.348 |
+| `shuffled` | 0.33 ± 0.47 | 0.425 ± 0.107 | 0.349 |
 | `sync` | 1.00 ± 0.00 | 0.333 ± 0.000 | 0.333 |
 
-`paired` gives all three words a spanning unit in 3/3 runs. `shuffled` gives
-none, and decodes *at* its own null. `sync` collapses to exactly one spanning
-unit every time, at exactly chance — the twelve channels have become one
-object, and a read-out cannot recover which word it is because there is no
-longer a which.
+Coverage separates the conditions and the mechanism is intact. Three things
+have to be said against it, though, and none of them should be dressed up:
 
-### The mechanism, drawn
+**The read-out is dead.** `shuffled` decodes nominally *above* `paired`, and
+both sit at their own fitted-assignment nulls. With five units and three
+classes there is no headroom. An earlier version of this stimulus, with a
+sparser cloud and twenty-four units, gave 0.844 against a 0.405 null; at five
+units the decoding panel should be dropped rather than shown as a null result.
 
-Panels a–c of `interplay3_allocation` are the whole claim: for each word's
-spanning unit, the mask weight on each earlier tone against filter rate. The
-staircase is exact and identical across all three words —
+**The span criterion has a false-positive mode.** `shuffled` produced a
+spurious spanning unit in one seed of three. A word's four channels still fall
+inside the same 1.14 s block when their order is destroyed, so "at least 0.25
+of the row peak, at increasing rates" can be satisfied by block-level
+co-occurrence alone. Requiring each predecessor to beat the **cloud band**
+rather than a fraction of the row peak would close it, and can be computed
+from the stored masks without re-running.
 
-| tones back | 1 | 2 | 3 |
+**The cloud density is the binding constraint, not the population size.** At a
+fixed eta of 2e-4 on this stimulus, seed 0:
+
+| units | 5 | 12 | 24 |
 |---|---|---|---|
-| peak filter rate | 53 ms | 92 ms | 162 ms |
-| weight (of row peak) | 1.00 | 0.47 | 0.33 |
+| on a word channel | 5 | 5 | 7 |
+| words spanned | 2 | 1 | 2 |
 
-against a cloud band at ~0.13. This is the multi-rate mechanism doing exactly
-what it is for: one mask holding "D now, C at a fast rate, B at a slower one,
-A at the slowest".
+More units do not help. Full coverage (3/3, every seed) was obtained on the
+*earlier* version of this stimulus, which had two simultaneous cloud tones
+rather than five. Raising the cloud from 2 to 5 is what cost the third word.
+One caveat on the table above: eta was tuned at five units, and because eta is
+per winning step the optimum rises with population size, so the 12- and
+24-unit points are probably under-tuned. They bound the effect rather than
+measure it.
 
 ## The parameter that had to move
 

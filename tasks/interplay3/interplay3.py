@@ -50,63 +50,118 @@ def _out(name: str) -> str:
 #  Stimulus
 # =====================================================================
 def _word_slots(cfg: Interplay3Config, rng) -> Dict[str, np.ndarray]:
-    """Slot index of every word channel, per block, plus each word's clock.
+    """Slot index of every word channel, per block per instance.
 
-    All three conditions give every channel exactly one slot per block; they
-    differ only in how those slots are related.
+    Returns ``slots`` of shape ``(n_words, n_blocks, words_per_block,
+    WORD_LEN)`` and ``clocks`` of shape ``(n_words, n_blocks)``.  All three
+    conditions give every channel exactly ``words_per_block`` slots per block;
+    they differ only in how those slots are related.
     """
-    nb = cfg.n_blocks
+    nb, k, L = cfg.n_blocks, cfg.words_per_block, WORD_LEN
+    nw = len(WORDS)
 
-    #: (n_words, n_blocks) -- which clock each word sits on in each block.
     if cfg.condition == "sync":
-        clocks = np.zeros((len(WORDS), nb), dtype=int)
+        clocks = np.zeros((nw, nb), dtype=int)
     else:
         clocks = np.array([[cfg.word_clock(w, b) for b in range(nb)]
-                           for w in range(len(WORDS))])
+                           for w in range(nw)])
 
-    #: How many slots this word may use in this block; clock-dependent, see
-    #: ``Interplay3Config.last_slot``.
-    top = np.vectorize(cfg.last_slot)(clocks)          # (n_words, nb)
+    slots = np.empty((nw, nb, k, L), dtype=int)
 
-    slots = np.empty((len(WORDS), nb, WORD_LEN), dtype=int)
+    def runs(n_avail: int) -> np.ndarray:
+        """``k`` non-overlapping runs of ``L`` consecutive slots.
+
+        Sampled uniformly over the valid configurations: draw k distinct
+        values from the free room plus k, sort, and push each one along by
+        the length of the runs before it.  That is the standard bijection
+        between "k sorted distinct values" and "k runs with gaps", so every
+        legal arrangement is equally likely and none has to be rejected.
+        """
+        free = n_avail - k * L
+        if free < 0:
+            raise ValueError(f"{k} runs of {L} do not fit in {n_avail} slots")
+        base = np.sort(rng.choice(free + k, size=k, replace=False))
+        return base + np.arange(k) * (L - 1)
 
     if cfg.condition in ("paired", "sync"):
-        # Four consecutive slots.  In `sync` every word takes the SAME start
-        # on clock 0, so the twelve channels become one object of four
-        # simultaneous triples.
-        if cfg.condition == "sync":
-            start = np.broadcast_to(
-                rng.integers(0, top[0] - WORD_LEN + 2, size=nb), top.shape)
-        else:
-            start = np.array([[rng.integers(0, top[w, b] - WORD_LEN + 2)
-                               for b in range(nb)] for w in range(len(WORDS))])
-        for p in range(WORD_LEN):
-            slots[:, :, p] = start + p
+        for b in range(nb):
+            shared = runs(cfg.last_slot(0) + 1) if cfg.condition == "sync" \
+                else None
+            for w in range(nw):
+                st = shared if shared is not None \
+                    else runs(cfg.last_slot(int(clocks[w, b])) + 1)
+                for i in range(k):
+                    slots[w, b, i] = st[i] + np.arange(L)
 
     elif cfg.condition == "shuffled":
-        # Four distinct slots per word per block, assigned to the four
-        # channels in random order, so the lag between consecutive tones is
-        # random in sign and size.  Duty, spectrum and simultaneity are
-        # exactly as in `paired`; only the order is gone.
-        for w in range(len(WORDS)):
+        # Every channel keeps its ``k`` tones per block, but the k * L slots
+        # a word uses are drawn as one set of distinct slots and dealt to the
+        # channels at random.  Distinct, so no two tones of a word are ever
+        # simultaneous -- exactly as in `paired`; dealt at random, so the
+        # order inside the word is gone and nothing else is.
+        for w in range(nw):
             for b in range(nb):
-                slots[w, b] = rng.choice(top[w, b] + 1, size=WORD_LEN,
-                                         replace=False)
+                pool = rng.choice(cfg.last_slot(int(clocks[w, b])) + 1,
+                                  size=k * L, replace=False)
+                slots[w, b] = rng.permutation(pool).reshape(k, L).T.reshape(k, L)
 
     else:
         raise ValueError(f"unknown condition {cfg.condition!r}")
 
-    return dict(slots=slots, clocks=clocks)      # slots: (n_words, nb, L)
+    return dict(slots=slots, clocks=clocks)
+
+
+def _deal_cloud(cfg: Interplay3Config, rng) -> np.ndarray:
+    """Channel for every (slot, voice) of the whole stream.
+
+    Two properties have to hold at once.  **Balance:** every cloud channel
+    gets exactly ``words_per_block`` tones per block, which is why
+    ``n_voices * block_slots`` is required to equal ``n_background *
+    words_per_block`` -- one block is then a whole number of passes through
+    the pack.  **No self-overlap:** the voices are a tenth of a slot apart and
+    tones are five sixths of a slot long, so a channel used in one slot would
+    still be sounding in the next; a channel is therefore never dealt in two
+    adjacent slots.
+
+    The constraint is met by swapping within the block's own pack rather than
+    by redrawing, so the per-channel counts survive it exactly.
+    """
+    bg = np.asarray(list(cfg.background_channels))
+    n_bg, V, S = bg.size, cfg.n_voices, cfg.block_slots
+    passes = V * S // n_bg
+    out = np.empty((cfg.n_blocks * S, V), dtype=int)
+
+    prev: set = set()
+    for b in range(cfg.n_blocks):
+        pack = np.concatenate([rng.permutation(bg) for _ in range(passes)])
+        i = 0
+        for s in range(S):
+            group: List[int] = []
+            for v in range(V):
+                j = i
+                while j < pack.size and (pack[j] in prev or pack[j] in group):
+                    j += 1
+                if j >= pack.size:            # cannot happen with V < n_bg / 2
+                    j = i
+                pack[i], pack[j] = pack[j], pack[i]
+                group.append(int(pack[i]))
+                i += 1
+            out[b * S + s] = group
+            prev = set(group)
+    return out
 
 
 def build_stimulus(cfg: Interplay3Config, rng) -> Dict:
     """An ``(n_channels, T)`` cloud with the three words written into it."""
     offsets = cfg.clock_offsets
+    cfg._check_duty()
     ns_total = cfg.n_blocks * cfg.block_slots
-    T = ns_total * cfg.slot + max(offsets) + cfg.tone_dur
+    T = ns_total * cfg.slot + max(max(offsets), max(cfg.voice_offsets)) \
+        + cfg.tone_dur
     stim = np.zeros((cfg.n_channels, T))
 
     def onset(clock: int, block: int, slot: int) -> int:
+        """Word onset: the slot grid, plus the word clock's offset."""
         return ((block * cfg.block_slots + slot) * cfg.slot
                 + offsets[clock])
 
@@ -119,38 +174,20 @@ def build_stimulus(cfg: Interplay3Config, rng) -> Dict:
     onsets: Dict[int, np.ndarray] = {}
     for w, word in enumerate(WORDS):
         for p, ch in enumerate(word):
-            o = np.array([onset(int(clocks[w, b]), b, int(slots[w, b, p]))
-                          for b in range(cfg.n_blocks)])
+            o = np.array([onset(int(clocks[w, b]), b, int(slots[w, b, i, p]))
+                          for b in range(cfg.n_blocks)
+                          for i in range(cfg.words_per_block)])
             onsets[ch] = o
             for oo in o:
                 paint(ch, int(oo))
 
     # ---- cloud ----
-    #
-    # Two voices, nineteen slots, thirty-eight channels: one tone per channel
-    # per block, dealt as a permutation split into disjoint halves.  Disjoint
-    # halves rule out a channel colliding with itself inside a block; the
-    # block boundary is the one case left, because a tone on a late clock in
-    # the last slot runs past the block edge and can meet the first slot of
-    # the next block.  The roll below rules that out.
-    bg = np.asarray(list(cfg.background_channels))
-    per_voice = cfg.n_background // cfg.n_voices
-    voice_clocks = cfg.voice_clocks
-    prev_tail: set = set()
-    for b in range(cfg.n_blocks):
-        deal = rng.permutation(bg)
-        halves = [deal[v * per_voice:(v + 1) * per_voice]
-                  for v in range(cfg.n_voices)]
-        for v, half in enumerate(halves):
-            for _ in range(len(half)):
-                if int(half[0]) not in prev_tail:
-                    break
-                half = np.roll(half, 1)
-            halves[v] = half
-        for v, half in enumerate(halves):
-            for slot, ch in enumerate(half):
-                paint(int(ch), onset(int(voice_clocks[v]), b, slot))
-        prev_tail = {int(h[-1]) for h in halves}
+    voice_off = cfg.voice_offsets
+    deal = _deal_cloud(cfg, rng)
+    for idx in range(deal.shape[0]):
+        base = idx * cfg.slot
+        for v in range(cfg.n_voices):
+            paint(int(deal[idx, v]), base + voice_off[v])
 
     _check(cfg, stim, T)
     return dict(stim=stim, onsets=onsets, slots=slots, clocks=clocks,
@@ -172,7 +209,7 @@ def _check(cfg: Interplay3Config, stim: np.ndarray, T: int) -> None:
     # filterbank drain and hand the model a segmentation cue the design
     # withholds.  The edges are excluded: the offset clocks have not started
     # at t = 0 and have not finished at t = T.
-    edge = max(cfg.clock_offsets) + cfg.slot
+    edge = max(max(cfg.clock_offsets), max(cfg.voice_offsets)) + cfg.slot
     bgc = on[cfg.n_token_channels:, edge:T - edge].sum(axis=0)
     assert bgc.min() >= 1, "the cloud must never fall silent"
     assert bgc.max() <= cfg.n_voices, (
