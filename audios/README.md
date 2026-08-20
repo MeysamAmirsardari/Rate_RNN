@@ -1,69 +1,106 @@
 # audios — stimuli to listen to
 
 Playable versions of the paradigms, built to psychoacoustic spec rather than
-sonified loosely. Masters are 24-bit 48 kHz WAV; the MP3s are 320 kbps CBR
-from those masters.
+sonified loosely. Masters are 24-bit 48 kHz WAV; the MP3s are 320 kbps CBR.
 
 ```bash
-python -m audios.two_tone                 # the two files below
-python -m audios.two_tone --df 1 3 6 9    # any set of separations
-python -m audios.two_tone --keep-wav      # keep the WAV masters
+python -m audios.two_tone      # one stream, two frequency separations
+python -m audios.two_stream    # two streams held apart by timing alone
 ```
 
-## `ab_df01.mp3` / `ab_df09.mp3` — repeating AB doublets
-
-Two files differing in one thing: the separation between A and B.
-
-    A  0-40 ms      B  40-80 ms      silence 80-200 ms      repeat
+## Shared conventions
 
 | | |
 |---|---|
-| sample rate | 48 000 Hz (every duration an exact sample count) |
-| tone duration | 40 ms, of which 30 ms steady |
-| ramps | 5 ms raised-cosine (cos²) on and off |
-| gap A→B | 0 ms — B begins the sample after A ends |
-| doublet rate | 5 Hz (200 ms onset-to-onset) |
-| length | 60 doublets, 13.2 s |
-| A | 1000 Hz, **identical in both files** |
-| B | 1059.46 Hz (1 st) / 1681.79 Hz (9 st) |
-| level | equal amplitude per tone; each file peak-normalised to −3 dBFS |
+| sample rate | 48 000 Hz — every duration an exact sample count |
+| tone | 40 ms, gated with 5 ms raised-cosine (cos²) on and off, 30 ms steady |
+| phase | every tone starts at sine phase zero |
+| gap A→B | 0 ms — the second tone begins the sample after the first ends |
 | presentation | diotic (same signal both ears) |
+| level | **one scale factor for the whole set**, so a tone is at the same SPL in every file |
 
-Measured back off the rendered signal, both files: 60 doublets, each
-80.0 ± 0.000 ms, one every 200.0 ± 0.000 ms; peak −3.00 dBFS, RMS −6.65 dBFS.
-Zero jitter — nothing is rounded.
+Level deserves a note. Peak-normalising each file separately would tie its
+level to whatever its loudest moment happened to be — in the two-stream file
+that is the rare instant when both streams sum, which would drag every tone
+down 6 dB relative to the single-stream files and make the set useless for
+comparing them. Equal SPL per tone is the convention, so a lone tone peaks at
+−9 dBFS everywhere and two coincident tones at −3 dBFS. The two-stream file is
+legitimately louder overall (twice the tone density) at −14.1 dBFS against
+−17.1, while a tone in it is at the same level: −12.6 vs −12.7 dBFS.
 
-### Reading of the spec
+## 1. One stream — `ab_df01.mp3`, `ab_df09.mp3`
 
-"5 Hz, 40 ms tones, 0 ms gap" only fits together one way: the **doublet**
-repeats at 5 Hz and the 0 ms gap is the one *inside* it. A 5 Hz tone rate
-would put 160 ms between tones, contradicting the 0 ms gap; abutting 40 ms
-tones with no silence at all would be a 25 Hz tone rate.
+    A  0–40 ms      B  40–80 ms      silence      then the next doublet
 
-### Things worth knowing before you listen
+A is **1000 Hz in both files**; only B moves, so the separation is the only
+difference. B = 1059.46 Hz (1 st) or 1681.79 Hz (9 st).
 
-**The doublet is one 80 ms acoustic event, not two.** With a 0 ms gap the only
-thing between A and B is where A's 5 ms fall meets B's 5 ms rise. Measured,
-that notch reaches −25 dB and spends 4 ms below half amplitude. Each tone is
-still gated independently — cross-fading to hold amplitude constant would
-remove the very cue the paradigm is about — but do not expect silence between
-them.
+**Onsets are jittered.** Each doublet is displaced uniformly by up to ±50 ms
+from its grid position. Measured: inter-onset 199.0 ± 42.7 ms, range
+118–285 ms, 60 doublets. The jitter is tied to the grid rather than drawn as
+intervals — drawn intervals random-walk and the rate drifts, whereas
+grid-tied jitter keeps the **overall rate exactly 5 Hz** however large it is.
 
-**At 1 semitone the two tones are barely resolvable, by design.** 59 Hz of
-separation on a 40 ms tone is close to the time-frequency limit; the
-spectrogram in `two_tone_check.png` cannot cleanly separate them either. That
-is the point of the contrast — at 9 semitones (682 Hz) they split apart
-immediately.
+±50 ms is a quarter of the period, which is as far as it can go before
+doublets collide: the shortest possible interval, 200 − 2×50 = 100 ms, still
+clears the 80 ms doublet. Measured minimum silence between doublets: 36 ms.
 
-**Equal SPL is not equal loudness.** Both files are identical in peak and RMS
-and differ only in frequency. The ear is roughly 1–2 phon more sensitive at
-1682 Hz than at 1000 Hz, so in the wide file B may sound slightly louder than
-A. Correcting it would need an equal-loudness contour, which is not the
-convention here and would introduce a level difference between the files.
+Worth stating: isochrony is itself a grouping cue, so removing it weakens
+streaming build-up slightly. What it buys is that nothing can be following the
+rhythm instead of the frequencies.
 
-**Use the WAV for real experiments.** MP3 is lossy and adds slight pre-echo at
-sharp onsets — inaudible at 320 kbps with 5 ms ramps, but the master is the
-master.
+## 2. Two streams — `ab_cd_incoherent.mp3`
 
-`two_tone_check.png` shows the first 600 ms of each: waveform with A and B
-shaded, and a spectrogram.
+Four tones in a chain, each step one semitone:
+
+    A 1000.00  →  B 1059.46  →  C 1122.46  →  D 1189.21 Hz
+
+AB is close to itself, CD is close to itself, and B→C is the same 1 semitone.
+The four span **three semitones in total** — far too little for frequency to
+segregate them. That is deliberate: it removes the usual cue, so anything
+heard as two streams has to come from timing.
+
+**The streams are anti-phase.** Both run at 5 Hz and CD's grid sits half a
+period — 100 ms — from AB's. For two streams at the same rate, half a period
+is the furthest their onsets can be, so this is maximal incoherence rather
+than merely some. Each stream is then jittered independently, so the relative
+phase wanders too.
+
+Measured: AB 5.012 Hz, CD 5.007 Hz, onset asynchrony **85.1 ± 14.3 ms with a
+minimum of 57.7 ms**, and the two streams sound together only 2% of the time.
+
+### Why the jitter is smaller here (±25 ms, against ±50)
+
+Because it has a job that unbounded jitter would undo. With a 100 ms offset
+and independent jitter of ±J, the asynchrony runs over 100 ± 2J. At J = 50
+that reaches **zero** — the streams would occasionally start together, and
+simultaneous onsets fuse, which is the one thing this file must never do. At
+J = 25 the asynchrony is bounded to 50–150 ms.
+
+The measured minimum, 57.7 ms, is comfortably past the point where onset
+asynchrony works as a segregation cue — beyond roughly 30 ms is enough to stop
+two components fusing into one event.
+
+### What to listen for
+
+Whether it splits into two interleaved streams or stays one dense warble, and
+whether that flips back and forth, which is what bistable streaming does. The
+control is `ab_df01` — the same 1-semitone doublet alone, with nothing to
+segregate from. `--phase-ms 0` builds the coherent version, which should fuse.
+
+## Checks
+
+The timing in both READMEs is measured back off the rendered signal, not taken
+from the code that wrote it. `two_tone_check.png` and `two_stream_check.png`
+show waveforms and spectrograms.
+
+Two limits the checks make visible rather than hide:
+
+- **A doublet is one 80 ms acoustic event, not two.** With a 0 ms gap the only
+  thing between the tones is where one ramp meets the next — a notch reaching
+  −25 dB, 4 ms below half amplitude. Each tone is gated independently on
+  purpose; cross-fading to hold amplitude constant would delete the cue the
+  paradigm is about.
+- **A semitone at 40 ms is near the time-frequency limit.** 60 Hz of
+  separation on a 40 ms tone cannot be cleanly resolved by any spectrogram,
+  and that is the point of the 1-vs-9 contrast, not a defect of the plot.
