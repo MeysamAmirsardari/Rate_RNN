@@ -99,6 +99,8 @@ CLOUD_SLOT_MS = 60.0
 CLOUD_VOICES = 3
 CLOUD_ST = (-24.0, 46.0)
 CLOUD_GUARD_ST = 1.0
+CLOUD_GRID_ST = 1.0
+SCHED_STEP_MS = 2.5
 LEAD_MS, TAIL_MS = 400.0, 600.0
 
 
@@ -150,7 +152,94 @@ def build(lay: dict, shift_ms, scramble_a: bool = False,
     return dict(x=x, events=ev, base=base, lay=lay)
 
 
-def make_cloud(total: int, lay: dict, seed: int = 5) -> dict:
+def concurrency(events, total: int, key=lambda e: e[2]) -> np.ndarray:
+    """How many tones sound at each sample."""
+    n = core.samples(TONE_MS)
+    c = np.zeros(total + n, dtype=int)
+    for e in events:
+        o = int(key(e))
+        c[o:o + n] += 1
+    return c[:total]
+
+
+def make_cloud(total: int, lay: dict, seed: int = 5, *,
+               fig_events=None, n_total: int = 0,
+               step_ms: float = SCHED_STEP_MS,
+               grid_st: float = CLOUD_GRID_ST) -> dict:
+    """A cloud that fills the figure's complement, so the total never moves.
+
+    A fixed-voice cloud cannot do this.  The figure is twenty tones inside an
+    eighty-millisecond window and silence for the other eighty percent of the
+    time, so the total swings between two and twenty-two and the figure can be
+    found from the envelope alone, with no grouping involved.  The cloud has
+    to be **denser between the tokens and thinner inside them**, which means
+    scheduling it against the figure rather than on a grid of its own.
+
+    Greedy, and deliberately conservative: a tone is added at a candidate
+    onset only if it cannot push the total above ``n_total`` at any point in
+    its own forty milliseconds.  That guarantees the ceiling is never crossed
+    and costs a shallow dip just before each burst, where tones already
+    sounding cannot be withdrawn.
+
+    ``n_total`` must be at least the figure's own peak -- twenty here, since
+    all ten partials and all ten copies can sound at once -- because nothing
+    the cloud does can take a tone away from the figure.  That is what makes
+    "uniform in time" and "not dense" incompatible for a figure like this
+    one: hiding a twenty-tone burst requires a twenty-tone background.
+    """
+    freqs = cloud.channels(
+        f_ref=F0, st_lo=CLOUD_ST[0], st_hi=CLOUD_ST[1],
+        guard_st=CLOUD_GUARD_ST, grid_st=grid_st,
+        exclude_hz=list(lay["f_a"]) + list(lay["f_s"]))
+    n_tone = core.samples(TONE_MS)
+    rng = np.random.default_rng(seed)
+
+    if fig_events is None or n_total <= 0:          # the old grid cloud
+        x, freqs, idx = cloud.build(
+            total, seed=seed, tone_ms=TONE_MS, slot_ms=CLOUD_SLOT_MS,
+            n_voices=CLOUD_VOICES, f_ref=F0, st_lo=CLOUD_ST[0],
+            st_hi=CLOUD_ST[1], guard_st=CLOUD_GUARD_ST,
+            exclude_hz=list(lay["f_a"]) + list(lay["f_s"]))
+        slot = core.samples(CLOUD_SLOT_MS)
+        step = slot // CLOUD_VOICES
+        ev = [(freqs[idx[s, v]], s * slot + v * step)
+              for s in range(idx.shape[0]) for v in range(CLOUD_VOICES)]
+        return dict(x=x, freqs=freqs, events=ev,
+                    counts=np.bincount(idx.ravel(), minlength=freqs.size))
+
+    c_tot = concurrency(fig_events, total + n_tone)
+    busy = np.zeros((freqs.size, total + n_tone), dtype=bool)
+    pack, i = rng.permutation(freqs.size), 0
+    ev = []
+    for o in range(0, total, core.samples(step_ms)):
+        w = slice(o, o + n_tone)
+        while c_tot[w].max() < n_total:
+            for _ in range(freqs.size):             # first free channel
+                if i >= pack.size:
+                    pack, i = rng.permutation(freqs.size), 0
+                k = int(pack[i])
+                i += 1
+                if not busy[k, w].any():
+                    break
+            else:
+                break
+            busy[k, w] = True
+            c_tot[w] += 1
+            ev.append((freqs[k], o))
+
+    x = np.zeros(total + n_tone)
+    pips = {}
+    counts = np.zeros(freqs.size, dtype=int)
+    f_index = {float(f): j for j, f in enumerate(freqs)}
+    for f, o in ev:
+        if f not in pips:
+            pips[f] = core.tone(f, TONE_MS)
+        x[o:o + n_tone] += pips[f]
+        counts[f_index[float(f)]] += 1
+    return dict(x=x[:total], freqs=freqs, events=ev, counts=counts)
+
+
+def _unused_make_cloud(total: int, lay: dict, seed: int = 5) -> dict:
     """A cloud that never comes within a semitone of a figure channel."""
     x, freqs, idx = cloud.build(
         total, seed=seed, tone_ms=TONE_MS, slot_ms=CLOUD_SLOT_MS,
@@ -199,7 +288,7 @@ def report(b: dict, name: str) -> str:
             f"    {core.levels(b['x'])}")
 
 
-def figure(builds: list, stem: str = "syl_check") -> Path:
+def figure(builds: list, prof=None, stem: str = "syl_check") -> Path:
     """One raster per version, plus the two shift distributions."""
     import matplotlib
     matplotlib.use("Agg")
@@ -262,6 +351,26 @@ def figure(builds: list, stem: str = "syl_check") -> Path:
         ax.spines[sp].set_visible(False)
 
     ax = fig.add_subplot(gs[1, k])
+    if prof is not None:
+        c_f, c_c = prof
+        w = core.samples(1600.0)
+        ts = np.arange(w) / core.SR
+        ax.fill_between(ts, 0, c_f[:w], color=C_A, lw=0, alpha=0.85,
+                        label="figure")
+        ax.fill_between(ts, c_f[:w], (c_f + c_c)[:w], color="#2D3748", lw=0,
+                        alpha=0.55, label="cloud")
+        ax.set_xlabel("Time (s)")
+        ax.set_ylabel("Tones sounding")
+        ax.set_xlim(0, ts[-1])
+        ax.legend(loc="lower right", fontsize=6.5, ncol=2,
+                  handlelength=1.0, borderpad=0.2)
+        ax.set_title("Concurrency", fontsize=10)
+        for sp in ("top", "right"):
+            ax.spines[sp].set_visible(False)
+        out = OUT_DIR / f"{stem}.png"
+        fig.savefig(out, dpi=190)
+        plt.close(fig)
+        return out
     ms = 1000.0 / core.SR
     bd = builds[0][0]
     lag = [(o - bd["base"][tok]) * ms
@@ -291,6 +400,7 @@ def main(argv=None) -> int:
     p.add_argument("--onset-jitter-ms", type=float,
                    default=ONSET_JITTER_MS)
     p.add_argument("--cloud-db", type=float, default=0.0)
+    p.add_argument("--grid-st", type=float, default=CLOUD_GRID_ST)
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
 
@@ -310,7 +420,15 @@ def main(argv=None) -> int:
              for nm, kw, ttl in variants]
 
     gain = 10.0 ** (args.cloud_db / 20.0)
-    cl = make_cloud(max(b["x"].size for _, b, _ in built), lay)
+    # One cloud per variant, scheduled against that variant's own figure --
+    # a cloud planned for the regular version would leave the jittered one
+    # bursting wherever its tokens had moved.
+    peak = max(int(concurrency(b["events"], b["x"].size).max())
+               for _, b, _ in built)
+    clouds = {nm: make_cloud(b["x"].size, lay, fig_events=b["events"],
+                             n_total=peak, grid_st=args.grid_st)
+              for nm, b, _ in built}
+    cl = clouds[built[0][0]]
     print(f"{core.SR} Hz | {2 * args.n_partials} figure channels: "
           f"{args.n_partials} coherent partials + {args.n_partials} copies "
           f"lagging {args.shift_ms[0]:.0f}-{args.shift_ms[1]:.0f} ms at "
@@ -319,7 +437,8 @@ def main(argv=None) -> int:
           f"{cl['freqs'][0]:.0f}-{cl['freqs'][-1]:.0f} Hz "
           f"= {2 * args.n_partials + cl['freqs'].size} in total\n")
 
-    mixes = [(nm, b["x"] + gain * cl["x"][:b["x"].size]) for nm, b, _ in built]
+    mixes = [(nm, b["x"] + gain * clouds[nm]["x"][:b["x"].size])
+             for nm, b, _ in built]
     amp = 10 ** (core.PEAK_DBFS / 20) / max(
         float(np.max(np.abs(b["x"]))) for _, b, _ in built)
     amp_c = 10 ** (core.PEAK_DBFS / 20) / max(
@@ -333,14 +452,33 @@ def main(argv=None) -> int:
         print(f"    cloud {core.levels(m * amp_c)}")
         print(f"    -> {nm}.mp3   {nm}_cloud.mp3\n")
 
-    print(cloud.report(cl["x"], cl["freqs"], cl["idx"], tone_ms=TONE_MS,
-                       slot_ms=CLOUD_SLOT_MS, n_voices=CLOUD_VOICES))
+    b0 = built[0][1]
+    T = b0["x"].size
+    lo, hi = core.samples(LEAD_MS), T - core.samples(TAIL_MS)
+    c_f = concurrency(b0["events"], T)
+    c_c = concurrency(cl["events"], T, key=lambda e: e[1])
+    tot = (c_f + c_c)[lo:hi]
+    fig_use = 2 * N_TOKENS // 2       # each figure channel: one tone per token
+    print(f"  uniformity, measured over {(hi - lo) / core.SR:.1f} s")
+    print(f"    total concurrency  {tot.min()}-{tot.max()}, "
+          f"mean {tot.mean():.2f} +- {tot.std():.2f}; below "
+          f"{peak - 2} for {np.mean(tot < peak - 2) * 100:.1f}% of the time")
+    print(f"    figure alone would be 0-{c_f.max()} "
+          f"(silent {np.mean(c_f[lo:hi] == 0) * 100:.0f}% of the time)")
+    print(f"    cloud {cl['freqs'].size} channels "
+          f"{cl['freqs'][0]:.0f}-{cl['freqs'][-1]:.0f} Hz, per-channel use "
+          f"{cl['counts'].min()}-{cl['counts'].max()} vs {N_TOKENS} per "
+          f"figure channel")
+    need = int(round(cl['counts'].sum() / N_TOKENS))
+    print(f"    ({need} cloud channels would equalise that; "
+          f"--grid-st {70.0 / need:.2f} gets close)")
 
     show = [(built[0][1], built[0][2], None),
             (built[1][1], built[1][2], None),
             (built[2][1], built[2][2], None),
             (built[0][1], "coherent, with the cloud", cl)]
-    print(f"\n  -> {figure(show).name}")
+    show_prof = (c_f[lo:hi], c_c[lo:hi])
+    print(f"\n  -> {figure(show, show_prof).name}")
     return 0
 
 

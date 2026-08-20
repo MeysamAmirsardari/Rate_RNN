@@ -294,16 +294,36 @@ what says coherence rather than spectrum is doing the work.
 
 Every version also comes as `*_cloud.mp3` — same figure, plus a background.
 
-**Not dense, and constant.** Three voices a third of a slot apart with tones
-two thirds of a slot long, so **exactly two cloud tones sound at every
-instant**, measured 2–2 with no fluctuation. Density is set by the number of
-voices, never by leaving gaps, because a fluctuating background envelope would
-be a cue in its own right.
+**The figure is a burst, and a grid cloud cannot hide it.** Twenty tones
+inside an eighty-millisecond window, then silence for 80% of the time. Against
+a flat two-tone background the total swung **2 to 22**, mean 4.05 ± 4.68 — the
+figure was findable from the envelope alone, with no grouping involved. That
+is a real defect and it is what this cloud fixes.
+
+**The cloud is scheduled against the figure**, not on a grid of its own:
+denser between the tokens, thinner inside them, so the total never moves.
+Measured, total concurrency **10–20, mean 19.72 ± 0.92**, below 18 for only
+4.1% of the time — a five-fold reduction in envelope modulation.
+
+The residual dips are unavoidable and worth naming. A tone already sounding
+cannot be withdrawn when the burst arrives, so the scheduler refuses to start
+one that would overshoot, and the period just before each burst is left
+slightly under-filled. Finer scheduling helps and then plateaus (SD 1.24 at a
+10 ms grid, 0.92 at 2.5 ms, 0.89 at 1 ms); it is intrinsic to fixed-length
+tones meeting a step-function target.
 
 **Fifty channels**, 100–5702 Hz on a semitone grid running from two octaves
 below the fundamental to just above the tenth partial. With the twenty figure
-channels that is **seventy in total** — the seventy in the sketch. Per-channel
-use 12–13, spread of 1.
+channels that is **seventy in total** — the seventy in the sketch.
+
+**Uniform in time and uniform in frequency cannot both hold here, and the
+figure is why.** Hiding a twenty-tone burst requires a twenty-tone background,
+which needs 108–121 tones per cloud channel against 30 per figure channel.
+Equalising that would take **189 cloud channels**, not 50 — `--grid-st 0.37`
+gets close, at the price of cloud channels spaced a third of a semitone apart.
+At seventy channels the flat envelope is the one worth having, since a 10×
+envelope burst is a far stronger cue than a 4× difference in how often a
+channel is used.
 
 **Nothing within a semitone of a figure channel.** The guard is a real design
 parameter, not a rounding tolerance: too small and the cloud sits on top of
@@ -323,5 +343,5 @@ fuses; here each of the twenty channels carries the same weight. `--cloud-db`
 moves the background if a gentler version is wanted.
 
 `syl_check.png` shows three of the versions, the same coherent figure with the
-cloud drawn in grey, the per-channel frequency offsets, and the lag
-distribution against the tone length.
+cloud drawn in grey, the per-channel frequency offsets, and the concurrency
+profile — figure in red, cloud in grey, filling to a flat ceiling.

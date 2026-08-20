@@ -63,7 +63,7 @@ ST_LO, ST_HI = -12, 21       # 500 Hz to 3364 Hz, just under three octaves
 
 def channels(exclude_st: Sequence[float] = (), *, f_ref: float = F_REF,
              st_lo: float = ST_LO, st_hi: float = ST_HI,
-             guard_st: float = 0.5,
+             guard_st: float = 0.5, grid_st: float = 1.0,
              exclude_hz: Sequence[float] = ()) -> np.ndarray:
     """Semitone grid around the reference, minus everything near a target.
 
@@ -74,7 +74,7 @@ def channels(exclude_st: Sequence[float] = (), *, f_ref: float = F_REF,
     segregating the figure stops being a task.
     """
     ex = list(exclude_st) + [12.0 * np.log2(f / f_ref) for f in exclude_hz]
-    grid = np.arange(st_lo, st_hi + 1, dtype=float)
+    grid = np.arange(st_lo, st_hi + grid_st / 2.0, grid_st)
     keep = np.array([not any(abs(s - e) < guard_st for e in ex) for s in grid])
     return f_ref * 2.0 ** (grid[keep] / 12.0)
 
