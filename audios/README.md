@@ -346,6 +346,45 @@ moves the background if a gentler version is wanted.
 cloud drawn in grey, the per-channel frequency offsets, and the concurrency
 profile — figure in red, cloud in grey, filling to a flat ceiling.
 
+### The figure is frozen
+
+Every channel's position in the token -- its frequency offset **and its lag**
+-- is drawn once, in `layout`, and every repetition uses that same set.  The
+token is one fixed pattern in time and frequency, repeated thirty times on a
+regular 2.5 Hz beat.  That is what makes it a figure and what makes it
+learnable: a receptive field averaged over repetitions converges on the
+pattern rather than on the marginal spectrum.
+
+`--redraw` is the control.  It draws fresh lags every repetition, so nothing
+ever repeats and there is no pattern to converge on, while the marginal
+spectrum, the channel count and the tone count are all unchanged.
+
+### The jitter series (`--series`)
+
+    syl_frozen_j0-0.mp3     fully coherent, every channel on the onset
+    syl_frozen_j0-10.mp3
+    syl_frozen_j0-20.mp3
+    syl_frozen_j0-40.mp3
+    syl_frozen_j0-80.mp3    each also as *_cloud.mp3
+    syl_frozen_check.png
+
+One pattern at five widths.  The per-channel positions are stored as fractions
+of the range, so the five files are the **same shape stretched**, not five
+independent draws -- the only thing that differs across the series is how far
+apart the channels are pulled.  The sounding subset is rescaled to span the
+range exactly, so a file called 0-40 really does run 0 to 40 ms.
+
+`--jitter-ranges LO,HI ...` sets the widths.
+
+All five are normalised by one common gain rather than individually, because
+coherence changes the peak: the 0-0 file genuinely is the loudest-peaked of
+the set, and levelling that away would remove part of what the manipulation
+does.  Overall RMS is constant at -23.4 dBFS across the series.
+
+At five channels the cloud hides the figure almost exactly: total concurrency
+is 5.00 +- 0.00 for the coherent file and 4.89 +- 0.33 for the widest, with
+28-29 cloud tones per channel against 30 per figure channel.
+
 ### Copies only (`--drop-a`)
 
     syl_copies.mp3          the ten shifted copies, token onset regular

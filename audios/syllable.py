@@ -105,13 +105,27 @@ LEAD_MS, TAIL_MS = 400.0, 600.0
 
 
 def layout(n: int, df_st, seed: int = 0) -> dict:
-    """Channel frequencies: n coherent partials and n fixed shifted copies."""
+    """The figure's fixed shape: frequencies, and where in time each sits.
+
+    Both dimensions are drawn **once, here** -- the frequency offset of every
+    channel and its position in the token.  The time positions are kept as
+    fractions of the range rather than milliseconds, so the same shape can be
+    stretched to any jitter range: the five files of a series are then one
+    pattern widened, not five unrelated draws, and any difference between them
+    is the width and nothing else.
+    """
     rng = np.random.default_rng(seed)
     harm = np.arange(1, n + 1, dtype=float)
     f_a = F0 * harm
     off = rng.uniform(df_st[0], df_st[1], size=n) * rng.choice([-1.0, 1.0], n)
     return dict(f_a=f_a, f_s=f_a * 2.0 ** (off / 12.0), offset_st=off,
-                harm=harm)
+                harm=harm, u=rng.uniform(0.0, 1.0, size=n))
+
+
+def lags(lay: dict, shift_ms) -> np.ndarray:
+    """The frozen per-channel lag, in samples, for a given range."""
+    lo, hi = float(shift_ms[0]), float(shift_ms[1])
+    return np.round((lo + lay["u"] * (hi - lo)) * core.SR / 1000.0).astype(int)
 
 
 def sounding(n: int, k: int) -> np.ndarray:
@@ -123,8 +137,20 @@ def sounding(n: int, k: int) -> np.ndarray:
 
 def build(lay: dict, shift_ms, scramble_a: bool = False,
           onset_jitter_ms: float = 0.0, seed: int = 1,
-          keep_a: bool = True, use=None) -> dict:
+          keep_a: bool = True, use=None, freeze: bool = True) -> dict:
     """Place every token; A coherent unless ``scramble_a``.
+
+    **The figure is frozen.**  Each channel's lag is drawn once, in
+    ``layout``, and every repetition of the token uses that same set --
+    the token is one fixed pattern in time and frequency, repeated.  That is
+    what makes it a figure at all, and what makes it learnable: a receptive
+    field averaged over repetitions converges on the pattern instead of on
+    the marginal spectrum.
+
+    ``freeze=False`` redraws the lags on every repetition instead.  Nothing
+    then repeats, the pattern cannot be learned, and the token is a smear with
+    the same marginal spectrum and the same channel count -- which makes it
+    the control for the frozen version rather than a variant of it.
 
     ``onset_jitter_ms`` displaces the **whole figure** -- A and its copies
     together -- so the token stops being periodic while everything inside it
@@ -132,12 +158,9 @@ def build(lay: dict, shift_ms, scramble_a: bool = False,
     its arrival becomes unpredictable.  The jitter is tied to the grid, so the
     mean repetition rate is unchanged.
 
-    ``keep_a=False`` drops the coherent set and sounds only the ten copies.
-    Nothing then has a stable temporal signature at all: each channel keeps
-    its fixed frequency but is redrawn in time on every repetition, so the
-    token is a smear that never repeats itself.  The coherent/scrambled
-    contrast goes with A -- that pair differs *only* in A -- and what is left
-    is whether the onset of the smear is regular or jittered.
+    ``keep_a=False`` drops the coherent set and sounds only the copies, whose
+    frozen lags then carry the whole pattern.  The coherent/scrambled contrast
+    goes with A -- that pair differs *only* in A.
 
     ``use`` restricts which partials sound, as an index array.  Thinning the
     figure this way keeps the harmonic series spread over its full 400 Hz to
@@ -154,8 +177,12 @@ def build(lay: dict, shift_ms, scramble_a: bool = False,
     total = int(base[-1]) + core.samples(max(shift_ms) + TONE_MS + TAIL_MS)
     x = np.zeros(total)
 
+    frozen = lags(lay, shift_ms)
+
     def draw(k):
         """A lag, never a lead: the copy always follows its partner."""
+        if freeze:
+            return frozen[:k]
         return np.round(rng.uniform(shift_ms[0], shift_ms[1], size=k)
                         * core.SR / 1000.0).astype(int)
 
@@ -316,7 +343,9 @@ def report(b: dict, name: str) -> str:
             f"    {core.levels(b['x'])}")
 
 
-def figure(builds: list, prof=None, stem: str = "syl_check") -> Path:
+def figure(builds: list, prof=None, stem: str = "syl_check",
+           span_ms: float = 4 * PERIOD_MS + 200.0,
+           panel_w: float = 4.6) -> Path:
     """One raster per version, plus the two shift distributions."""
     import matplotlib
     matplotlib.use("Agg")
@@ -325,12 +354,14 @@ def figure(builds: list, prof=None, stem: str = "syl_check") -> Path:
     lay = builds[0][0]["lay"]
     n = lay["f_a"].size
     C_A, C_S = "#7C102A", "#2166AC"
-    span = core.samples(4 * PERIOD_MS + 200.0)
+    span = core.samples(span_ms)
     dur = core.samples(TONE_MS)
     k = len(builds)
 
-    fig = plt.figure(figsize=(4.6 * k + 2.6, 6.4), constrained_layout=True)
-    gs = fig.add_gridspec(2, k + 1, width_ratios=[2.4] * k + [1.0])
+    fig = plt.figure(figsize=(panel_w * k + 2.6, 6.4),
+                     constrained_layout=True)
+    gs = fig.add_gridspec(2, k + 1,
+                          width_ratios=[panel_w / 1.9] * k + [1.0])
 
     for col, (bd, title, cl) in enumerate(builds):
         ax = fig.add_subplot(gs[:, col])
@@ -360,7 +391,11 @@ def figure(builds: list, prof=None, stem: str = "syl_check") -> Path:
         ax.set_title(title, fontsize=10.5)
         ax.set_xlabel("Time (s)")
         ax.set_xlim(0, span / core.SR)
-        ax.set_ylim(CLOUD_ST[0] - 2, CLOUD_ST[1] + 2)
+        if any(c is not None for _, _, c in builds):
+            ax.set_ylim(CLOUD_ST[0] - 2, CLOUD_ST[1] + 2)
+        else:                       # no cloud drawn: keep the figure large
+            ys = 12 * np.log2(np.r_[lay["f_a"], lay["f_s"]] / F0)
+            ax.set_ylim(ys.min() - 3, ys.max() + 3)
         if col == 0:
             ax.set_ylabel("Semitones re 400 Hz")
         for sp in ("top", "right"):
@@ -435,15 +470,44 @@ def main(argv=None) -> int:
                    help="sound only this many partials, evenly spaced "
                         "across the series (0 = all)")
     p.add_argument("--drop-a", action="store_true",
-                   help="sound only the ten shifted copies")
+                   help="sound only the shifted copies")
+    p.add_argument("--redraw", action="store_true",
+                   help="redraw the lags every repetition: the unlearnable "
+                        "control, in which no token ever repeats")
+    p.add_argument("--series", action="store_true",
+                   help="one file per jitter range, same frozen pattern "
+                        "widened")
+    p.add_argument("--jitter-ranges", type=str, nargs="+",
+                   default=["0,0", "0,10", "0,20", "0,40", "0,80"],
+                   metavar="LO,HI",
+                   help="ms; the widths of the series")
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
 
     lay = layout(args.n_partials, args.df_st)
-    use = sounding(args.n_partials,
-                   args.n_sound or args.n_partials)
+    use = sounding(args.n_partials, args.n_sound or args.n_partials)
+    # Stretch the sounding channels' positions to span the range exactly, so
+    # a file called 0-40 really is 0-40: with a subset of the channels the raw
+    # draw covers only part of it, and the label would overstate the spread.
+    u = lay["u"][use]
+    lay["u"][use] = (u - u.min()) / max(float(np.ptp(u)), 1e-12)
     J = args.onset_jitter_ms
-    if args.drop_a:
+    fz = not args.redraw
+    if args.series:
+        # One pattern at several widths.  The onset stays on the beat and the
+        # lags stay frozen in every one of them: the only thing that moves
+        # across the series is how far apart the channels are pulled, so any
+        # difference between the files is that and nothing else.
+        rng_pairs = [tuple(float(v) for v in r.split(",")) for r in
+                     args.jitter_ranges]
+        variants = [(f"syl_frozen_j{lo:g}-{hi:g}",
+                     dict(keep_a=not args.drop_a, onset_jitter_ms=0.0,
+                          shift_ms=(lo, hi)),
+                     f"frozen, spread 0-{hi:g} ms" if lo == 0 else
+                     f"frozen, spread {lo:g}-{hi:g} ms")
+                    for lo, hi in rng_pairs]
+        stem = "syl_frozen_check"
+    elif args.drop_a:
         # Without A the coherent/scrambled pair is one stimulus: those two
         # differ only in whether A's partials are jittered, and A is gone.
         variants = [
@@ -467,7 +531,8 @@ def main(argv=None) -> int:
              "scrambled control, onset jittered"),
         ]
         stem = "syl_check"
-    built = [(nm, build(lay, args.shift_ms, use=use, **kw), ttl)
+    built = [(nm, build(lay, kw.pop("shift_ms", args.shift_ms), use=use,
+                        freeze=fz, **kw), ttl)
              for nm, kw, ttl in variants]
     n_fig = use.size * (1 if args.drop_a else 2)
 
@@ -483,9 +548,10 @@ def main(argv=None) -> int:
     cl = clouds[built[0][0]]
     lead = (f"{use.size} copies alone" if args.drop_a else
             f"{use.size} coherent partials + {use.size} copies")
-    print(f"{core.SR} Hz | {n_fig} figure channels: {lead}, "
-          f"lagging {args.shift_ms[0]:.0f}-{args.shift_ms[1]:.0f} ms at "
-          f"{args.df_st[0]}-{args.df_st[1]} st")
+    how = ("frozen: one pattern, repeated every token" if fz else
+           "REDRAWN every token: nothing repeats")
+    print(f"{core.SR} Hz | {n_fig} figure channels: {lead} at "
+          f"{args.df_st[0]}-{args.df_st[1]} st, {how}")
     print(f"          + {cl['freqs'].size} cloud channels "
           f"{cl['freqs'][0]:.0f}-{cl['freqs'][-1]:.0f} Hz "
           f"= {n_fig + cl['freqs'].size} in total\n")
@@ -525,12 +591,27 @@ def main(argv=None) -> int:
     need = int(round(cl['counts'].sum() / N_TOKENS))
     print(f"    ({need} cloud channels would equalise that; "
           f"--grid-st {70.0 / need:.2f} gets close)")
+    if len(built) > 1:
+        print("    per variant:")
+        for nm, b, _ in built:
+            T2 = b["x"].size
+            lo2, hi2 = core.samples(LEAD_MS), T2 - core.samples(TAIL_MS)
+            t2 = (concurrency(b["events"], T2)
+                  + concurrency(clouds[nm]["events"], T2,
+                                key=lambda e: e[1]))[lo2:hi2]
+            print(f"      {nm:22s} {t2.min()}-{t2.max()}  "
+                  f"mean {t2.mean():.2f} +- {t2.std():.2f}")
 
-    show = [(b, ttl, None) for _, b, ttl in built[:3]]
-    nm_c, b_c, ttl_c = built[min(2, len(built) - 1)]
-    show.append((b_c, f"{ttl_c}, with the cloud", clouds[nm_c]))
+    if args.series:
+        show = [(b, ttl, None) for _, b, ttl in built]
+    else:
+        show = [(b, ttl, None) for _, b, ttl in built[:3]]
+        nm_c, b_c, ttl_c = built[min(2, len(built) - 1)]
+        show.append((b_c, f"{ttl_c}, with the cloud", clouds[nm_c]))
     show_prof = (c_f[lo:hi], c_c[lo:hi])
-    print(f"\n  -> {figure(show, show_prof, stem=stem).name}")
+    kw = dict(span_ms=2 * PERIOD_MS + 120.0, panel_w=2.9) if args.series \
+        else {}
+    print(f"\n  -> {figure(show, show_prof, stem=stem, **kw).name}")
     return 0
 
 
