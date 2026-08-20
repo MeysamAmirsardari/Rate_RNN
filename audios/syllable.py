@@ -214,9 +214,6 @@ def figure(builds: list, stem: str = "syl_check") -> Path:
         ax.set_ylim(-3, 12 * np.log2(n) + 3)
         if col == 0:
             ax.set_ylabel("Semitones re 400 Hz")
-            ax.plot([], [], color=C_A, lw=4.2, label="A (10 partials)")
-            ax.plot([], [], color=C_S, lw=2.6, label="shifted copies")
-            ax.legend(loc="upper right", fontsize=8)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
 
