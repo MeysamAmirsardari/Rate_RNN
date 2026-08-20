@@ -172,3 +172,62 @@ Two limits the checks make visible rather than hide:
 - **A semitone at 40 ms is near the time-frequency limit.** 60 Hz of
   separation on a 40 ms tone cannot be cleanly resolved by any spectrogram,
   and that is the point of the 1-vs-9 contrast, not a defect of the plot.
+
+
+## 4. Complex-tone versions — `cx_*.mp3`
+
+```bash
+python -m audios.complex_set
+python -m audios.complex_set --gap-ms 20    # separate the two tones
+python -m audios.complex_set --cloud-db -6
+```
+
+Built after the pure-tone set turned out to be **unobservable**. Two separate
+reasons for that, and only one of them is about timbre.
+
+### Complexes instead of pure tones
+
+A pure tone carries frequency and little else. A harmonic complex carries a
+**pitch** — represented redundantly across every harmonic, robust to masking
+of any one of them — and harmonicity is itself a grouping cue, so a token
+arrives as an object rather than as a point on a frequency axis.
+
+Every complex takes its harmonics up to a **fixed 4 kHz ceiling** with 1/h
+amplitudes, so all of them occupy the same band and differ in periodicity, not
+brightness. A fixed harmonic *count* would make the higher-F0 tone audibly
+brighter and brightness would do the work instead of pitch. Each is
+RMS-normalised, so a complex with 20 harmonics is no louder than one with 4.
+
+F0 base is 400 Hz, not 1000: a 40 ms tone at 400 Hz holds 16 periods, enough
+for a solid pitch, where at 200 Hz it would hold 8 and the pitch of so short a
+tone starts to weaken.
+
+| | F0 | harmonics |
+|---|---|---|
+| A | 400.00 Hz | 10 |
+| B (df 1) | 423.79 Hz | 9 |
+| B (df 9) | 672.72 Hz | 5 |
+| C, D | 448.98, 475.68 Hz | 8, 8 |
+
+`cx_tones_demo.mp3` plays A six times, then B six times, then the sequence, so
+the tones can be heard before they are buried in anything.
+
+### The spacing is the other reason, and probably the bigger one
+
+The specified sequence puts A and B hard against each other and then 120 ms of
+silence: **0 ms between the two tones of a doublet, 160 ms between doublets**.
+Temporal proximity is among the strongest grouping cues there is, so that
+spacing *binds* A to B and separates one doublet from the next. It is a
+stimulus built to be heard as one stream of two-note events, and no frequency
+separation will readily split it, because splitting it means separating the
+two tones that are **closest together in time**.
+
+Stream segregation is normally shown with tones spaced **evenly** — A and B
+each every 200 ms, interleaved, so every tone is 100 ms from each neighbour
+and proximity favours neither grouping. `cx_abab_df01` and `cx_abab_df09` are
+that: same 5 Hz per tone type, same tones, only the spacing changed. At 1
+semitone it should gallop as one stream; at 9 it should split into two. That
+is the contrast the doublet version cannot easily show.
+
+`--gap-ms 20` is the intermediate step if you want to keep the doublet
+structure but stop the two tones fusing into one 80 ms event.

@@ -51,6 +51,42 @@ def tone(freq: float, dur_ms: float, ramp_ms: float = RAMP_MS) -> np.ndarray:
     return x * env
 
 
+def complex_tone(f0: float, dur_ms: float, ramp_ms: float = RAMP_MS,
+                 f_max: float = 4000.0, rolloff: float = 1.0) -> np.ndarray:
+    """A harmonic complex on ``f0``, gated like a pure tone.
+
+    Every harmonic up to ``f_max`` is present with amplitude ``1 / h**rolloff``
+    -- a sawtooth-like spectrum.  Taking the harmonics up to a *fixed ceiling*
+    rather than a fixed count is deliberate: every complex then occupies the
+    same spectral band whatever its F0, so the tones differ in periodicity and
+    not in brightness.  A fixed harmonic count would make the higher-F0 tone
+    audibly brighter, and brightness rather than pitch would be doing the work.
+
+    The result is RMS-normalised, because a complex with twenty harmonics is
+    otherwise louder than one with four, and level has to be the one thing
+    that does not vary across the set.
+    """
+    n = samples(dur_ms)
+    tt = np.arange(n) / SR
+    x = np.zeros(n)
+    h = 1
+    while h * f0 <= f_max:
+        x += np.sin(2.0 * np.pi * h * f0 * tt) / h ** rolloff
+        h += 1
+    x /= np.sqrt(np.mean(x ** 2))
+
+    r = samples(ramp_ms)
+    env = np.ones(n)
+    k = np.arange(r, dtype=np.float64)
+    rise = np.sin(0.5 * np.pi * (k + 0.5) / r) ** 2
+    env[:r], env[n - r:] = rise, rise[::-1]
+    return x * env
+
+
+def n_harmonics(f0: float, f_max: float = 4000.0) -> int:
+    return int(f_max // f0)
+
+
 def doublet(f1: float, f2: float, tone_ms: float, gap_ms: float) -> np.ndarray:
     """Two gated tones, the second beginning ``gap_ms`` after the first ends."""
     return np.concatenate([tone(f1, tone_ms),
