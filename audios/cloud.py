@@ -61,28 +61,39 @@ F_REF = 1000.0
 ST_LO, ST_HI = -12, 21       # 500 Hz to 3364 Hz, just under three octaves
 
 
-def channels(exclude_st: Sequence[float] = ()) -> np.ndarray:
-    """Semitone grid around the reference, minus the target semitones."""
-    grid = np.arange(ST_LO, ST_HI + 1, dtype=float)
-    keep = np.array([not any(abs(s - e) < 0.5 for e in exclude_st)
-                     for s in grid])
-    return F_REF * 2.0 ** (grid[keep] / 12.0)
+def channels(exclude_st: Sequence[float] = (), *, f_ref: float = F_REF,
+             st_lo: float = ST_LO, st_hi: float = ST_HI,
+             guard_st: float = 0.5,
+             exclude_hz: Sequence[float] = ()) -> np.ndarray:
+    """Semitone grid around the reference, minus everything near a target.
+
+    ``guard_st`` is how close a cloud channel may come to a target: nothing
+    within that many semitones survives.  It is a real design parameter, not
+    a rounding tolerance.  Too small and the cloud sits on top of the figure
+    and masks it; too large and the cloud is spectrally elsewhere, so
+    segregating the figure stops being a task.
+    """
+    ex = list(exclude_st) + [12.0 * np.log2(f / f_ref) for f in exclude_hz]
+    grid = np.arange(st_lo, st_hi + 1, dtype=float)
+    keep = np.array([not any(abs(s - e) < guard_st for e in ex) for s in grid])
+    return f_ref * 2.0 ** (grid[keep] / 12.0)
 
 
-def deal(n_slots: int, n_ch: int, rng: np.random.Generator) -> np.ndarray:
+def deal(n_slots: int, n_ch: int, rng: np.random.Generator,
+         n_voices: int = N_VOICES) -> np.ndarray:
     """Channel index for every (slot, voice).
 
     Dealt from a pack so the per-channel counts stay level, and swapped
     within the pack -- never redrawn -- when the adjacent-slot rule bites, so
     the counts survive the constraint exactly.
     """
-    out = np.empty((n_slots, N_VOICES), dtype=int)
+    out = np.empty((n_slots, n_voices), dtype=int)
     pack = rng.permutation(n_ch)
     i = 0
     prev: set = set()
     for s in range(n_slots):
         group: list[int] = []
-        for _ in range(N_VOICES):
+        for _ in range(n_voices):
             if i >= pack.size:
                 pack, i = rng.permutation(n_ch), 0
             j = i
@@ -99,38 +110,47 @@ def deal(n_slots: int, n_ch: int, rng: np.random.Generator) -> np.ndarray:
 
 
 def build(total_samples: int, exclude_st: Sequence[float] = (),
-          seed: int = 0) -> tuple:
-    """A cloud of ``total_samples``; returns the signal and its channel use."""
-    freqs = channels(exclude_st)
-    rng = np.random.default_rng(seed)
-    n_slots = int(np.ceil(total_samples / core.samples(SLOT_MS))) + 1
-    idx = deal(n_slots, freqs.size, rng)
+          seed: int = 0, *, tone_ms: float = TONE_MS,
+          slot_ms: float = SLOT_MS, n_voices: int = N_VOICES,
+          complex_tones: bool = False, **chan_kw) -> tuple:
+    """A cloud of ``total_samples``; returns the signal and its channel use.
 
-    pips = [core.tone(f, TONE_MS) for f in freqs]
-    slot = core.samples(SLOT_MS)
-    step = slot // N_VOICES
-    # room for the last slot's latest voice plus its whole tone
-    x = np.zeros(n_slots * slot + (N_VOICES - 1) * step + pips[0].size)
+    Concurrency is ``n_voices - 1`` and is exactly constant provided
+    ``tone_ms`` is ``(n_voices - 1) / n_voices`` of ``slot_ms``: each voice is
+    then silent for one slot-fraction and the silences interleave, so the
+    count never moves.  Density is set by ``n_voices``, not by leaving gaps.
+    """
+    freqs = channels(exclude_st, **chan_kw)
+    rng = np.random.default_rng(seed)
+    slot = core.samples(slot_ms)
+    step = slot // n_voices
+    n_slots = int(np.ceil(total_samples / slot)) + 1
+    idx = deal(n_slots, freqs.size, rng, n_voices)
+
+    make = core.complex_tone if complex_tones else core.tone
+    pips = [make(f, tone_ms) for f in freqs]
+    x = np.zeros(n_slots * slot + (n_voices - 1) * step + pips[0].size)
     for s in range(n_slots):
-        for v in range(N_VOICES):
+        for v in range(n_voices):
             o = s * slot + v * step
             p = pips[idx[s, v]]
             x[o:o + p.size] += p
     return x[:total_samples], freqs, idx
 
 
-def report(x: np.ndarray, freqs: np.ndarray, idx: np.ndarray) -> str:
+def report(x: np.ndarray, freqs: np.ndarray, idx: np.ndarray, *,
+           tone_ms: float = TONE_MS, slot_ms: float = SLOT_MS,
+           n_voices: int = N_VOICES) -> str:
     """Check the two uniformities on the rendered cloud, not on the plan."""
     counts = np.bincount(idx.ravel(), minlength=freqs.size)
-    edge = core.samples(SLOT_MS) * 2
-    env = core.envelope(x[edge:x.size - edge], win_ms=1.0)
+    edge = core.samples(slot_ms) * 2
 
     # how many tones sound at once: count voices whose tone covers each sample
-    slot, step = core.samples(SLOT_MS), core.samples(SLOT_MS) // N_VOICES
-    n_tone = core.samples(TONE_MS)
+    slot, step = core.samples(slot_ms), core.samples(slot_ms) // n_voices
+    n_tone = core.samples(tone_ms)
     cover = np.zeros(x.size + slot, dtype=int)
     for s in range(idx.shape[0]):
-        for v in range(N_VOICES):
+        for v in range(idx.shape[1]):
             o = s * slot + v * step
             cover[o:o + n_tone] += 1
     inner = cover[edge:x.size - edge]
@@ -138,6 +158,6 @@ def report(x: np.ndarray, freqs: np.ndarray, idx: np.ndarray) -> str:
     return (f"  cloud: {freqs.size} channels, {freqs[0]:.0f}-{freqs[-1]:.0f} Hz "
             f"(semitone grid), {idx.size} tones\n"
             f"         concurrency {inner.min()}-{inner.max()} "
-            f"(constant at {N_VOICES - 1} by construction); "
+            f"(constant at {n_voices - 1} by construction); "
             f"per-channel use {counts.min()}-{counts.max()} "
             f"(spread {counts.max() - counts.min()})")

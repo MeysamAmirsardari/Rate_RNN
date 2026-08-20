@@ -290,12 +290,38 @@ The scrambled files jitter A's own partials the same way, so nothing is
 coherent while the harmonic series and the spectrum stay identical. That is
 what says coherence rather than spectrum is doing the work.
 
+### The cloud
+
+Every version also comes as `*_cloud.mp3` — same figure, plus a background.
+
+**Not dense, and constant.** Three voices a third of a slot apart with tones
+two thirds of a slot long, so **exactly two cloud tones sound at every
+instant**, measured 2–2 with no fluctuation. Density is set by the number of
+voices, never by leaving gaps, because a fluctuating background envelope would
+be a cue in its own right.
+
+**Fifty channels**, 100–5702 Hz on a semitone grid running from two octaves
+below the fundamental to just above the tenth partial. With the twenty figure
+channels that is **seventy in total** — the seventy in the sketch. Per-channel
+use 12–13, spread of 1.
+
+**Nothing within a semitone of a figure channel.** The guard is a real design
+parameter, not a rounding tolerance: too small and the cloud sits on top of
+the figure and masks it, too large and the cloud is spectrally elsewhere so
+segregating the figure stops being a task.
+
+**Unpredictable**: the pack reshuffles every pass, so no cloud channel
+reliably follows any other. The figure is the only thing with a stable
+structure.
+
 ### Level
 
 Every channel at equal amplitude, the figure-ground convention, rather than a
 1/h roll-off. With a roll-off the tenth partial would be 20 dB below the first
 and the top half of the figure would contribute almost nothing to whether it
-fuses; here each of the twenty channels carries the same weight.
+fuses; here each of the twenty channels carries the same weight. `--cloud-db`
+moves the background if a gentler version is wanted.
 
-`syl_check.png` shows three of the four rasters, the per-channel frequency
-offsets, and the lag distribution against the tone length.
+`syl_check.png` shows three of the versions, the same coherent figure with the
+cloud drawn in grey, the per-channel frequency offsets, and the lag
+distribution against the tone length.

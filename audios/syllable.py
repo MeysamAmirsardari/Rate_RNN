@@ -72,11 +72,11 @@ from pathlib import Path
 import numpy as np
 
 if __package__:
-    from . import core
+    from . import cloud, core
 else:
     import sys
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-    from audios import core  # type: ignore
+    from audios import cloud, core  # type: ignore
 
 OUT_DIR = Path(__file__).resolve().parent
 
@@ -88,6 +88,17 @@ N_TOKENS = 30              # 12 s
 DF_ST = (0.5, 1.0)         # frequency offset of a copy, semitones
 SHIFT_MS = (10.0, 40.0)    # time offset of a copy: a LAG, always positive
 ONSET_JITTER_MS = 100.0    # displacement of the whole figure, when enabled
+
+#: The cloud.  Three voices a third of a slot apart with tones two thirds of a
+#: slot long, so **exactly two** sound at every instant -- present but not
+#: dense, and constant, so its envelope is never a cue.  The grid runs from
+#: two octaves below the fundamental to just above the tenth partial, and
+#: nothing within a semitone of any figure channel survives, which leaves
+#: fifty: with the twenty figure channels that is the seventy in the sketch.
+CLOUD_SLOT_MS = 60.0
+CLOUD_VOICES = 3
+CLOUD_ST = (-24.0, 46.0)
+CLOUD_GUARD_ST = 1.0
 LEAD_MS, TAIL_MS = 400.0, 600.0
 
 
@@ -137,6 +148,20 @@ def build(lay: dict, shift_ms, scramble_a: bool = False,
                 x[o:o + pip.size] += pip
                 ev.append((i, tag, o, t))
     return dict(x=x, events=ev, base=base, lay=lay)
+
+
+def make_cloud(total: int, lay: dict, seed: int = 5) -> dict:
+    """A cloud that never comes within a semitone of a figure channel."""
+    x, freqs, idx = cloud.build(
+        total, seed=seed, tone_ms=TONE_MS, slot_ms=CLOUD_SLOT_MS,
+        n_voices=CLOUD_VOICES, f_ref=F0, st_lo=CLOUD_ST[0],
+        st_hi=CLOUD_ST[1], guard_st=CLOUD_GUARD_ST,
+        exclude_hz=list(lay["f_a"]) + list(lay["f_s"]))
+    slot = core.samples(CLOUD_SLOT_MS)
+    step = slot // CLOUD_VOICES
+    ev = [(freqs[idx[s, v]], s * slot + v * step)
+          for s in range(idx.shape[0]) for v in range(CLOUD_VOICES)]
+    return dict(x=x, freqs=freqs, idx=idx, events=ev)
 
 
 def report(b: dict, name: str) -> str:
@@ -190,10 +215,17 @@ def figure(builds: list, stem: str = "syl_check") -> Path:
     fig = plt.figure(figsize=(4.6 * k + 2.6, 6.4), constrained_layout=True)
     gs = fig.add_gridspec(2, k + 1, width_ratios=[2.4] * k + [1.0])
 
-    for col, (bd, title) in enumerate(builds):
+    for col, (bd, title, cl) in enumerate(builds):
         ax = fig.add_subplot(gs[:, col])
         t0 = int(bd["base"][0]) - core.samples(150.0)
         t1 = t0 + span
+        if cl is not None:
+            for f, o in cl["events"]:
+                if t0 <= o < t1:
+                    y = 12 * np.log2(f / F0)
+                    ax.plot([(o - t0) / core.SR, (o - t0 + dur) / core.SR],
+                            [y, y], color="#2D3748", lw=2.0,
+                            solid_capstyle="butt", alpha=0.55, zorder=2)
         for i, tag, o, _tok in bd["events"]:
             if not (t0 <= o < t1):
                 continue
@@ -211,7 +243,7 @@ def figure(builds: list, stem: str = "syl_check") -> Path:
         ax.set_title(title, fontsize=10.5)
         ax.set_xlabel("Time (s)")
         ax.set_xlim(0, span / core.SR)
-        ax.set_ylim(-3, 12 * np.log2(n) + 3)
+        ax.set_ylim(CLOUD_ST[0] - 2, CLOUD_ST[1] + 2)
         if col == 0:
             ax.set_ylabel("Semitones re 400 Hz")
         for sp in ("top", "right"):
@@ -258,6 +290,7 @@ def main(argv=None) -> int:
     p.add_argument("--shift-ms", type=float, nargs=2, default=list(SHIFT_MS))
     p.add_argument("--onset-jitter-ms", type=float,
                    default=ONSET_JITTER_MS)
+    p.add_argument("--cloud-db", type=float, default=0.0)
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
 
@@ -276,21 +309,38 @@ def main(argv=None) -> int:
     built = [(nm, build(lay, args.shift_ms, **kw), ttl)
              for nm, kw, ttl in variants]
 
-    amp = 10 ** (core.PEAK_DBFS / 20) / max(
-        float(np.max(np.abs(b["x"]))) for _, b, _ in built)
-    print(f"{core.SR} Hz | {2 * args.n_partials} channels: "
+    gain = 10.0 ** (args.cloud_db / 20.0)
+    cl = make_cloud(max(b["x"].size for _, b, _ in built), lay)
+    print(f"{core.SR} Hz | {2 * args.n_partials} figure channels: "
           f"{args.n_partials} coherent partials + {args.n_partials} copies "
           f"lagging {args.shift_ms[0]:.0f}-{args.shift_ms[1]:.0f} ms at "
-          f"{args.df_st[0]}-{args.df_st[1]} st\n")
+          f"{args.df_st[0]}-{args.df_st[1]} st")
+    print(f"          + {cl['freqs'].size} cloud channels "
+          f"{cl['freqs'][0]:.0f}-{cl['freqs'][-1]:.0f} Hz "
+          f"= {2 * args.n_partials + cl['freqs'].size} in total\n")
 
-    for nm, b, _ in built:
+    mixes = [(nm, b["x"] + gain * cl["x"][:b["x"].size]) for nm, b, _ in built]
+    amp = 10 ** (core.PEAK_DBFS / 20) / max(
+        float(np.max(np.abs(b["x"]))) for _, b, _ in built)
+    amp_c = 10 ** (core.PEAK_DBFS / 20) / max(
+        float(np.max(np.abs(m))) for _, m in mixes)
+
+    for (nm, b, _), (_, m) in zip(built, mixes):
         b["x"] = b["x"] * amp
         core.render(OUT_DIR / nm, b["x"], args.keep_wav)
+        core.render(OUT_DIR / f"{nm}_cloud", m * amp_c, args.keep_wav)
         print(report(b, nm))
-        print(f"    -> {nm}.mp3\n")
+        print(f"    cloud {core.levels(m * amp_c)}")
+        print(f"    -> {nm}.mp3   {nm}_cloud.mp3\n")
 
-    show = [(b, ttl) for nm, b, ttl in built if nm != "syl_scrambled_jit"]
-    print(f"  -> {figure(show).name}")
+    print(cloud.report(cl["x"], cl["freqs"], cl["idx"], tone_ms=TONE_MS,
+                       slot_ms=CLOUD_SLOT_MS, n_voices=CLOUD_VOICES))
+
+    show = [(built[0][1], built[0][2], None),
+            (built[1][1], built[1][2], None),
+            (built[2][1], built[2][2], None),
+            (built[0][1], "coherent, with the cloud", cl)]
+    print(f"\n  -> {figure(show).name}")
     return 0
 
 
