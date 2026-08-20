@@ -237,7 +237,7 @@ structure but stop the two tones fusing into one 80 ms event.
 
 ```bash
 python -m audios.syllable
-python -m audios.syllable --df-st 0.5 1.0 --shift-ms 20 40
+python -m audios.syllable --shift-ms 10 40 --onset-jitter-ms 100
 ```
 
 Twenty channels, in two sets of ten. No cloud yet — these are meant to sit
@@ -247,34 +247,48 @@ construction from `audios.cloud` drops straight in when they do.
 **A — the figure.** Ten partials, harmonics 1–10 of 400 Hz (400 Hz–4 kHz).
 Every one starts at exactly the same instant, every repetition: **onset spread
 measured at 0.0 ms**. Simultaneous onset plus harmonicity is the strongest
-fusion cue there is, so the ten arrive as one object rather than ten tones —
-which is what makes it syllable-like.
+fusion cue there is, so the ten arrive as one object rather than ten tones.
 
-**S — ten shifted copies**, one per partial:
+**S — ten shifted copies**, one per partial, drawn on two different schedules:
 
 | | drawn | when |
 |---|---|---|
 | frequency | 0.5–1 semitone, random sign | **once per channel, then fixed** |
-| time | 20–40 ms, random sign | **afresh every repetition** |
+| time | **10–40 ms lag, always positive** | **afresh every repetition** |
 
-Measured: offsets 0.51–0.97 st, onset spread within a token 72.3 ms.
+Measured: offsets 0.51–0.97 st, lag 10–40 ms, spread within a token 24.3 ms.
 
 That split is the whole design. If the time shifts were fixed too, the ten
 copies would themselves be perfectly coherent — a second syllable offset from
 the first — and there would be two objects rather than one object and a mess.
-Redrawing them per repetition leaves A as the only thing in the stimulus with
-a stable temporal signature.
+Redrawing them per repetition leaves A as the only thing with a stable
+temporal signature.
 
-The shifts are 20–40 ms against a 40 ms tone, so **a copy always overlaps its
-partner in time**. It is never a separate event that could be grouped by
-proximity; it is a smeared version of the same event.
+The lag is a **lag**, never a lead: a copy always follows its partner. And it
+is shorter than the 40 ms tone over almost all of its range, so **a copy
+overlaps its partner** rather than being a separate event that proximity could
+group. At the top of the range, 40 ms, the two abut exactly.
 
-### The control
+### The four versions
 
-`syl_scrambled` jitters A's own partials the same way (measured spread
-72.2 ms, matching S). Nothing is coherent, so nothing should fuse. It is what
-says the coherence is doing the work rather than the harmonic series or the
-spectrum, which are identical between the two files.
+| file | A's partials | figure onset |
+|---|---|---|
+| `syl_coherent` | simultaneous (0.0 ms) | regular, 400.0 ± 0.0 ms |
+| `syl_coherent_jit` | simultaneous (0.0 ms) | **jittered, 403.2 ± 86.4 ms** |
+| `syl_scrambled` | jittered (23.8 ms) | regular |
+| `syl_scrambled_jit` | jittered (24.6 ms) | jittered |
+
+`syl_coherent_jit` is the interesting one: the whole figure is displaced by up
+to ±100 ms per repetition, so the token stops being periodic, while everything
+*inside* it keeps its relative timing — A stays exactly as coherent as before
+and only its arrival becomes unpredictable. It separates "the object is held
+together by simultaneous onset" from "the object is found because it arrives
+on the beat". The jitter is grid-tied, so the mean rate is unchanged (2.480 vs
+2.500 Hz, the difference being the endpoint draws).
+
+The scrambled files jitter A's own partials the same way, so nothing is
+coherent while the harmonic series and the spectrum stay identical. That is
+what says coherence rather than spectrum is doing the work.
 
 ### Level
 
@@ -283,6 +297,5 @@ Every channel at equal amplitude, the figure-ground convention, rather than a
 and the top half of the figure would contribute almost nothing to whether it
 fuses; here each of the twenty channels carries the same weight.
 
-`syl_check.png` shows both, plus the per-channel frequency offsets and the
-time-shift distribution — bimodal, with no mass near zero, because the
-magnitude is drawn from 20–40 ms.
+`syl_check.png` shows three of the four rasters, the per-channel frequency
+offsets, and the lag distribution against the tone length.

@@ -86,7 +86,8 @@ TONE_MS = 40.0
 PERIOD_MS = 400.0          # token repetition, 2.5 Hz
 N_TOKENS = 30              # 12 s
 DF_ST = (0.5, 1.0)         # frequency offset of a copy, semitones
-SHIFT_MS = (20.0, 40.0)    # time offset of a copy, magnitude
+SHIFT_MS = (10.0, 40.0)    # time offset of a copy: a LAG, always positive
+ONSET_JITTER_MS = 100.0    # displacement of the whole figure, when enabled
 LEAD_MS, TAIL_MS = 400.0, 600.0
 
 
@@ -101,20 +102,28 @@ def layout(n: int, df_st, seed: int = 0) -> dict:
 
 
 def build(lay: dict, shift_ms, scramble_a: bool = False,
-          seed: int = 1) -> dict:
-    """Place every token; A coherent unless ``scramble_a``."""
+          onset_jitter_ms: float = 0.0, seed: int = 1) -> dict:
+    """Place every token; A coherent unless ``scramble_a``.
+
+    ``onset_jitter_ms`` displaces the **whole figure** -- A and its copies
+    together -- so the token stops being periodic while everything inside it
+    keeps its relative timing.  A stays exactly as coherent as before; only
+    its arrival becomes unpredictable.  The jitter is tied to the grid, so the
+    mean repetition rate is unchanged.
+    """
     rng = np.random.default_rng(seed)
     n = lay["f_a"].size
     pips_a = [core.tone(f, TONE_MS) for f in lay["f_a"]]
     pips_s = [core.tone(f, TONE_MS) for f in lay["f_s"]]
 
-    base = core.samples(LEAD_MS) + np.arange(N_TOKENS) * core.samples(PERIOD_MS)
+    base = core.jittered_onsets(N_TOKENS, PERIOD_MS, onset_jitter_ms, rng,
+                                phase_ms=LEAD_MS + onset_jitter_ms)
     total = int(base[-1]) + core.samples(max(shift_ms) + TONE_MS + TAIL_MS)
     x = np.zeros(total)
 
     def draw(k):
-        mag = rng.uniform(shift_ms[0], shift_ms[1], size=k)
-        return np.round(mag * rng.choice([-1.0, 1.0], k)
+        """A lag, never a lead: the copy always follows its partner."""
+        return np.round(rng.uniform(shift_ms[0], shift_ms[1], size=k)
                         * core.SR / 1000.0).astype(int)
 
     ev = []      # (channel, set, onset sample, token index)
@@ -148,38 +157,44 @@ def report(b: dict, name: str) -> str:
         return float(np.mean(v)) if v else 0.0
 
     da = np.abs(lay["offset_st"])
+    lag = np.array([(o - b["base"][tok]) * ms
+                    for i, tag, o, tok in ev if tag == "S"])
+    iti = np.diff(b["base"]) * ms
     return (f"  {name}\n"
             f"    A: {lay['f_a'].size} partials, "
             f"{lay['f_a'][0]:.0f}-{lay['f_a'][-1]:.0f} Hz (harmonics of "
             f"{F0:.0f} Hz); onset spread within a token "
             f"{spread('A'):.1f} ms\n"
-            f"    S: offsets {da.min():.2f}-{da.max():.2f} st "
-            f"({np.mean(lay['f_s'] - lay['f_a']):+.0f} Hz mean), "
-            f"onset spread within a token {spread('S'):.1f} ms\n"
-            f"    {N_TOKENS} tokens every {PERIOD_MS:.0f} ms; "
-            f"{core.levels(b['x'])}")
+            f"    S: offsets {da.min():.2f}-{da.max():.2f} st; lag "
+            f"{lag.min():.0f}-{lag.max():.0f} ms (all positive), "
+            f"spread within a token {spread('S'):.1f} ms\n"
+            f"    {N_TOKENS} tokens, interval {iti.mean():.1f} +- "
+            f"{iti.std():.1f} ms (range {iti.min():.0f}-{iti.max():.0f}) "
+            f"-> {1000 / iti.mean():.3f} Hz\n"
+            f"    {core.levels(b['x'])}")
 
 
-def figure(coh: dict, scr: dict, stem: str = "syl_check") -> Path:
+def figure(builds: list, stem: str = "syl_check") -> Path:
+    """One raster per version, plus the two shift distributions."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    lay = coh["lay"]
+    lay = builds[0][0]["lay"]
     n = lay["f_a"].size
     C_A, C_S = "#7C102A", "#2166AC"
-    t0, t1 = core.samples(LEAD_MS) - core.samples(120.0), \
-        core.samples(LEAD_MS) + core.samples(4 * PERIOD_MS)
+    span = core.samples(4 * PERIOD_MS + 200.0)
     dur = core.samples(TONE_MS)
+    k = len(builds)
 
-    fig = plt.figure(figsize=(12.6, 6.4), constrained_layout=True)
-    gs = fig.add_gridspec(2, 3, width_ratios=[2.5, 2.5, 1.0])
+    fig = plt.figure(figsize=(4.6 * k + 2.6, 6.4), constrained_layout=True)
+    gs = fig.add_gridspec(2, k + 1, width_ratios=[2.4] * k + [1.0])
 
-    for col, (b, title) in enumerate(
-            ((coh, "coherent: A's partials always simultaneous"),
-             (scr, "scrambled control: A jittered too"))):
+    for col, (bd, title) in enumerate(builds):
         ax = fig.add_subplot(gs[:, col])
-        for i, tag, o, _tok in b["events"]:
+        t0 = int(bd["base"][0]) - core.samples(150.0)
+        t1 = t0 + span
+        for i, tag, o, _tok in bd["events"]:
             if not (t0 <= o < t1):
                 continue
             f = lay["f_a"][i] if tag == "A" else lay["f_s"][i]
@@ -189,13 +204,13 @@ def figure(coh: dict, scr: dict, stem: str = "syl_check") -> Path:
                     lw=4.2 if tag == "A" else 2.6,
                     solid_capstyle="butt", alpha=0.95 if tag == "A" else 0.75,
                     zorder=4 if tag == "A" else 3)
-        for bb in b["base"]:
+        for bb in bd["base"]:
             if t0 <= bb < t1:
                 ax.axvline((bb - t0) / core.SR, color="#999", lw=0.6,
                            ls=(0, (3, 3)), zorder=1)
-        ax.set_title(title)
+        ax.set_title(title, fontsize=10.5)
         ax.set_xlabel("Time (s)")
-        ax.set_xlim(0, (t1 - t0) / core.SR)
+        ax.set_xlim(0, span / core.SR)
         ax.set_ylim(-3, 12 * np.log2(n) + 3)
         if col == 0:
             ax.set_ylabel("Semitones re 400 Hz")
@@ -205,7 +220,7 @@ def figure(coh: dict, scr: dict, stem: str = "syl_check") -> Path:
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
 
-    ax = fig.add_subplot(gs[0, 2])
+    ax = fig.add_subplot(gs[0, k])
     ax.barh(np.arange(n) + 1, lay["offset_st"],
             color=[C_S if v > 0 else "#6699cc" for v in lay["offset_st"]])
     ax.axvline(0, color="#333", lw=0.7)
@@ -217,12 +232,17 @@ def figure(coh: dict, scr: dict, stem: str = "syl_check") -> Path:
     for sp in ("top", "right"):
         ax.spines[sp].set_visible(False)
 
-    ax = fig.add_subplot(gs[1, 2])
+    ax = fig.add_subplot(gs[1, k])
     ms = 1000.0 / core.SR
-    d = [(o - coh["base"][tok]) * ms
-         for i, tag, o, tok in coh["events"] if tag == "S"]
-    ax.hist(d, bins=np.arange(-45, 46, 2.5), color=C_S)
-    ax.set_xlabel("Time shift (ms)")
+    bd = builds[0][0]
+    lag = [(o - bd["base"][tok]) * ms
+           for i, tag, o, tok in bd["events"] if tag == "S"]
+    ax.hist(lag, bins=np.arange(0, 46, 2.0), color=C_S)
+    ax.axvline(TONE_MS, color="#333", lw=0.8, ls="--")
+    ax.annotate("tone length", xy=(TONE_MS, ax.get_ylim()[1]),
+                xytext=(-3, -4), textcoords="offset points", ha="right",
+                va="top", fontsize=7, color="#333")
+    ax.set_xlabel("Copy lag (ms)")
     ax.set_ylabel("Tones")
     ax.set_title("Time shift", fontsize=10)
     for sp in ("top", "right"):
@@ -239,26 +259,41 @@ def main(argv=None) -> int:
     p.add_argument("--n-partials", type=int, default=N_PARTIALS)
     p.add_argument("--df-st", type=float, nargs=2, default=list(DF_ST))
     p.add_argument("--shift-ms", type=float, nargs=2, default=list(SHIFT_MS))
+    p.add_argument("--onset-jitter-ms", type=float,
+                   default=ONSET_JITTER_MS)
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
 
     lay = layout(args.n_partials, args.df_st)
-    coh = build(lay, args.shift_ms, scramble_a=False)
-    scr = build(lay, args.shift_ms, scramble_a=True)
+    J = args.onset_jitter_ms
+    variants = [
+        ("syl_coherent", dict(scramble_a=False, onset_jitter_ms=0.0),
+         "coherent, figure onset regular"),
+        ("syl_coherent_jit", dict(scramble_a=False, onset_jitter_ms=J),
+         f"coherent, figure onset jittered +-{J:.0f} ms"),
+        ("syl_scrambled", dict(scramble_a=True, onset_jitter_ms=0.0),
+         "scrambled control, onset regular"),
+        ("syl_scrambled_jit", dict(scramble_a=True, onset_jitter_ms=J),
+         "scrambled control, onset jittered"),
+    ]
+    built = [(nm, build(lay, args.shift_ms, **kw), ttl)
+             for nm, kw, ttl in variants]
 
     amp = 10 ** (core.PEAK_DBFS / 20) / max(
-        float(np.max(np.abs(b["x"]))) for b in (coh, scr))
+        float(np.max(np.abs(b["x"]))) for _, b, _ in built)
     print(f"{core.SR} Hz | {2 * args.n_partials} channels: "
           f"{args.n_partials} coherent partials + {args.n_partials} copies "
-          f"shifted {args.df_st[0]}-{args.df_st[1]} st and "
-          f"{args.shift_ms[0]:.0f}-{args.shift_ms[1]:.0f} ms\n")
+          f"lagging {args.shift_ms[0]:.0f}-{args.shift_ms[1]:.0f} ms at "
+          f"{args.df_st[0]}-{args.df_st[1]} st\n")
 
-    for b, nm in ((coh, "syl_coherent"), (scr, "syl_scrambled")):
+    for nm, b, _ in built:
         b["x"] = b["x"] * amp
         core.render(OUT_DIR / nm, b["x"], args.keep_wav)
         print(report(b, nm))
         print(f"    -> {nm}.mp3\n")
-    print(f"  -> {figure(coh, scr).name}")
+
+    show = [(b, ttl) for nm, b, ttl in built if nm != "syl_scrambled_jit"]
+    print(f"  -> {figure(show).name}")
     return 0
 
 
