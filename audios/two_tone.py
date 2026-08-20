@@ -98,7 +98,7 @@ def build(df_semitones: float, jitter_ms: float = JITTER_MS,
     on = core.jittered_onsets(N_PAIRS, period, jitter_ms, rng,
                               phase_ms=LEAD_MS)
     total = int(on[-1]) + ev.size + core.samples(TAIL_MS)
-    return core.scale(core.place(on, ev, total)), f_b, on
+    return core.place(on, ev, total), f_b, on
 
 
 def report(df: float, x: np.ndarray, f_b: float, on: np.ndarray) -> str:
@@ -131,6 +131,7 @@ def main(argv=None) -> int:
 
     for df in args.df:
         x, f_b, on = build(df, args.jitter_ms)
+        x = core.scale(x)
         mp3 = core.render(OUT_DIR / f"ab_df{int(round(df)):02d}", x,
                           args.keep_wav)
         print(report(df, x, f_b, on))

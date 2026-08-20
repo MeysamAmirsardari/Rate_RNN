@@ -88,6 +88,74 @@ whether that flips back and forth, which is what bistable streaming does. The
 control is `ab_df01` — the same 1-semitone doublet alone, with nothing to
 segregate from. `--phase-ms 0` builds the coherent version, which should fuse.
 
+## 3. The same three, in an unpredictable cloud
+
+    ab_df01_cloud.mp3    ab_df09_cloud.mp3    ab_cd_incoherent_cloud.mp3
+
+```bash
+python -m audios.with_cloud                # all three
+python -m audios.with_cloud --cloud-db -6  # a gentler background
+```
+
+The targets are untouched — same frequencies, same jittered onsets, same
+gating — so each cloud file pairs exactly with its clean counterpart and the
+cloud is the only difference.
+
+### Uniform in time
+
+The cloud has to be equally dense at every instant, or its envelope becomes a
+cue and a target could be found by where the background thins out. Five
+voices staggered by a fifth of the slot, each tone lasting four fifths of it:
+
+    slot 50 ms, voices at 0 10 20 30 40 ms, tone 40 ms  →  4 sounding, always
+
+Measured on every file: concurrency **4–4**, no fluctuation at all.
+
+### Uniform in frequency
+
+Every channel must be used equally often, or the rare ones become salient and
+the common ones a drone. Channels are dealt from a pack reshuffled only when
+exhausted, so counts are level to within one pass. Measured: **32 channels
+(30 for the two-stream file), 500–3364 Hz on a semitone grid, per-channel use
+spread of 1** (40–41 uses, or 44–45).
+
+### Unpredictable
+
+The pack is reshuffled every pass, so no channel reliably follows any other —
+there are no recurring pairs anywhere in the cloud. The targets are the only
+thing in the file with a repeating temporal structure, which is the point.
+
+### What the cloud is not allowed to do
+
+**Never sound a target frequency.** The target semitones are removed from the
+grid, so a target tone is never in doubt as to whether it belongs to the
+figure. If the cloud could sound the same frequency, "is that the target"
+would become a question about frequency instead of about timing.
+
+**Never repeat a channel in adjacent slots.** The voices are a fifth of a slot
+apart, so a channel used twice nearby would run into itself and sound as one
+long tone — a duration cue the cloud is not supposed to have.
+
+### Level
+
+Cloud tones sit at the **same level as target tones** by default, the
+figure-ground convention, which is what keeps the task about temporal
+structure rather than loudness. At 0 dB the target is one of five concurrent
+tones and is genuinely hard to hold on to; `--cloud-db -6` gives a gentler
+version.
+
+The three cloud files share one scale, as the three clean files share another.
+Within each set a tone is at the same SPL. The two sets **cannot** share one:
+a cloud file has six tones sounding where a clean file has one, so matching
+per-tone level across both would either clip the cloud files or leave the
+clean ones needlessly quiet. A tone is at −17.7 dBFS in the cloud set and
+−9.0 dBFS in the clean set — on the record rather than implied.
+
+`with_cloud_check.png` draws every tone as a dash, cloud dark and targets
+coloured. It is drawn from the placements, not from the mixture, because no
+spectrogram can separate tones a semitone apart at 40 ms — true of the sound,
+and exactly why the picture has to come from the score.
+
 ## Checks
 
 The timing in both READMEs is measured back off the rendered signal, not taken

@@ -105,7 +105,7 @@ def build(jitter_ms: float = JITTER_MS, phase_ms: float = PHASE_MS,
     total = int(max(on_ab[-1], on_cd[-1])) + ab.size + core.samples(TAIL_MS)
     x_ab = core.place(on_ab, ab, total)
     x_cd = core.place(on_cd, cd, total)
-    return dict(x=core.scale(x_ab + x_cd), ab=x_ab, cd=x_cd,
+    return dict(x=x_ab + x_cd, ab=x_ab, cd=x_cd,
                 on_ab=on_ab, on_cd=on_cd, freqs=(fa, fb, fc, fd))
 
 
@@ -198,6 +198,7 @@ def main(argv=None) -> int:
           f"{args.phase_ms:.0f} ms | jitter +-{args.jitter_ms:.0f} ms\n")
 
     b = build(args.jitter_ms, args.phase_ms)
+    b["x"] = core.scale(b["x"])
     name = "ab_cd_incoherent" if args.phase_ms else "ab_cd_coherent"
     mp3 = core.render(OUT_DIR / name, b["x"], args.keep_wav)
     print(report(b))
