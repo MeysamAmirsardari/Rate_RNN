@@ -115,7 +115,8 @@ def layout(n: int, df_st, seed: int = 0) -> dict:
 
 
 def build(lay: dict, shift_ms, scramble_a: bool = False,
-          onset_jitter_ms: float = 0.0, seed: int = 1) -> dict:
+          onset_jitter_ms: float = 0.0, seed: int = 1,
+          keep_a: bool = True) -> dict:
     """Place every token; A coherent unless ``scramble_a``.
 
     ``onset_jitter_ms`` displaces the **whole figure** -- A and its copies
@@ -123,6 +124,13 @@ def build(lay: dict, shift_ms, scramble_a: bool = False,
     keeps its relative timing.  A stays exactly as coherent as before; only
     its arrival becomes unpredictable.  The jitter is tied to the grid, so the
     mean repetition rate is unchanged.
+
+    ``keep_a=False`` drops the coherent set and sounds only the ten copies.
+    Nothing then has a stable temporal signature at all: each channel keeps
+    its fixed frequency but is redrawn in time on every repetition, so the
+    token is a smear that never repeats itself.  The coherent/scrambled
+    contrast goes with A -- that pair differs *only* in A -- and what is left
+    is whether the onset of the smear is regular or jittered.
     """
     rng = np.random.default_rng(seed)
     n = lay["f_a"].size
@@ -143,9 +151,11 @@ def build(lay: dict, shift_ms, scramble_a: bool = False,
     for t, b in enumerate(base):
         d_a = draw(n) if scramble_a else np.zeros(n, dtype=int)
         d_s = draw(n)
+        sets = ((d_a, pips_a, "A"), (d_s, pips_s, "S")) if keep_a \
+            else ((d_s, pips_s, "S"),)
         for i in range(n):
-            for d, pip, tag in ((d_a[i], pips_a[i], "A"),
-                                (d_s[i], pips_s[i], "S")):
+            for dd, pips, tag in sets:
+                d, pip = dd[i], pips[i]
                 o = int(b) + int(d)
                 x[o:o + pip.size] += pip
                 ev.append((i, tag, o, t))
@@ -270,15 +280,18 @@ def report(b: dict, name: str) -> str:
              if tg == tag and len(o) > 1]
         return float(np.mean(v)) if v else 0.0
 
+    has_a = any(tag == "A" for _, tag, _, _ in ev)
+    a_line = (f"    A: {lay['f_a'].size} partials, "
+              f"{lay['f_a'][0]:.0f}-{lay['f_a'][-1]:.0f} Hz (harmonics of "
+              f"{F0:.0f} Hz); onset spread within a token "
+              f"{spread('A'):.1f} ms\n") if has_a else \
+        f"    A: dropped -- the coherent set does not sound\n"
+
     da = np.abs(lay["offset_st"])
     lag = np.array([(o - b["base"][tok]) * ms
                     for i, tag, o, tok in ev if tag == "S"])
     iti = np.diff(b["base"]) * ms
-    return (f"  {name}\n"
-            f"    A: {lay['f_a'].size} partials, "
-            f"{lay['f_a'][0]:.0f}-{lay['f_a'][-1]:.0f} Hz (harmonics of "
-            f"{F0:.0f} Hz); onset spread within a token "
-            f"{spread('A'):.1f} ms\n"
+    return (f"  {name}\n" + a_line +
             f"    S: offsets {da.min():.2f}-{da.max():.2f} st; lag "
             f"{lag.min():.0f}-{lag.max():.0f} ms (all positive), "
             f"spread within a token {spread('S'):.1f} ms\n"
@@ -401,23 +414,40 @@ def main(argv=None) -> int:
                    default=ONSET_JITTER_MS)
     p.add_argument("--cloud-db", type=float, default=0.0)
     p.add_argument("--grid-st", type=float, default=CLOUD_GRID_ST)
+    p.add_argument("--drop-a", action="store_true",
+                   help="sound only the ten shifted copies")
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
 
     lay = layout(args.n_partials, args.df_st)
     J = args.onset_jitter_ms
-    variants = [
-        ("syl_coherent", dict(scramble_a=False, onset_jitter_ms=0.0),
-         "coherent, figure onset regular"),
-        ("syl_coherent_jit", dict(scramble_a=False, onset_jitter_ms=J),
-         f"coherent, figure onset jittered +-{J:.0f} ms"),
-        ("syl_scrambled", dict(scramble_a=True, onset_jitter_ms=0.0),
-         "scrambled control, onset regular"),
-        ("syl_scrambled_jit", dict(scramble_a=True, onset_jitter_ms=J),
-         "scrambled control, onset jittered"),
-    ]
+    if args.drop_a:
+        # Without A the coherent/scrambled pair is one stimulus: those two
+        # differ only in whether A's partials are jittered, and A is gone.
+        variants = [
+            ("syl_copies", dict(onset_jitter_ms=0.0),
+             "copies only, onset regular"),
+            ("syl_copies_jit", dict(onset_jitter_ms=J),
+             f"copies only, onset jittered +-{J:.0f} ms"),
+        ]
+        variants = [(nm, dict(keep_a=False, **kw), ttl)
+                    for nm, kw, ttl in variants]
+        stem = "syl_copies_check"
+    else:
+        variants = [
+            ("syl_coherent", dict(scramble_a=False, onset_jitter_ms=0.0),
+             "coherent, figure onset regular"),
+            ("syl_coherent_jit", dict(scramble_a=False, onset_jitter_ms=J),
+             f"coherent, figure onset jittered +-{J:.0f} ms"),
+            ("syl_scrambled", dict(scramble_a=True, onset_jitter_ms=0.0),
+             "scrambled control, onset regular"),
+            ("syl_scrambled_jit", dict(scramble_a=True, onset_jitter_ms=J),
+             "scrambled control, onset jittered"),
+        ]
+        stem = "syl_check"
     built = [(nm, build(lay, args.shift_ms, **kw), ttl)
              for nm, kw, ttl in variants]
+    n_fig = args.n_partials * (1 if args.drop_a else 2)
 
     gain = 10.0 ** (args.cloud_db / 20.0)
     # One cloud per variant, scheduled against that variant's own figure --
@@ -429,13 +459,14 @@ def main(argv=None) -> int:
                              n_total=peak, grid_st=args.grid_st)
               for nm, b, _ in built}
     cl = clouds[built[0][0]]
-    print(f"{core.SR} Hz | {2 * args.n_partials} figure channels: "
-          f"{args.n_partials} coherent partials + {args.n_partials} copies "
+    lead = (f"{args.n_partials} copies alone" if args.drop_a else
+            f"{args.n_partials} coherent partials + {args.n_partials} copies")
+    print(f"{core.SR} Hz | {n_fig} figure channels: {lead}, "
           f"lagging {args.shift_ms[0]:.0f}-{args.shift_ms[1]:.0f} ms at "
           f"{args.df_st[0]}-{args.df_st[1]} st")
     print(f"          + {cl['freqs'].size} cloud channels "
           f"{cl['freqs'][0]:.0f}-{cl['freqs'][-1]:.0f} Hz "
-          f"= {2 * args.n_partials + cl['freqs'].size} in total\n")
+          f"= {n_fig + cl['freqs'].size} in total\n")
 
     mixes = [(nm, b["x"] + gain * clouds[nm]["x"][:b["x"].size])
              for nm, b, _ in built]
@@ -458,11 +489,11 @@ def main(argv=None) -> int:
     c_f = concurrency(b0["events"], T)
     c_c = concurrency(cl["events"], T, key=lambda e: e[1])
     tot = (c_f + c_c)[lo:hi]
-    fig_use = 2 * N_TOKENS // 2       # each figure channel: one tone per token
     print(f"  uniformity, measured over {(hi - lo) / core.SR:.1f} s")
     print(f"    total concurrency  {tot.min()}-{tot.max()}, "
           f"mean {tot.mean():.2f} +- {tot.std():.2f}; below "
-          f"{peak - 2} for {np.mean(tot < peak - 2) * 100:.1f}% of the time")
+          f"{peak - 2} for {np.mean(tot < peak - 2) * 100:.1f}% of the time, "
+          f"below {peak // 2} for {np.mean(tot < peak // 2) * 100:.2f}%")
     print(f"    figure alone would be 0-{c_f.max()} "
           f"(silent {np.mean(c_f[lo:hi] == 0) * 100:.0f}% of the time)")
     print(f"    cloud {cl['freqs'].size} channels "
@@ -473,12 +504,11 @@ def main(argv=None) -> int:
     print(f"    ({need} cloud channels would equalise that; "
           f"--grid-st {70.0 / need:.2f} gets close)")
 
-    show = [(built[0][1], built[0][2], None),
-            (built[1][1], built[1][2], None),
-            (built[2][1], built[2][2], None),
-            (built[0][1], "coherent, with the cloud", cl)]
+    show = [(b, ttl, None) for _, b, ttl in built[:3]]
+    nm_c, b_c, ttl_c = built[min(2, len(built) - 1)]
+    show.append((b_c, f"{ttl_c}, with the cloud", clouds[nm_c]))
     show_prof = (c_f[lo:hi], c_c[lo:hi])
-    print(f"\n  -> {figure(show, show_prof).name}")
+    print(f"\n  -> {figure(show, show_prof, stem=stem).name}")
     return 0
 
 

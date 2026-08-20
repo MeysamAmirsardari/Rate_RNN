@@ -345,3 +345,28 @@ moves the background if a gentler version is wanted.
 `syl_check.png` shows three of the versions, the same coherent figure with the
 cloud drawn in grey, the per-channel frequency offsets, and the concurrency
 profile — figure in red, cloud in grey, filling to a flat ceiling.
+
+### Copies only (`--drop-a`)
+
+    syl_copies.mp3          the ten shifted copies, token onset regular
+    syl_copies_jit.mp3      the same, whole-token onset jittered +-100 ms
+    syl_copies_*_cloud.mp3  each inside its own scheduled cloud
+    syl_copies_check.png
+
+The coherent set removed; only its ten near-copies sound.  Each keeps a fixed
+frequency offset and is redrawn in time on every repetition, so nothing in the
+stimulus has a stable temporal signature -- the token is a smear that never
+repeats itself.
+
+The coherent/scrambled pair does **not** survive this: those two differ only in
+whether A's partials are jittered, and A is gone.  What is left to vary is
+whether the smear arrives on the beat, hence the two files.
+
+Ten channels instead of twenty, so the cloud's ceiling drops from twenty to
+ten.  The cloud still avoids A's frequencies even though they no longer sound,
+which keeps the available spectrum identical to the twenty-channel version at
+the cost of a total of sixty channels rather than seventy.
+
+One 10.8 ms dip in 11.7 s, at the first token: a 40 ms cloud tone cannot fit a
+10 ms gap without crossing the ceiling.  Intrinsic, and the same limit as the
+shallow pre-burst dips above.
