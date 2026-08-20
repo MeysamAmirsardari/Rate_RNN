@@ -367,6 +367,14 @@ ten.  The cloud still avoids A's frequencies even though they no longer sound,
 which keeps the available spectrum identical to the twenty-channel version at
 the cost of a total of sixty channels rather than seventy.
 
+`--n-sound k` thins the figure to k of the partials, chosen evenly across the
+harmonic series so the 400 Hz to 4 kHz span is preserved -- a truncated series
+of the same size would sit entirely below 2 kHz and change the spectrum as well
+as the channel count.  At `--n-sound 5` the frequency imbalance essentially
+goes away: 26-28 tones per cloud channel against 30 per figure channel, where
+ten figure channels needed 53-57.  A smaller figure needs a smaller cloud to
+hide it, and fifty channels is then close to enough.
+
 One 10.8 ms dip in 11.7 s, at the first token: a 40 ms cloud tone cannot fit a
 10 ms gap without crossing the ceiling.  Intrinsic, and the same limit as the
 shallow pre-burst dips above.

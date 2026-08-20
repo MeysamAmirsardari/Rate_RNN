@@ -114,9 +114,16 @@ def layout(n: int, df_st, seed: int = 0) -> dict:
                 harm=harm)
 
 
+def sounding(n: int, k: int) -> np.ndarray:
+    """``k`` partials of ``n``, evenly spaced, always including 1 and n."""
+    if k >= n:
+        return np.arange(n)
+    return np.unique(np.round(np.linspace(0, n - 1, k)).astype(int))
+
+
 def build(lay: dict, shift_ms, scramble_a: bool = False,
           onset_jitter_ms: float = 0.0, seed: int = 1,
-          keep_a: bool = True) -> dict:
+          keep_a: bool = True, use=None) -> dict:
     """Place every token; A coherent unless ``scramble_a``.
 
     ``onset_jitter_ms`` displaces the **whole figure** -- A and its copies
@@ -131,6 +138,11 @@ def build(lay: dict, shift_ms, scramble_a: bool = False,
     token is a smear that never repeats itself.  The coherent/scrambled
     contrast goes with A -- that pair differs *only* in A -- and what is left
     is whether the onset of the smear is regular or jittered.
+
+    ``use`` restricts which partials sound, as an index array.  Thinning the
+    figure this way keeps the harmonic series spread over its full 400 Hz to
+    4 kHz -- a truncated series of the same size would put every channel below
+    2 kHz and change the spectrum as well as the channel count.
     """
     rng = np.random.default_rng(seed)
     n = lay["f_a"].size
@@ -153,7 +165,7 @@ def build(lay: dict, shift_ms, scramble_a: bool = False,
         d_s = draw(n)
         sets = ((d_a, pips_a, "A"), (d_s, pips_s, "S")) if keep_a \
             else ((d_s, pips_s, "S"),)
-        for i in range(n):
+        for i in (range(n) if use is None else use):
             for dd, pips, tag in sets:
                 d, pip = dd[i], pips[i]
                 o = int(b) + int(d)
@@ -281,13 +293,16 @@ def report(b: dict, name: str) -> str:
         return float(np.mean(v)) if v else 0.0
 
     has_a = any(tag == "A" for _, tag, _, _ in ev)
-    a_line = (f"    A: {lay['f_a'].size} partials, "
-              f"{lay['f_a'][0]:.0f}-{lay['f_a'][-1]:.0f} Hz (harmonics of "
+    u = np.array(sorted({e[0] for e in ev}))
+    a_line = (f"    A: {u.size} partials, "
+              f"{lay['f_a'][u[0]]:.0f}-{lay['f_a'][u[-1]]:.0f} Hz "
+              f"(harmonics {int(lay['harm'][u[0]])}-"
+              f"{int(lay['harm'][u[-1]])} of "
               f"{F0:.0f} Hz); onset spread within a token "
               f"{spread('A'):.1f} ms\n") if has_a else \
         f"    A: dropped -- the coherent set does not sound\n"
 
-    da = np.abs(lay["offset_st"])
+    da = np.abs(lay["offset_st"][u])
     lag = np.array([(o - b["base"][tok]) * ms
                     for i, tag, o, tok in ev if tag == "S"])
     iti = np.diff(b["base"]) * ms
@@ -352,8 +367,10 @@ def figure(builds: list, prof=None, stem: str = "syl_check") -> Path:
             ax.spines[sp].set_visible(False)
 
     ax = fig.add_subplot(gs[0, k])
-    ax.barh(np.arange(n) + 1, lay["offset_st"],
-            color=[C_S if v > 0 else "#6699cc" for v in lay["offset_st"]])
+    use = np.array(sorted({e[0] for e in builds[0][0]["events"]}))
+    ax.barh(use + 1, lay["offset_st"][use],
+            color=[C_S if v > 0 else "#6699cc" for v in lay["offset_st"][use]])
+    ax.set_ylim(0.2, n + 0.8)
     ax.axvline(0, color="#333", lw=0.7)
     for s in (-1, -0.5, 0.5, 1):
         ax.axvline(s, color="#999", lw=0.5, ls=":")
@@ -414,12 +431,17 @@ def main(argv=None) -> int:
                    default=ONSET_JITTER_MS)
     p.add_argument("--cloud-db", type=float, default=0.0)
     p.add_argument("--grid-st", type=float, default=CLOUD_GRID_ST)
+    p.add_argument("--n-sound", type=int, default=0,
+                   help="sound only this many partials, evenly spaced "
+                        "across the series (0 = all)")
     p.add_argument("--drop-a", action="store_true",
                    help="sound only the ten shifted copies")
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
 
     lay = layout(args.n_partials, args.df_st)
+    use = sounding(args.n_partials,
+                   args.n_sound or args.n_partials)
     J = args.onset_jitter_ms
     if args.drop_a:
         # Without A the coherent/scrambled pair is one stimulus: those two
@@ -445,9 +467,9 @@ def main(argv=None) -> int:
              "scrambled control, onset jittered"),
         ]
         stem = "syl_check"
-    built = [(nm, build(lay, args.shift_ms, **kw), ttl)
+    built = [(nm, build(lay, args.shift_ms, use=use, **kw), ttl)
              for nm, kw, ttl in variants]
-    n_fig = args.n_partials * (1 if args.drop_a else 2)
+    n_fig = use.size * (1 if args.drop_a else 2)
 
     gain = 10.0 ** (args.cloud_db / 20.0)
     # One cloud per variant, scheduled against that variant's own figure --
@@ -459,8 +481,8 @@ def main(argv=None) -> int:
                              n_total=peak, grid_st=args.grid_st)
               for nm, b, _ in built}
     cl = clouds[built[0][0]]
-    lead = (f"{args.n_partials} copies alone" if args.drop_a else
-            f"{args.n_partials} coherent partials + {args.n_partials} copies")
+    lead = (f"{use.size} copies alone" if args.drop_a else
+            f"{use.size} coherent partials + {use.size} copies")
     print(f"{core.SR} Hz | {n_fig} figure channels: {lead}, "
           f"lagging {args.shift_ms[0]:.0f}-{args.shift_ms[1]:.0f} ms at "
           f"{args.df_st[0]}-{args.df_st[1]} st")
