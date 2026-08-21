@@ -111,16 +111,17 @@ OUT_DIR = Path(__file__).resolve().parent / "sfg_out"
 
 F_REF = 1000.0
 POOL_ST = (-24.0, 36.0)        # 250 Hz to 8 kHz
-TONE_MS = 40.0
+TONE_MS = 25.0                 # set from --tone-ms at run time
 RATE_HZ = 5.0            
 
 N_TONES = 10
-STEP_MS = 10.0
+STEP_MS = 0.0
 DURATION_S = 20.0
 JITTER_MS = 40.0
 CEILING_MIN = 6
+CLOUD_TONES = 3                # the cloud's own concurrency, sparse mode
 CONTRAST = 4.0                 # figure channel rate / background channel rate
-DEALER_SLACK = 5               # how loosely the cloud levels its channels
+DEALER_SLACK = 1               # how loosely the cloud levels its channels
 FIG_MARGIN = 0.15
 
 #: ``CONTRAST`` is what makes the figure audible, and it replaced an earlier
@@ -145,9 +146,17 @@ SCHED_STEP_MS = 2.5
 LEAD_MS, TAIL_MS = 400.0, 600.0
 
 
+def _set_tone(ms: float) -> None:
+    """Tone duration is a module constant that several helpers read directly,
+    so ``--tone-ms`` rebinds it once here rather than being threaded through
+    every signature."""
+    global TONE_MS
+    TONE_MS = ms
+
+
 def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
            ceiling: int = 0, contrast: float = CONTRAST,
-           share: bool = False) -> dict:
+           share: bool = False, cloud_tones: int = 0) -> dict:
     """Solve for the ceiling, the grid and the figure's channels.
 
     Returns everything downstream needs, plus the numbers behind it so the
@@ -170,6 +179,24 @@ def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
     # the totals, which is what removed the figure: at equal totals the
     # contrast is 1 and there is nothing to hear.
     fig_load = n_tones * tone_s * rate_hz          # mean concurrency of figure
+    if cloud_tones:
+        # Sparse mode.  The cloud holds its own steady concurrency and the
+        # figure sounds on top, so the pool follows from the cloud's density
+        # alone: bg_rate = cloud_tones / (tone_s * (C - n)).
+        c_want = cloud_tones * contrast / (tone_s * rate_hz) + n_tones
+        span = POOL_ST[1] - POOL_ST[0]
+        grid = min(GRIDS, key=lambda g: abs(int(np.floor(span / g)) + 1 - c_want))
+        freqs = cloud.channels([], f_ref=F_REF, st_lo=POOL_ST[0],
+                               st_hi=POOL_ST[1], grid_st=grid)
+        st_grid = 12.0 * np.log2(freqs / F_REF)
+        lo = int(round(FIG_MARGIN * (freqs.size - 1)))
+        hi = int(round((1.0 - FIG_MARGIN) * (freqs.size - 1)))
+        idx = np.unique(np.round(np.linspace(lo, hi, n_tones)).astype(int))
+        cr = cloud_tones / (tone_s * max(freqs.size - n_tones, 1))
+        return dict(ceiling=cloud_tones, grid_st=grid, freqs=freqs,
+                    st_grid=st_grid, fig_idx=idx, fig_st=st_grid[idx],
+                    c_max=int(c_want), cloud_rate=cr, fig_rate=rate_hz,
+                    rate_hz=rate_hz, contrast=rate_hz / cr, sparse=True)
     # With the figure's channels off limits the cloud spreads over ``C - n``
     # channels and a figure channel carries nothing but the figure, so the
     # ratio is ``rate / cloud_rate``; when they are shared the cloud's own
@@ -200,7 +227,7 @@ def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
     return dict(ceiling=ceil, grid_st=grid, freqs=freqs, st_grid=st_grid,
                 fig_idx=idx, fig_st=st_grid[idx], c_max=c_max,
                 cloud_rate=cr, fig_rate=fr, rate_hz=rate_hz,
-                contrast=fr / cr)
+                contrast=fr / cr, sparse=False)
 
 
 def tokens(lay: dict, step_ms: float, n_tokens: int, phase_ms: float, *,
@@ -298,6 +325,15 @@ def main(argv=None) -> int:
                         "in black")
     p.add_argument("--ceiling", type=int, default=0,
                    help="tones sounding at once; 0 solves for it")
+    p.add_argument("--tone-ms", type=float, default=TONE_MS,
+                   help="tone duration (default 25)")
+    p.add_argument("--cloud-tones", type=int, default=CLOUD_TONES,
+                   help="the cloud's own concurrency; the figure sounds on "
+                        "top of it, so the total rises during a figure burst")
+    p.add_argument("--flat", action="store_true",
+                   help="hold the TOTAL flat instead, which forces the cloud "
+                        "up to the figure's peak -- 10 tones for a coherent "
+                        "10-tone figure, and no longer sparse")
     p.add_argument("--share-channels", action="store_true",
                    help="let the cloud sound the figure's own channels; it "
                         "then inserts a tone near the midpoint of the "
@@ -309,8 +345,10 @@ def main(argv=None) -> int:
     args = p.parse_args(argv)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
+    _set_tone(args.tone_ms)
     lay = layout(args.n_tones, ceiling=args.ceiling,
-                 contrast=args.contrast, share=args.share_channels)
+                 contrast=args.contrast, share=args.share_channels,
+                 cloud_tones=0 if args.flat else args.cloud_tones)
     period = 1000.0 / RATE_HZ
     N = max(1, int(round(args.duration * RATE_HZ)))
     S, freqs = args.step_ms, lay["freqs"]
@@ -339,7 +377,7 @@ def main(argv=None) -> int:
     peak = max(int(cloud.concurrency([o for _, o, _ in ev], xs[nm].size,
                                      n_tone).max())
                for nm, ev, _ in cases)
-    ceil = max(peak, lay["ceiling"])
+    ceil = lay["ceiling"] if lay["sparse"] else max(peak, lay["ceiling"])
     # The cloud is kept out of the figure's own channels unless asked
     # otherwise, and the reason is measured rather than aesthetic.  The
     # ceiling equals the figure's peak, so no cloud tone may sound during a
@@ -351,8 +389,14 @@ def main(argv=None) -> int:
     # identifying the figure; it doubles the figure's tempo instead.
     banned = (set() if args.share_channels
               else {chan[int(round(st * 2))] for st in lay["fig_st"]})
+    # In sparse mode the cloud is scheduled WITHOUT the figure, so it holds
+    # its own steady concurrency and the figure sounds on top of it.  In flat
+    # mode it fills the figure's complement instead, which pins the total but
+    # forces the cloud up to the figure's own peak.
     clouds = {nm: cloud.schedule(
-        xs[nm].size, freqs, [(chan[int(round(st * 2))], o) for st, o, _ in ev],
+        xs[nm].size, freqs,
+        [] if lay["sparse"] else
+        [(chan[int(round(st * 2))], o) for st, o, _ in ev],
         ceil, tone_ms=TONE_MS, step_ms=SCHED_STEP_MS, count_figure=False,
         slack=DEALER_SLACK, banned=banned)
         for nm, ev, _ in cases}
@@ -364,14 +408,20 @@ def main(argv=None) -> int:
           f"{(args.n_tones - 1) * S + TONE_MS:.0f} ms, successive tones "
           f"{'overlap by' if S < TONE_MS else 'gap by'} "
           f"{abs(TONE_MS - S):.0f} ms")
-    print(f"          ceiling {ceil} (>= the {peak}-tone peak); grid "
+    print(f"          cloud {ceil} tones at once, figure peaks at {peak} "
+          f"on top of it" if lay["sparse"] else
+          f"          ceiling {ceil} (>= the {peak}-tone peak)")
+    print(f"          grid "
           f"{lay['grid_st']:g} st, {freqs.size} channels "
           f"{freqs[0]:.0f}-{freqs[-1]:.0f} Hz")
     nm0, ev0 = cases[0][0], cases[0][1]
     dur = N * period / 1000.0        # the active window, not lead + tail
     isf0 = np.zeros(freqs.size, dtype=bool)
     isf0[list({chan[int(round(st * 2))] for st in lay["fig_st"]})] = True
-    tot0 = clouds[nm0]["counts"]
+    tot0 = clouds[nm0]["counts"].copy()
+    if lay["sparse"]:                  # the cloud never saw the figure
+        for st, o, _t in ev0:
+            tot0[chan[int(round(st * 2))]] += 1
     f_rate = tot0[isf0].mean() / dur
     b_rate = tot0[~isf0].mean() / dur
     print(f"          MEASURED: a figure channel sounds {f_rate:.1f} times/s "
@@ -398,8 +448,13 @@ def main(argv=None) -> int:
         tot = (cloud.concurrency([o for _, o, _ in ev], T, n_tone)
                + cloud.concurrency([o for _, o in clouds[nm]["events"]],
                                    T, n_tone))[lo:hi]
-        c = clouds[nm]["counts"]
-        isfig = clouds[nm]["fig_counts"] > 0
+        c = clouds[nm]["counts"].copy()
+        isfig = np.zeros(freqs.size, dtype=bool)
+        for st, o, _t in ev:                    # count the figure's own tones
+            k = chan[int(round(st * 2))]
+            isfig[k] = True
+            if lay["sparse"]:
+                c[k] += 1
         q = np.zeros((freqs.size, 4), dtype=int)
         for k, o in ([(chan[int(round(st * 2))], o) for st, o, _ in ev]
                      + [(int(np.argmin(np.abs(freqs - f))), o)
