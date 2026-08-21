@@ -485,6 +485,29 @@ simultaneous tones and the syllable sweep's at three, so letting each take its
 own peak would make the two levels incomparable and would let density co-vary
 with the step.  Measured concurrency is 6.00 +- 0.04 to 0.07 throughout.
 
+**The cloud sounds the figure's own channels.**  Reserving channels for the
+figure leaks the answer: every tone in a reserved channel is a figure tone, so
+the figure can be picked out by frequency alone and the timing -- the thing
+being measured -- never has to be used.  Sharing the pool makes frequency
+uninformative.  Two things follow and both are enforced: a cloud tone never
+lands on a figure tone in the same channel, and each channel's figure tones
+count toward its total, with the dealer working down the **total** so figure
+channels are neither rarer nor commoner than any other.  Measured: 69-73 tones
+per figure channel against 69-73 for the rest.  `--exclusive` restores the
+reserved version for comparison.
+
+**The residual notch, and why the cloud is thick.**  Forty-millisecond tones
+cannot tile the thirty milliseconds before a five-tone wall, so the coherent
+condition keeps a shallow dip just before each burst that the spread
+conditions do not have -- a dip that co-varies with the manipulation, which is
+the worst kind.  It cannot be removed: a finer scheduling grid does not touch
+it (identical at 2.5, 1.0 and 0.5 ms) and priority-ordering the candidates
+makes it worse.  What can be changed is its depth in dB, since power goes with
+the number of tones sounding and the shortfall is a fixed number of tones.  At
+a ceiling of 6 the dip is 7.8 dB and plainly audible as a gap; at 12 it is
+2.3 dB, against 0.4 dB in every other condition.  Hence a ceiling of 12, which
+is also squarely in the classic SFG range of 5-15 components per chord.
+
 **Frequencies are inharmonic** -- even semitone spacings, harmonics of
 nothing.  A harmonic series would confound the result completely: harmonicity
 fuses a complex on its own, so a fall-off with step size could be the loss of

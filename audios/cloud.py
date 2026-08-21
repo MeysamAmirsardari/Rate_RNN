@@ -171,22 +171,37 @@ def concurrency(onsets, total: int, n_tone: int) -> np.ndarray:
     return c
 
 
-def schedule(total: int, freqs: np.ndarray, fig_onsets, n_total: int, *,
+def schedule(total: int, freqs: np.ndarray, fig, n_total: int, *,
              tone_ms: float = TONE_MS, step_ms: float = 2.5,
-             seed: int = 5) -> dict:
+             guard_ms: float | None = None, seed: int = 5) -> dict:
     """A cloud that fills the figure's complement, so the total never moves.
 
-    A fixed-voice cloud cannot do this.  A figure is a burst of tones followed
-    by silence, so the total swings with it and the figure can be found from
-    the envelope alone, with no grouping involved.  The cloud has to be
-    **denser between the figure's tokens and thinner inside them**, which
-    means scheduling it against the figure rather than on a grid of its own.
+    ``fig`` is the figure as ``(channel index, onset sample)`` pairs -- the
+    channel, not just the time, because **the cloud sounds the figure's own
+    frequencies too**.  It has to.  If a channel were reserved for the figure
+    then every tone in it would be a figure tone, and the figure could be
+    picked out by frequency alone without the timing ever being used, which is
+    the one thing a timing experiment cannot allow.  Sharing the channels
+    makes frequency uninformative and leaves the pattern as the only cue.
 
-    Greedy, and deliberately conservative: a tone is added at a candidate
-    onset only if it cannot push the total above ``n_total`` anywhere in its
-    own length.  That guarantees the ceiling is never crossed, and costs a
-    shallow dip just before each burst, where tones already sounding cannot be
-    withdrawn.
+    Two consequences follow, and both are handled here rather than hoped for:
+
+    * A cloud tone must not land on a figure tone in the same channel, so the
+      figure's occupancy is marked busy before any dealing starts.
+    * A figure channel starts the run already partly used, so its figure tones
+      are counted toward its total and the dealer works down the **total**
+      count.  Channels are picked least-used first with random tie-breaking,
+      which equalises figure and cloud channels instead of leaving figure
+      channels conspicuously rare or conspicuously common.
+
+    ``guard_ms`` keeps a channel silent for that long either side of its own
+    tones, so two tones in one channel can never abut into a single longer
+    one; it defaults to one tone length.
+
+    Filling is greedy and deliberately conservative: a tone is added only if
+    it cannot push the total above ``n_total`` anywhere in its own length.
+    That guarantees the ceiling is never crossed and costs a shallow dip just
+    before each burst, where tones already sounding cannot be withdrawn.
 
     ``n_total`` must be at least the figure's own peak, because nothing the
     cloud does can take a tone away from the figure.  Pass the peak taken
@@ -194,34 +209,40 @@ def schedule(total: int, freqs: np.ndarray, fig_onsets, n_total: int, *,
     density becomes a cue that co-varies with the manipulation.
     """
     n_tone = core.samples(tone_ms)
-    c_tot = concurrency(fig_onsets, total, n_tone)
-    busy = np.zeros((freqs.size, total + n_tone), dtype=bool)
+    guard = n_tone if guard_ms is None else core.samples(guard_ms)
+    fig = [(int(k), int(o)) for k, o in fig]
+
+    c_tot = concurrency([o for _, o in fig], total, n_tone)
+    busy = np.zeros((freqs.size, total + n_tone + guard + 1), dtype=bool)
+    counts = np.zeros(freqs.size, dtype=int)
+    for k, o in fig:
+        busy[k, max(0, o - guard):o + n_tone + guard] = True
+        counts[k] += 1
+    n_fig = counts.copy()
+
     rng = np.random.default_rng(seed)
-    pack, i = rng.permutation(freqs.size), 0
     ev = []
     for o in range(0, total, core.samples(step_ms)):
         w = slice(o, o + n_tone)
+        wg = slice(max(0, o - guard), o + n_tone + guard)
         while c_tot[w].max() < n_total:
-            for _ in range(freqs.size):              # first free channel
-                if i >= pack.size:
-                    pack, i = rng.permutation(freqs.size), 0
-                k = int(pack[i])
-                i += 1
+            # least-used first, random among equals: the counts stay level and
+            # the order stays unpredictable, which is what the cloud is for
+            for k in np.lexsort((rng.random(freqs.size), counts)):
                 if not busy[k, w].any():
                     break
             else:
                 break
-            busy[k, w] = True
+            busy[k, wg] = True
             c_tot[w] += 1
+            counts[k] += 1
             ev.append((freqs[k], o))
 
     x = np.zeros(total + n_tone)
     pips: dict = {}
-    counts = np.zeros(freqs.size, dtype=int)
-    index = {float(f): j for j, f in enumerate(freqs)}
     for f, o in ev:
         if f not in pips:
             pips[f] = core.tone(f, tone_ms)
         x[o:o + n_tone] += pips[f]
-        counts[index[float(f)]] += 1
-    return dict(x=x[:total], freqs=freqs, events=ev, counts=counts)
+    return dict(x=x[:total], freqs=freqs, events=ev, counts=counts,
+                cloud_counts=counts - n_fig, fig_counts=n_fig)

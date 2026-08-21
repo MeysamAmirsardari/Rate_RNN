@@ -283,9 +283,15 @@ def main(argv=None) -> int:
                    help="displacement of each whole word; -1 picks the "
                         "largest that keeps words from touching, 0 turns it "
                         "off (isochronous, findable by rhythm alone)")
-    p.add_argument("--ceiling", type=int, default=6,
+    p.add_argument("--exclusive", action="store_true",
+                   help="keep the cloud off the figure's channels (leaks: "
+                        "frequency alone then identifies the figure)")
+    p.add_argument("--ceiling", type=int, default=12,
                    help="tones sounding at once, figure plus cloud; raised to "
-                        "the figure's own peak if that is larger")
+                        "the figure's own peak if that is larger.  Twelve "
+                        "rather than six because the residual pre-burst notch "
+                        "is a fixed number of tones deep, so a higher ceiling "
+                        "makes it shallower in dB")
     p.add_argument("--cloud-db", type=float, default=0.0)
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
@@ -331,13 +337,24 @@ def main(argv=None) -> int:
     peak = max(peak, args.ceiling)
     figure_st = sorted({float(s) for _, b, _ in built for s, _, _ in
                         b["events"]})
-    freqs = cloud.channels(figure_st, f_ref=F_REF, st_lo=POOL_ST[0],
-                           st_hi=POOL_ST[1], guard_st=GUARD_ST,
-                           grid_st=GRID_ST)
-    clouds = {nm: cloud.schedule(b["x"].size, freqs,
-                                 [o for _, o, _ in b["events"]], peak,
-                                 tone_ms=TONE_MS, step_ms=SCHED_STEP_MS)
-              for nm, b, _ in built}
+    # The pool is the whole grid.  Reserving the figure's own channels would
+    # make every tone in them a figure tone, so the figure could be found by
+    # frequency alone and the timing -- the thing being measured -- would
+    # never have to be used.  --exclusive restores that, for comparison only.
+    freqs = cloud.channels(figure_st if args.exclusive else [],
+                           f_ref=F_REF, st_lo=POOL_ST[0], st_hi=POOL_ST[1],
+                           guard_st=GUARD_ST, grid_st=GRID_ST)
+    grid_st = 12.0 * np.log2(freqs / F_REF)
+    chan = {int(round(v)): k for k, v in enumerate(grid_st)}
+    if not args.exclusive and any(int(round(v)) not in chan
+                                  for v in figure_st):
+        raise SystemExit("a figure tone is off the cloud grid")
+    clouds = {nm: cloud.schedule(
+        b["x"].size, freqs,
+        ([] if args.exclusive else
+         [(chan[int(round(st))], o) for st, o, _ in b["events"]]),
+        peak, tone_ms=TONE_MS, step_ms=SCHED_STEP_MS)
+        for nm, b, _ in built}
 
     level = "tone" if args.sweep == "tone" else "syllable"
     fixed = (f"syllable step {sw['tone_step_ms']:.0f} ms"
@@ -374,11 +391,21 @@ def main(argv=None) -> int:
         tot = (cloud.concurrency([o for _, o, _ in b["events"]], T, n_tone)
                + cloud.concurrency([o for _, o in clouds[nm]["events"]],
                                    T, n_tone))[lo:hi]
-        cnt = clouds[nm]["counts"]
+        cnt, cc = clouds[nm]["counts"], clouds[nm]["cloud_counts"]
+        isfig = clouds[nm]["fig_counts"] > 0
+        share = (f"figure channels {cnt[isfig].min()}-{cnt[isfig].max()}, "
+                 f"others {cnt[~isfig].min()}-{cnt[~isfig].max()}"
+                 if isfig.any() else
+                 f"cloud {cnt.min()}-{cnt.max()} vs "
+                 f"{n_words * n_syl * args.n_tones // len(figure_st)} figure")
+        # The notch is what matters, and it matters in dB: power goes with
+        # the number of tones sounding, so the same shortfall is loud against
+        # a thin cloud and inaudible against a thick one.
+        dip = 10 * np.log10(peak / max(tot.min(), 1))
         print(f"    in cloud: concurrency {tot.min()}-{tot.max()}, mean "
-              f"{tot.mean():.2f} +- {tot.std():.2f}; per cloud channel "
-              f"{cnt.min()}-{cnt.max()} vs {n_words * n_syl * args.n_tones // len(figure_st)}"
-              f" per figure channel")
+              f"{tot.mean():.2f} +- {tot.std():.2f}, deepest dip "
+              f"{dip:.1f} dB for {np.mean(tot < peak - 1) * 100:.1f}% of "
+              f"the time; tones per channel {share}")
         print(f"    -> {nm}.mp3   {nm}_alone.mp3\n")
 
     shown = [(b, clouds[nm], f"{level} step {s:g} ms")
