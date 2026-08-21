@@ -113,11 +113,29 @@ SYL_FREQ_STEP_ST = 3.0         # transposition between syllables
 #: The two sweeps.  Each fixes its own repetition period, held constant across
 #: the series: the step is the only thing allowed to move.
 SWEEPS = {
-    "tone": dict(n_syl=1, period_ms=800.0, n_words=16, syl_step_ms=0.0,
+    "tone": dict(n_syl=1, period_ms=1000.0, n_words=14, syl_step_ms=0.0,
                  steps=(0.0, 10.0, 20.0, 40.0, 80.0, 160.0)),
-    "syllable": dict(n_syl=3, period_ms=1200.0, n_words=12, tone_step_ms=20.0,
+    "syllable": dict(n_syl=3, period_ms=1600.0, n_words=10, tone_step_ms=20.0,
                      steps=(80.0, 130.0, 200.0, 300.0, 450.0)),
 }
+
+#: Never let two words touch: the shortest interval a jittered grid can
+#: produce is ``period - 2*jitter``, and the word itself occupies its span
+#: plus a tone.  Anything less and consecutive repetitions would interleave,
+#: which would break the one thing the design guarantees -- that each token is
+#: a separate instance of the same frozen shape.
+WORD_GUARD_MS = 40.0
+JITTER_CAP = 0.35              # of the period, however much room there is
+
+
+def auto_jitter(period_ms: float, max_span_ms: float) -> float:
+    """The largest word-onset jitter that still keeps words apart.
+
+    One value for the whole sweep, not per condition: the jitter is a control,
+    and letting it shrink as the step grows would confound the two.
+    """
+    room = (period_ms - max_span_ms - TONE_MS - WORD_GUARD_MS) / 2.0
+    return float(np.floor(min(room, JITTER_CAP * period_ms) / 10.0) * 10.0)
 
 SCHED_STEP_MS = 2.5
 LEAD_MS, TAIL_MS = 400.0, 600.0
@@ -261,7 +279,10 @@ def main(argv=None) -> int:
                    default="rise")
     p.add_argument("--redraw", action="store_true",
                    help="the floor control: redraw the lags every repetition")
-    p.add_argument("--onset-jitter-ms", type=float, default=0.0)
+    p.add_argument("--word-jitter-ms", type=float, default=-1.0,
+                   help="displacement of each whole word; -1 picks the "
+                        "largest that keeps words from touching, 0 turns it "
+                        "off (isochronous, findable by rhythm alone)")
     p.add_argument("--ceiling", type=int, default=6,
                    help="tones sounding at once, figure plus cloud; raised to "
                         "the figure's own peak if that is larger")
@@ -277,15 +298,27 @@ def main(argv=None) -> int:
     suffix = ("" if args.order == "rise" else f"_{args.order}") + \
              ("_redraw" if args.redraw else "")
 
-    built = []
+    built, templates = [], []
     for s in steps:
         kw = (dict(tone_step_ms=s, syl_step_ms=sw.get("syl_step_ms", 0.0))
               if args.sweep == "tone" else
               dict(tone_step_ms=sw["tone_step_ms"], syl_step_ms=s))
         tpl = template(args.n_tones, n_syl, order=args.order, **kw)
+        templates.append((s, tpl))
+
+    max_span = max(max(t for _, t in tpl) for _, tpl in templates)
+    jit = (auto_jitter(period, max_span) if args.word_jitter_ms < 0
+           else args.word_jitter_ms)
+    for s, tpl in templates:
         b = build(tpl, period, n_words, redraw=args.redraw,
-                  onset_jitter_ms=args.onset_jitter_ms)
+                  onset_jitter_ms=jit)
         built.append((f"word_{tag}{s:g}ms{suffix}", b, s))
+
+    # the guarantee, checked on the built streams rather than assumed
+    for nm, b, _ in built:
+        gap = np.diff(b["onsets"]) / core.SR * 1000.0 - b["span"] - TONE_MS
+        if gap.min() < 0:
+            raise SystemExit(f"{nm}: words overlap by {-gap.min():.0f} ms")
 
     # One ceiling for the whole sweep, so density never co-varies with step.
     n_tone = core.samples(TONE_MS)
@@ -312,8 +345,12 @@ def main(argv=None) -> int:
     print(f"{core.SR} Hz | {n_syl} syllable(s) x {args.n_tones} tones = "
           f"{n_syl * args.n_tones} figure channels, {len(figure_st)} distinct; "
           f"{freqs.size} cloud channels {freqs[0]:.0f}-{freqs[-1]:.0f} Hz")
+    iti = np.concatenate([np.diff(b["onsets"]) for _, b, _ in built])
+    iti = iti / core.SR * 1000.0
     print(f"          sweeping the {level} step, {fixed}; word every "
-          f"{period:.0f} ms, lags "
+          f"{period:.0f} ms +-{jit:.0f} ms jitter "
+          f"(measured {iti.min():.0f}-{iti.max():.0f} ms, mean "
+          f"{iti.mean():.0f}), lags "
           f"{'REDRAWN each repetition' if args.redraw else 'frozen'}, "
           f"order {args.order}; cloud ceiling {peak}\n")
 

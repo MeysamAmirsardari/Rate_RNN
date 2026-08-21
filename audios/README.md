@@ -449,6 +449,28 @@ nothing says that has to fail at 40 ms.  If pop-out survives well past the
 overlap limit, the figure is not a smeared chord -- it is an object defined by
 its repeating spectrotemporal shape.
 
+### The word onset is jittered
+
+Each whole word is displaced independently, uniform on `+-jitter`, on a tied
+grid so the mean rate is exact however large the jitter.  Without it the words
+arrive isochronously and the figure can be found by rhythm alone -- a
+different cue from the pattern, and the easier one.  The internal shape is
+untouched: the displacement moves the token, not its contents, which the
+distinct-shape count confirms stays at 1.
+
+The jitter is chosen automatically as the largest that still keeps consecutive
+words from touching, since the shortest interval a jittered grid can produce
+is `period - 2*jitter` and a word occupies its span plus a tone:
+
+    tone sweep       every 1000 ms +-140 ms   (measured 774-1225 ms)
+    syllable sweep   every 1600 ms +-270 ms   (measured 1165-2034 ms)
+
+One value for the whole sweep, never per condition -- letting it shrink as the
+step grows would confound the jitter with the manipulation.  The periods were
+raised from 800 and 1200 ms to make room for a jitter worth having.  Words
+never overlapping is checked on the built streams, not assumed.
+`--word-jitter-ms 0` restores the isochronous version.
+
 ### What is held constant
 
 **Per-tone level.**  One common gain across a sweep, never per file.  Total
