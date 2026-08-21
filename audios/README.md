@@ -584,18 +584,26 @@ to its frozen counterpart, by construction rather than by accident.
 
 ## Classic SFG, and the same figure sheared (`sfg.py`)
 
-    python -m audios.sfg
-        sfg_coherent.mp3   five tones together, every 200 ms
-        sfg_stair10.mp3    the same five, delayed 0 10 20 30 40 ms
-        sfg_switch.mp3     coherent for 12 s, then the staircase, one cloud
-                           scheduled across the join
-        sfg_check.png
+    python -m audios.sfg --plot
+        sfg_coherent.mp3   n tones together, every 200 ms
+        sfg_stair10.mp3    the same n, delayed 0 10 20 ... ms
+        sfg_switch.mp3     coherent for the first half, then the staircase,
+                           one cloud scheduled across the join
+        sfg_check.png      only with --plot
 
-A 5-tone figure repeating at 5 Hz in a balanced cloud, and the same figure
-with each tone delayed 10 ms behind the one below it.  Forty-millisecond tones
-against a ten-millisecond step still overlap by 30 ms, so the staircase is not
-a sequence of separate events -- it is the same event with its onsets pulled
-apart, spanning 80 ms of each 200 ms period instead of 40.
+    --n-tones N       tones in the figure (default 10)
+    --step-ms MS      shear per tone; 0 is the coherent chord
+    --order rise|fall lowest tone first, or highest
+    --duration S      seconds per condition; the switch file is twice this
+    --jitter-ms MS    displace whole tokens, in units of the tone length
+    --plot            write the snapshot, figure in red on cloud in black
+    --ceiling N       tones at once; 0 solves for it
+    --min-share F     least fraction of a figure channel's tones the cloud
+                      must supply (default 0.25)
+
+Forty-millisecond tones against a ten-millisecond step still overlap by 30 ms,
+so the staircase is not a sequence of separate events -- it is the same event
+with its onsets pulled apart.
 
 The **switch** file is the one worth listening to.  Two separate files ask
 "can you find the figure in this one?" twice, and the answer depends as much
@@ -604,39 +612,58 @@ asks whether the figure you are *already holding onto* survives the shear, and
 the listener is their own control.  The cloud is scheduled once, across the
 join, so nothing in the background marks the moment.
 
-### Why this pool is 21 channels and not 61
+### Keeping the cloud balanced at any size
 
-The channel count is forced by the repetition rate, not chosen.  Every channel
-has to be used at the same rate, and a figure channel is used **5 times a
-second by the figure alone** -- once per token at 5 Hz.  The cloud supplies
-`ceiling / tone` tones per second spread over `C` channels, so balance needs
+Three things have to hold at once, and the module solves for them rather than
+leaving them to a constant that happened to work at one setting.
 
-    ceiling / (tone_ms * C)  >  rate
+**The ceiling cannot be below the figure's peak.**  A coherent figure of `n`
+tones sounds `n` at once and nothing the cloud does can take one away, so the
+total is at least `n` there -- and to keep the envelope flat it must be `n`
+everywhere else too.  A ten-tone chord *requires* a ten-tone background.  Not
+a choice: it is what hiding a ten-tone burst costs.
 
-At the 61-channel pool of `word.py` that needs a ceiling of **fourteen**;
-below it the figure's channels are used twice as often as every other channel,
-which identifies the figure without listening to it at all.  Measured on the
-first attempt: 60-61 tones per figure channel against 28-29 for the rest.
+**Every channel must be used at the same rate.**  A figure channel is used
+once per token, so at `rate` tones per second, whatever `n` is.  Balance needs
 
-Twenty-one channels three semitones apart, at a ceiling of six, gives 7.1
-tones per channel per second.  The cloud then still supplies 30% of what
-sounds in a figure channel, the background stays thin, and the counts come out
-level: **91-92 tones per channel, figure and cloud channels alike**.
+    ceiling / (tone_s * channels)  >=  rate
 
-The cost is a coarser frequency grid -- three semitones between neighbouring
-cloud channels rather than one -- which is what a 5 Hz figure buys at this
-density.  A ceiling of 14 would keep the fine grid; `--ceiling` allows it.
+which is a **bound on the number of channels**, tightening as the figure gets
+*faster*, not as it gets bigger.  Exceed it and the figure's channels are
+simply busier than the rest, which identifies the figure without listening to
+the timing at all -- measured at 60-61 tones against 28-29 before this was
+solved for.
+
+**The cloud has to sound the figure's channels**, or every tone at those
+frequencies is a figure tone and frequency alone gives the answer.  That needs
+headroom above the bound, which `--min-share` sets.
+
+The grid spacing is then the finest that fits inside the bound, so the cloud
+stays as spectrally rich as balance permits, and the figure's tones are placed
+on grid indices spread across the middle of the pool, so they are on the grid
+however many there are.  Measured, `--duration 6`:
+
+    n     ceiling   grid    channels   cloud share   figure ch / other ch
+     3       6      3 st       21         30%          49-49 / 48-49
+     5       6      3 st       21         30%          49-49 / 48-49
+     8       8      2.5 st     25         38%          54-55 / 54-55
+    10      10      2 st       31         38%          55-56 / 55-56
+    14      14      1.5 st     41         41%          58-59 / 58-59
+    20      20      1 st       61         39%          56-57 / 56-57
+
+A setting that cannot be balanced is refused rather than quietly unbalanced,
+with the ceiling that would fix it.
 
 ### Residual
 
-    coherent    concurrency 6-6, mean 6.00 +- 0.00, no dip
-    staircase   concurrency 3-6, mean 5.99 +- 0.11, 3.0 dB for 0.2% of the time
+    coherent    concurrency 10-10, mean 10.00 +- 0.00, no dip
+    staircase   concurrency  7-10, mean  9.99 +- 0.11, 1.5 dB for 0.2%
 
-The staircase's residual is the familiar one: its tones at +10, +20 and +30 ms
-are off the cloud's 40 ms tiling, where the coherent figure's are on it.  It
-amounts to about 0.4 ms per token and it does co-vary with the condition, so
-it is worth knowing about even though it is far too brief to hear.
+The staircase's residual is the familiar one: its tones at +10, +20, +30 ms
+are off the cloud's 40 ms tiling where the coherent figure's are on it.  About
+0.4 ms per token, far too brief to hear, but it does co-vary with the
+condition so it is worth knowing.
 
-Token onsets are **isochronous** here, unlike `word.py`.  This is the classic
-figure and the rhythm is part of it; `--jitter-ms` turns the jitter on for the
-harder version.
+Token onsets are **isochronous** by default, unlike `word.py`.  This is the
+classic figure and the rhythm is part of it; `--jitter-ms 40` turns it off,
+and balance and flatness both survive it (10-10, SD 0.00, measured).

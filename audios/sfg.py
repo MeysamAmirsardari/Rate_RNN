@@ -4,56 +4,80 @@ audios.sfg
 
 The classic figure, and the same figure sheared into a staircase.
 
-    sfg_coherent.mp3   five tones, all together, every 200 ms
-    sfg_stair10.mp3    the same five, delayed 0 10 20 30 40 ms
-    sfg_switch.mp3     coherent for twelve seconds, then the staircase,
-                       one cloud across the join
-    sfg_check.png
+    sfg_coherent.mp3   n tones, all together, every 200 ms
+    sfg_stair10.mp3    the same n, delayed 0 10 20 ... ms
+    sfg_switch.mp3     coherent for the first half, then the staircase,
+                       one cloud scheduled across the join
+    sfg_check.png      with --plot
 
 The stimulus
 ------------
-A **figure** of five tones on a semitone grid, five semitones apart, repeating
-at **5 Hz** inside a balanced cloud.  Nothing about it moves except the lag of
-each tone behind the first:
+A **figure** of ``--n-tones`` tones on a frequency grid, repeating at 5 Hz
+inside a balanced cloud.  Nothing about it moves except the lag of each tone
+behind the one below it:
 
-    coherent    0  0  0  0  0 ms     one chord, the classic figure
-    staircase   0 10 20 30 40 ms     the same chord sheared
+    coherent    0  0  0  0 ... ms     one chord, the classic figure
+    staircase   0 10 20 30 ... ms     the same chord sheared
 
 Forty-millisecond tones against a ten-millisecond step means successive tones
-still overlap by 30 ms, so the staircase never becomes a sequence of separate
-events -- it is the *same* event with its onsets pulled apart.  The whole
-figure then spans 80 ms of each 200 ms period rather than 40.
+still overlap by 30 ms, so the staircase is not a sequence of separate events
+-- it is the *same* event with its onsets pulled apart.  ``--order fall``
+shears it the other way, highest tone first.
 
-Nothing else differs.  Same five frequencies, same five tones per token, same
-token rate, same cloud, same per-tone level.  Total energy is identical; only
-the peak differs, and only because coincident tones sum.
+Nothing else differs between the conditions.  Same frequencies, same tones per
+token, same token rate, same cloud, same per-tone level.  Total energy is
+identical; only the peak differs, and only because coincident tones sum.
 
 Why a switch file
 -----------------
 Two separate files ask "can you find the figure in this one?" twice, and the
 answer depends as much on how long you listened as on the stimulus.  One file
-that changes partway asks the question that matters -- whether the figure you
-are already holding onto survives the shear -- and the listener is their own
-control.  The cloud is scheduled once, across the join, so nothing in the
-background marks the moment.
+that changes partway asks whether the figure you are *already holding onto*
+survives the shear, and the listener is their own control.  The cloud is
+scheduled once, across the join, so nothing in the background marks the
+moment.
 
-The cloud, unchanged from ``audios.word``
------------------------------------------
-It sounds the figure's own channels, so frequency identifies nothing; every
-channel is used equally in total and through the stream; the total number of
-tones sounding never moves, so the envelope marks nothing.  See
-``audios/README.md`` for why each of those is necessary.
+Keeping the cloud balanced at any size
+--------------------------------------
+Three things have to hold at once, and two of them fight each other as the
+figure grows.  The module solves for them rather than leaving them to a
+constant that happened to work at one setting:
 
-The one thing that is *not* carried over is the word-onset jitter.  This is
-the classic figure and it repeats isochronously, which is a real cue -- the
-figure can be tracked by rhythm as well as by pattern.  That is deliberate
-here, since the question is about the shear rather than about how hard the
-figure is to find; ``--jitter-ms`` turns it on for the harder version.
+**The ceiling cannot be below the figure's own peak.**  A coherent figure of
+``n`` tones sounds ``n`` tones at once, and nothing the cloud does can take one
+away, so the total is at least ``n`` at that instant -- and to keep the
+envelope flat it must be ``n`` everywhere else too.  A ten-tone chord
+therefore *requires* a ten-tone background.  This is not a choice; it is what
+hiding a ten-tone burst costs.
+
+**Every channel must be used at the same rate.**  A figure channel is used
+once per token, so at ``rate`` tones per second, whatever ``n`` is.  The cloud
+supplies ``ceiling / tone`` tones per second spread over ``C`` channels, so
+the average channel rate is ``ceiling / (tone * C)`` and balance needs
+
+    ceiling / (tone_s * C)  >=  rate
+
+Rearranged, ``C <= ceiling / (tone_s * rate)``.  This is a **bound on the
+number of channels**, and it tightens as the figure gets faster, not as it
+gets bigger.  Exceed it and the figure's channels are simply busier than the
+rest -- which identifies the figure without listening to the timing at all.
+
+**The cloud has to sound the figure's channels.**  If it cannot, every tone at
+those frequencies is a figure tone and frequency alone gives the answer.  That
+needs headroom above the bound, not merely equality: ``--min-share`` sets how
+much of a figure channel's traffic the cloud must supply, and the bound
+becomes ``C <= (1 - share) * ceiling / (tone_s * rate)``.
+
+The grid spacing is then the finest that fits inside the bound, so the cloud
+stays as spectrally rich as the balance permits.  The figure's own tones are
+placed on grid indices, evenly spread across the middle of the pool, so they
+are always on the grid however many there are.
 
 Run
 ---
-    python -m audios.sfg
-    python -m audios.sfg --step-ms 20 --jitter-ms 40
+    python -m audios.sfg --plot
+    python -m audios.sfg --n-tones 5 --step-ms 20 --order fall
+    python -m audios.sfg --duration 20 --jitter-ms 40 --plot
 """
 
 from __future__ import annotations
@@ -74,43 +98,76 @@ OUT_DIR = Path(__file__).resolve().parent
 
 F_REF = 1000.0
 POOL_ST = (-24.0, 36.0)        # 250 Hz to 8 kHz
-
-#: Twenty-one channels, three semitones apart, and the count is forced rather
-#: than chosen.  Every channel has to be used at the same rate, and a figure
-#: channel is used ``5/s`` by the figure alone -- once per token at 5 Hz.  The
-#: cloud supplies ``ceiling / tone`` tones per second across ``C`` channels, so
-#: balance needs ``ceiling / (tone * C) > 5``.  At the sixty-one channel pool
-#: of ``audios.word`` that needs a ceiling of fourteen; the figure's channels
-#: are otherwise used twice as often as the rest, which identifies the figure
-#: without listening to it at all.  Twenty-one channels at a ceiling of six
-#: gives 7.1 tones per channel per second, so the cloud still supplies 30% of
-#: what sounds in a figure channel and the background stays thin.
-GRID_ST = 3.0
 TONE_MS = 40.0
-
 RATE_HZ = 5.0                  # figure repetition
-N_TONES = 5
-SPAN_ST = 24.0                 # 5 tones, 6 semitones apart, on the grid
-BASE_ST = -12.0
-STEP_MS = 10.0                 # the shear
 
-N_TOKENS = 60                  # 12 s per condition at 5 Hz
-CEILING = 6
+N_TONES = 10
+STEP_MS = 10.0                 # the shear, per tone
+DURATION_S = 12.0              # per condition; the switch file is twice this
+CEILING_MIN = 6
+MIN_SHARE = 0.25               # of a figure channel's tones, supplied by cloud
+FIG_MARGIN = 0.15              # of the pool left clear above and below
+
+#: Candidate grid spacings, finest first.
+GRIDS = tuple(np.arange(0.5, 12.5, 0.5))
+
 SCHED_STEP_MS = 2.5
 LEAD_MS, TAIL_MS = 400.0, 600.0
 
 
-def tokens(step_ms: float, n_tokens: int, phase_ms: float,
-           n_tones: int = N_TONES, jitter_ms: float = 0.0,
+def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
+           ceiling: int = 0, min_share: float = MIN_SHARE) -> dict:
+    """Solve for the ceiling, the grid and the figure's channels.
+
+    Returns everything downstream needs, plus the numbers behind it so the
+    choice can be printed rather than taken on trust.
+    """
+    tone_s = TONE_MS / 1000.0
+    ceil = ceiling or max(n_tones, CEILING_MIN)
+    c_max = int(np.floor((1.0 - min_share) * ceil / (tone_s * rate_hz)))
+    if c_max < n_tones:
+        raise SystemExit(
+            f"{n_tones} tones at {rate_hz:g} Hz cannot be balanced: the pool "
+            f"would need {n_tones} channels but the rate allows {c_max}.  "
+            f"Raise --ceiling (>= {int(np.ceil(n_tones * tone_s * rate_hz / (1 - min_share)))}) "
+            f"or lower --min-share.")
+
+    span = POOL_ST[1] - POOL_ST[0]
+    grid = next(g for g in GRIDS if int(np.floor(span / g)) + 1 <= c_max)
+    freqs = cloud.channels([], f_ref=F_REF, st_lo=POOL_ST[0],
+                           st_hi=POOL_ST[1], grid_st=grid)
+    st_grid = 12.0 * np.log2(freqs / F_REF)
+
+    # The figure sits on grid indices, evenly spread across the middle of the
+    # pool, so its tones are on the grid for any n and the cloud keeps a
+    # margin of channels above and below it.
+    lo = int(round(FIG_MARGIN * (freqs.size - 1)))
+    hi = int(round((1.0 - FIG_MARGIN) * (freqs.size - 1)))
+    idx = np.unique(np.round(np.linspace(lo, hi, n_tones)).astype(int))
+    if idx.size < n_tones:                      # pool too coarse to separate
+        idx = np.arange(lo, lo + n_tones)
+    return dict(ceiling=ceil, grid_st=grid, freqs=freqs, st_grid=st_grid,
+                fig_idx=idx, fig_st=st_grid[idx], c_max=c_max,
+                avg_rate=ceil / (tone_s * freqs.size), rate_hz=rate_hz,
+                share=1.0 - rate_hz * freqs.size * tone_s / ceil)
+
+
+def tokens(lay: dict, step_ms: float, n_tokens: int, phase_ms: float, *,
+           order: str = "rise", jitter_ms: float = 0.0,
            rng: np.random.Generator | None = None) -> list:
     """(semitone, onset sample, token index) for one condition.
 
     ``jitter_ms`` displaces whole tokens, in whole tone lengths so the cloud's
     tiling still lands on them; the figure's internal shape never changes.
     """
-    d_st = SPAN_ST / max(n_tones - 1, 1)
-    st = [BASE_ST + k * d_st for k in range(n_tones)]
-    period = 1000.0 / RATE_HZ
+    st = list(lay["fig_st"])
+    lag = np.arange(len(st)) * step_ms
+    if order == "fall":
+        lag = lag[::-1]
+    elif order != "rise":
+        raise ValueError(f"unknown order {order!r}")
+
+    period = 1000.0 / lay["rate_hz"]
     q = core.samples(TONE_MS)
     k_max = int(core.samples(jitter_ms) // q)
 
@@ -119,8 +176,8 @@ def tokens(step_ms: float, n_tokens: int, phase_ms: float,
         o0 = core.samples(phase_ms + t * period)
         if k_max and rng is not None:
             o0 += int(rng.integers(-k_max, k_max + 1)) * q
-        for k in range(n_tones):
-            ev.append((st[k], o0 + core.samples(k * step_ms), t))
+        for k in range(len(st)):
+            ev.append((st[k], o0 + core.samples(float(lag[k])), t))
     return ev
 
 
@@ -129,114 +186,26 @@ def render(ev: list, tail_ms: float = TAIL_MS) -> np.ndarray:
     x = np.zeros(total)
     pips: dict = {}
     for st, o, _t in ev:
-        f = F_REF * 2.0 ** (st / 12.0)
         if st not in pips:
-            pips[st] = core.tone(f, TONE_MS)
+            pips[st] = core.tone(F_REF * 2.0 ** (st / 12.0), TONE_MS)
         x[o:o + pips[st].size] += pips[st]
     return x
 
 
-def main(argv=None) -> int:
-    p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--step-ms", type=float, default=STEP_MS)
-    p.add_argument("--n-tokens", type=int, default=N_TOKENS)
-    p.add_argument("--n-tones", type=int, default=N_TONES)
-    p.add_argument("--jitter-ms", type=float, default=0.0,
-                   help="displace whole tokens, in units of the tone length")
-    p.add_argument("--ceiling", type=int, default=CEILING)
-    p.add_argument("--keep-wav", action="store_true")
-    args = p.parse_args(argv)
-
-    period = 1000.0 / RATE_HZ
-    S, N, nt = args.step_ms, args.n_tokens, args.n_tones
-    rng = np.random.default_rng(3)
-
-    # the two conditions, and the switch that runs one into the other
-    coh = tokens(0.0, N, LEAD_MS, nt, args.jitter_ms, rng)
-    stair = tokens(S, N, LEAD_MS, nt, args.jitter_ms, rng)
-    join = LEAD_MS + N * period
-    switch = tokens(0.0, N, LEAD_MS, nt, args.jitter_ms, rng) + \
-        tokens(S, N, join, nt, args.jitter_ms, rng)
-
-    cases = [("sfg_coherent", coh, "coherent, 0 ms"),
-             (f"sfg_stair{S:g}", stair, f"staircase, {S:g} ms step"),
-             ("sfg_switch", switch, f"coherent -> {S:g} ms at {join / 1000:.1f} s")]
-
-    freqs = cloud.channels([], f_ref=F_REF, st_lo=POOL_ST[0],
-                           st_hi=POOL_ST[1], grid_st=GRID_ST)
-    grid = 12.0 * np.log2(freqs / F_REF)
-    chan = {int(round(v)): k for k, v in enumerate(grid)}
-    n_tone = core.samples(TONE_MS)
-
-    # One ceiling for every file, taken across all of them: the coherent
-    # figure peaks at five simultaneous tones and the staircase at two, so a
-    # per-file ceiling would make the background density itself the difference
-    # between the conditions.
-    xs = {nm: render(ev) for nm, ev, _ in cases}
-    peak = max(int(cloud.concurrency([o for _, o, _ in ev], xs[nm].size,
-                                     n_tone).max())
-               for nm, ev, _ in cases)
-    peak = max(peak, args.ceiling)
-
-    clouds = {nm: cloud.schedule(
-        xs[nm].size, freqs, [(chan[int(round(st))], o) for st, o, _ in ev],
-        peak, tone_ms=TONE_MS, step_ms=SCHED_STEP_MS)
-        for nm, ev, _ in cases}
-
-    print(f"{core.SR} Hz | {nt}-tone figure at {RATE_HZ:g} Hz "
-          f"({period:.0f} ms), tones {TONE_MS:.0f} ms, "
-          f"{SPAN_ST / (nt - 1):.0f} semitones apart")
-    print(f"          shear {S:g} ms per tone -> figure spans "
-          f"{(nt - 1) * S + TONE_MS:.0f} ms, successive tones overlap by "
-          f"{TONE_MS - S:.0f} ms")
-    print(f"          {freqs.size} cloud channels "
-          f"{freqs[0]:.0f}-{freqs[-1]:.0f} Hz, ceiling {peak}, "
-          f"token jitter +-{args.jitter_ms:g} ms\n")
-
-    mixes = {nm: xs[nm] + clouds[nm]["x"][:xs[nm].size] for nm, _, _ in cases}
-    amp = 10 ** (core.PEAK_DBFS / 20) / max(
-        float(np.max(np.abs(x))) for x in xs.values())
-    amp_c = 10 ** (core.PEAK_DBFS / 20) / max(
-        float(np.max(np.abs(m))) for m in mixes.values())
-
-    for nm, ev, ttl in cases:
-        core.render(OUT_DIR / f"{nm}_alone", xs[nm] * amp, args.keep_wav)
-        core.render(OUT_DIR / nm, mixes[nm] * amp_c, args.keep_wav)
-        T = xs[nm].size
-        lo, hi = core.samples(LEAD_MS), T - core.samples(TAIL_MS)
-        tot = (cloud.concurrency([o for _, o, _ in ev], T, n_tone)
-               + cloud.concurrency([o for _, o in clouds[nm]["events"]],
-                                   T, n_tone))[lo:hi]
-        c = clouds[nm]["counts"]
-        isfig = clouds[nm]["fig_counts"] > 0
-        print(f"  {nm}  ({ttl})")
-        print(f"    {len(ev)} figure tones, {T / core.SR:.1f} s; "
-              f"{core.levels(xs[nm] * amp)}")
-        print(f"    concurrency {tot.min()}-{tot.max()}, mean "
-              f"{tot.mean():.2f} +- {tot.std():.2f}, deepest dip "
-              f"{10 * np.log10(peak / max(tot.min(), 1)):.1f} dB for "
-              f"{np.mean(tot < peak - 1) * 100:.1f}% of the time")
-        print(f"    channel use {c.min()}-{c.max()}: figure "
-              f"{c[isfig].min()}-{c[isfig].max()} ({isfig.sum()} ch), other "
-              f"{c[~isfig].min()}-{c[~isfig].max()} ({(~isfig).sum()} ch)")
-        print(f"    -> {nm}.mp3   {nm}_alone.mp3\n")
-
-    return figure_png(cases, clouds, join, S)
-
-
-def figure_png(cases, clouds, join_ms: float, step_ms: float) -> int:
-    """Two conditions side by side, and the join drawn across the switch."""
+def snapshot(cases, clouds, lay, join_ms: float, span_ms: float = 1400.0
+             ) -> Path:
+    """The figure-ground picture: cloud in black, figure in red."""
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     dur = core.samples(TONE_MS)
-    fig, axes = plt.subplots(1, 3, figsize=(15.0, 4.8), sharey=True,
-                             constrained_layout=True)
+    fig, axes = plt.subplots(1, len(cases), figsize=(5.0 * len(cases), 4.8),
+                             sharey=True, constrained_layout=True,
+                             squeeze=False)
+    starts = [LEAD_MS - 100.0] * (len(cases) - 1) + [join_ms - span_ms / 2.0]
 
-    windows = [(LEAD_MS - 100.0, 1400.0), (LEAD_MS - 100.0, 1400.0),
-               (join_ms - 700.0, 1400.0)]
-    for ax, (nm, ev, ttl), (t_lo, span_ms) in zip(axes, cases, windows):
+    for ax, (nm, ev, ttl), t_lo in zip(axes[0], cases, starts):
         t0, t1 = core.samples(t_lo), core.samples(t_lo + span_ms)
         for f, o in clouds[nm]["events"]:
             if t0 <= o < t1:
@@ -257,12 +226,124 @@ def figure_png(cases, clouds, join_ms: float, step_ms: float) -> int:
         ax.set_ylim(POOL_ST[0] - 2, POOL_ST[1] + 2)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
-    axes[0].set_ylabel(f"Semitones re {F_REF:.0f} Hz")
+    axes[0][0].set_ylabel(f"Semitones re {F_REF:.0f} Hz")
 
     out = OUT_DIR / "sfg_check.png"
     fig.savefig(out, dpi=170)
     plt.close(fig)
-    print(f"  -> {out.name}")
+    return out
+
+
+def main(argv=None) -> int:
+    p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument("--n-tones", type=int, default=N_TONES,
+                   help="tones in the figure (default 10)")
+    p.add_argument("--step-ms", type=float, default=STEP_MS,
+                   help="shear per tone; 0 is the coherent chord")
+    p.add_argument("--order", choices=("rise", "fall"), default="rise",
+                   help="staircase direction: lowest tone first, or highest")
+    p.add_argument("--duration", type=float, default=DURATION_S,
+                   help="seconds per condition; the switch file is twice this")
+    p.add_argument("--jitter-ms", type=float, default=0.0,
+                   help="displace whole tokens, in units of the tone length")
+    p.add_argument("--plot", action="store_true",
+                   help="write sfg_check.png, the figure in red on the cloud "
+                        "in black")
+    p.add_argument("--ceiling", type=int, default=0,
+                   help="tones sounding at once; 0 solves for it")
+    p.add_argument("--min-share", type=float, default=MIN_SHARE,
+                   help="least fraction of a figure channel's tones that the "
+                        "cloud must supply")
+    p.add_argument("--keep-wav", action="store_true")
+    args = p.parse_args(argv)
+
+    lay = layout(args.n_tones, ceiling=args.ceiling,
+                 min_share=args.min_share)
+    period = 1000.0 / RATE_HZ
+    N = max(1, int(round(args.duration * RATE_HZ)))
+    S, freqs = args.step_ms, lay["freqs"]
+    rng = np.random.default_rng(3)
+    kw = dict(order=args.order, jitter_ms=args.jitter_ms, rng=rng)
+
+    join = LEAD_MS + N * period
+    cases = [
+        ("sfg_coherent", tokens(lay, 0.0, N, LEAD_MS, **kw), "coherent, 0 ms"),
+        (f"sfg_stair{S:g}", tokens(lay, S, N, LEAD_MS, **kw),
+         f"staircase, {S:g} ms step, {args.order}"),
+        ("sfg_switch",
+         tokens(lay, 0.0, N, LEAD_MS, **kw) + tokens(lay, S, N, join, **kw),
+         f"coherent -> {S:g} ms at {join / 1000:.1f} s"),
+    ]
+
+    chan = {int(round(v * 2)): k for k, v in enumerate(lay["st_grid"])}
+    n_tone = core.samples(TONE_MS)
+    xs = {nm: render(ev) for nm, ev, _ in cases}
+
+    # One ceiling for every file, taken across all of them: the coherent
+    # figure peaks at n simultaneous tones and the staircase at far fewer, so
+    # a per-file ceiling would make the background density itself the
+    # difference between the conditions.
+    peak = max(int(cloud.concurrency([o for _, o, _ in ev], xs[nm].size,
+                                     n_tone).max())
+               for nm, ev, _ in cases)
+    ceil = max(peak, lay["ceiling"])
+    clouds = {nm: cloud.schedule(
+        xs[nm].size, freqs, [(chan[int(round(st * 2))], o) for st, o, _ in ev],
+        ceil, tone_ms=TONE_MS, step_ms=SCHED_STEP_MS)
+        for nm, ev, _ in cases}
+
+    print(f"{core.SR} Hz | {args.n_tones}-tone figure at {RATE_HZ:g} Hz "
+          f"({period:.0f} ms), tones {TONE_MS:.0f} ms, "
+          f"{args.duration:g} s per condition ({N} tokens)")
+    print(f"          shear {S:g} ms/tone ({args.order}) -> figure spans "
+          f"{(args.n_tones - 1) * S + TONE_MS:.0f} ms, successive tones "
+          f"{'overlap by' if S < TONE_MS else 'gap by'} "
+          f"{abs(TONE_MS - S):.0f} ms")
+    print(f"          balance: ceiling {ceil} (>= the {peak}-tone peak), "
+          f"at most {lay['c_max']} channels at {RATE_HZ:g} Hz -> grid "
+          f"{lay['grid_st']:g} st, {freqs.size} channels "
+          f"{freqs[0]:.0f}-{freqs[-1]:.0f} Hz")
+    print(f"          every channel {lay['avg_rate']:.1f} tones/s, of which "
+          f"the figure supplies {RATE_HZ:g} in its own "
+          f"({lay['share'] * 100:.0f}% left to the cloud); "
+          f"token jitter +-{args.jitter_ms:g} ms\n")
+
+    mixes = {nm: xs[nm] + clouds[nm]["x"][:xs[nm].size] for nm, _, _ in cases}
+    amp = 10 ** (core.PEAK_DBFS / 20) / max(
+        float(np.max(np.abs(x))) for x in xs.values())
+    amp_c = 10 ** (core.PEAK_DBFS / 20) / max(
+        float(np.max(np.abs(m))) for m in mixes.values())
+
+    for nm, ev, ttl in cases:
+        core.render(OUT_DIR / f"{nm}_alone", xs[nm] * amp, args.keep_wav)
+        core.render(OUT_DIR / nm, mixes[nm] * amp_c, args.keep_wav)
+        T = xs[nm].size
+        lo, hi = core.samples(LEAD_MS), T - core.samples(TAIL_MS)
+        tot = (cloud.concurrency([o for _, o, _ in ev], T, n_tone)
+               + cloud.concurrency([o for _, o in clouds[nm]["events"]],
+                                   T, n_tone))[lo:hi]
+        c = clouds[nm]["counts"]
+        isfig = clouds[nm]["fig_counts"] > 0
+        q = np.zeros((freqs.size, 4), dtype=int)
+        for k, o in ([(chan[int(round(st * 2))], o) for st, o, _ in ev]
+                     + [(int(np.argmin(np.abs(freqs - f))), o)
+                        for f, o in clouds[nm]["events"]]):
+            q[k, min(3, int(4 * o / T))] += 1
+        print(f"  {nm}  ({ttl})")
+        print(f"    {len(ev)} figure tones, {T / core.SR:.1f} s; "
+              f"{core.levels(xs[nm] * amp)}")
+        print(f"    concurrency {tot.min()}-{tot.max()}, mean "
+              f"{tot.mean():.2f} +- {tot.std():.2f}, deepest dip "
+              f"{10 * np.log10(ceil / max(tot.min(), 1)):.1f} dB for "
+              f"{np.mean(tot < ceil - 1) * 100:.1f}% of the time")
+        print(f"    channel use {c.min()}-{c.max()}: figure "
+              f"{c[isfig].min()}-{c[isfig].max()} ({isfig.sum()} ch), other "
+              f"{c[~isfig].min()}-{c[~isfig].max()} ({(~isfig).sum()} ch); "
+              f"per quarter {q.min()}-{q.max()}")
+        print(f"    -> {nm}.mp3   {nm}_alone.mp3\n")
+
+    if args.plot:
+        print(f"  -> {snapshot(cases, clouds, lay, join).name}")
     return 0
 
 
