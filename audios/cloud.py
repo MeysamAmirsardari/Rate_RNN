@@ -175,7 +175,7 @@ def concurrency(onsets, total: int, n_tone: int) -> np.ndarray:
 def schedule(total: int, freqs: np.ndarray, fig, n_total: int, *,
              tone_ms: float = TONE_MS, step_ms: float = 2.5,
              guard_ms: float | None = None, count_figure: bool = True,
-             slack: int = 1, seed: int = 5) -> dict:
+             slack: int = 1, banned=(), seed: int = 5) -> dict:
     """A cloud that fills the figure's complement, so the total never moves.
 
     ``fig`` is the figure as ``(channel index, onset sample)`` pairs -- the
@@ -231,6 +231,11 @@ def schedule(total: int, freqs: np.ndarray, fig, n_total: int, *,
         busy[k, max(0, o - guard):o + n_tone + guard] = True
         counts[k] += 1
     n_fig = counts.copy()
+
+    # ``banned`` channels are never dealt at all.  Marking them busy for the
+    # whole stream says so without touching any other rule.
+    if len(banned):
+        busy[list(banned), :] = True
 
     rng = np.random.default_rng(seed)
     # ``count_figure`` decides what the dealer is levelling.  True levels the

@@ -146,7 +146,8 @@ LEAD_MS, TAIL_MS = 400.0, 600.0
 
 
 def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
-           ceiling: int = 0, contrast: float = CONTRAST) -> dict:
+           ceiling: int = 0, contrast: float = CONTRAST,
+           share: bool = False) -> dict:
     """Solve for the ceiling, the grid and the figure's channels.
 
     Returns everything downstream needs, plus the numbers behind it so the
@@ -169,8 +170,15 @@ def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
     # the totals, which is what removed the figure: at equal totals the
     # contrast is 1 and there is nothing to hear.
     fig_load = n_tones * tone_s * rate_hz          # mean concurrency of figure
-    cloud_rate = rate_hz / max(contrast - 1.0, 1e-9)
-    c_want = (ceil - fig_load) / (tone_s * cloud_rate)
+    # With the figure's channels off limits the cloud spreads over ``C - n``
+    # channels and a figure channel carries nothing but the figure, so the
+    # ratio is ``rate / cloud_rate``; when they are shared the cloud's own
+    # tones land in figure channels too and it is ``(rate + cloud_rate) /
+    # cloud_rate``.  Solving the wrong one leaves the printed contrast a
+    # prediction about a stimulus that was not built.
+    cloud_rate = (rate_hz / max(contrast - 1.0, 1e-9) if share
+                  else rate_hz / max(contrast, 1e-9))
+    c_want = (ceil - fig_load) / (tone_s * cloud_rate) + (0 if share else n_tones)
     span = POOL_ST[1] - POOL_ST[0]
     grid = min(GRIDS, key=lambda g: abs(int(np.floor(span / g)) + 1 - c_want))
     c_max = int(c_want)
@@ -186,11 +194,13 @@ def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
     idx = np.unique(np.round(np.linspace(lo, hi, n_tones)).astype(int))
     if idx.size < n_tones:                      # pool too coarse to separate
         idx = np.arange(lo, lo + n_tones)
-    cr = (ceil - fig_load) / (tone_s * freqs.size)
+    n_bg = freqs.size if share else freqs.size - n_tones
+    cr = (ceil - fig_load) / (tone_s * max(n_bg, 1))
+    fr = rate_hz + cr if share else rate_hz
     return dict(ceiling=ceil, grid_st=grid, freqs=freqs, st_grid=st_grid,
                 fig_idx=idx, fig_st=st_grid[idx], c_max=c_max,
-                cloud_rate=cr, fig_rate=rate_hz + cr, rate_hz=rate_hz,
-                contrast=(rate_hz + cr) / cr)
+                cloud_rate=cr, fig_rate=fr, rate_hz=rate_hz,
+                contrast=fr / cr)
 
 
 def tokens(lay: dict, step_ms: float, n_tokens: int, phase_ms: float, *,
@@ -288,6 +298,10 @@ def main(argv=None) -> int:
                         "in black")
     p.add_argument("--ceiling", type=int, default=0,
                    help="tones sounding at once; 0 solves for it")
+    p.add_argument("--share-channels", action="store_true",
+                   help="let the cloud sound the figure's own channels; it "
+                        "then inserts a tone near the midpoint of the "
+                        "figure's period and doubles its apparent rate")
     p.add_argument("--contrast", type=float, default=CONTRAST,
                    help="how many times more often a figure channel sounds "
                         "than a background one; 1 means no figure")
@@ -296,16 +310,21 @@ def main(argv=None) -> int:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     lay = layout(args.n_tones, ceiling=args.ceiling,
-                 contrast=args.contrast)
+                 contrast=args.contrast, share=args.share_channels)
     period = 1000.0 / RATE_HZ
     N = max(1, int(round(args.duration * RATE_HZ)))
     S, freqs = args.step_ms, lay["freqs"]
-    rng = np.random.default_rng(3)
-    kw = dict(order=args.order, jitter_ms=args.jitter_ms, rng=rng)
+    # A fresh generator per condition, not one shared between them: sharing
+    # it advanced the stream, so the coherent and sheared files were built on
+    # different token onsets and differed by more than the shear.
+    def kw():
+        return dict(order=args.order, jitter_ms=args.jitter_ms,
+                    rng=np.random.default_rng(3))
 
     cases = [
-        ("sfg_coherent", tokens(lay, 0.0, N, LEAD_MS, **kw), "coherent, 0 ms"),
-        (f"sfg_stair{S:g}", tokens(lay, S, N, LEAD_MS, **kw),
+        ("sfg_coherent", tokens(lay, 0.0, N, LEAD_MS, **kw()),
+         "coherent, 0 ms"),
+        (f"sfg_stair{S:g}", tokens(lay, S, N, LEAD_MS, **kw()),
          f"staircase, {S:g} ms step, {args.order}"),
     ]
 
@@ -321,10 +340,21 @@ def main(argv=None) -> int:
                                      n_tone).max())
                for nm, ev, _ in cases)
     ceil = max(peak, lay["ceiling"])
+    # The cloud is kept out of the figure's own channels unless asked
+    # otherwise, and the reason is measured rather than aesthetic.  The
+    # ceiling equals the figure's peak, so no cloud tone may sound during a
+    # figure burst; a cloud tone in a figure channel is therefore forced into
+    # the gap between two figure tones, and the guard pins it near the middle
+    # -- measured phase 0.48 +- 0.12 of the interval.  Every such tone is
+    # heard as a beat exactly halfway, so the figure appears to run at twice
+    # its rate.  Sharing the channels was meant to stop frequency alone
+    # identifying the figure; it doubles the figure's tempo instead.
+    banned = (set() if args.share_channels
+              else {chan[int(round(st * 2))] for st in lay["fig_st"]})
     clouds = {nm: cloud.schedule(
         xs[nm].size, freqs, [(chan[int(round(st * 2))], o) for st, o, _ in ev],
         ceil, tone_ms=TONE_MS, step_ms=SCHED_STEP_MS, count_figure=False,
-        slack=DEALER_SLACK)
+        slack=DEALER_SLACK, banned=banned)
         for nm, ev, _ in cases}
 
     print(f"{core.SR} Hz | {args.n_tones}-tone figure at {RATE_HZ:g} Hz "
@@ -337,15 +367,27 @@ def main(argv=None) -> int:
     print(f"          ceiling {ceil} (>= the {peak}-tone peak); grid "
           f"{lay['grid_st']:g} st, {freqs.size} channels "
           f"{freqs[0]:.0f}-{freqs[-1]:.0f} Hz")
-    print(f"          a figure channel sounds {lay['fig_rate']:.1f} times/s "
-          f"against {lay['cloud_rate']:.1f} for a background one: "
-          f"contrast {lay['contrast']:.1f}x; "
-          f"token jitter +-{args.jitter_ms:g} ms\n")
+    nm0, ev0 = cases[0][0], cases[0][1]
+    dur = N * period / 1000.0        # the active window, not lead + tail
+    isf0 = np.zeros(freqs.size, dtype=bool)
+    isf0[list({chan[int(round(st * 2))] for st in lay["fig_st"]})] = True
+    tot0 = clouds[nm0]["counts"]
+    f_rate = tot0[isf0].mean() / dur
+    b_rate = tot0[~isf0].mean() / dur
+    print(f"          MEASURED: a figure channel sounds {f_rate:.1f} times/s "
+          f"against {b_rate:.1f} for a background one: "
+          f"contrast {f_rate / max(b_rate, 1e-9):.1f}x"
+          f"{'' if args.share_channels else ', cloud kept off figure channels'}"
+          f"; token jitter +-{args.jitter_ms:g} ms\n")
 
     mixes = {nm: xs[nm] + clouds[nm]["x"][:xs[nm].size] for nm, _, _ in cases}
-    amp = 10 ** (core.PEAK_DBFS / 20) / max(
-        float(np.max(np.abs(x))) for x in xs.values())
-    amp_c = 10 ** (core.PEAK_DBFS / 20) / max(
+    # ONE gain for every file, figure-only and mixed alike.  Scaling the
+    # figure-only files to their own peak made them louder than the figure
+    # inside the mix, so ``_alone`` was not the figure you hear in the cloud
+    # -- it was a different presentation of it.  With a common gain the
+    # ``_alone`` file is exactly the figure component of its mix, sample for
+    # sample, and the two can be A/B'd.
+    amp = amp_c = 10 ** (core.PEAK_DBFS / 20) / max(
         float(np.max(np.abs(m))) for m in mixes.values())
 
     for nm, ev, ttl in cases:
