@@ -584,7 +584,7 @@ to its frozen counterpart, by construction rather than by accident.
 
 ## Classic SFG, and the same figure sheared (`sfg.py`)
 
-    python -m audios.sfg --plot
+    python -m audios.sfg --plot          everything lands in audios/sfg_out/
         sfg_coherent.mp3   n tones together, every 200 ms
         sfg_stair10.mp3    the same n, delayed 0 10 20 ... ms
         sfg_check.png      only with --plot

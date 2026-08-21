@@ -4,9 +4,13 @@ audios.sfg
 
 The classic figure, and the same figure sheared into a staircase.
 
+Everything is written to ``audios/sfg_out/``:
+
     sfg_coherent.mp3   n tones, all together, every 200 ms
     sfg_stair10.mp3    the same n, delayed 0 10 20 ... ms
     sfg_check.png      with --plot
+
+plus an ``_alone`` copy of each condition without the cloud.
 
 The stimulus
 ------------
@@ -97,7 +101,13 @@ else:
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
     from audios import cloud, core  # type: ignore
 
-OUT_DIR = Path(__file__).resolve().parent
+#: Everything this module writes goes here, not into ``audios/`` itself,
+#: which by now holds several unrelated stimulus sets.  Named ``sfg_out``
+#: rather than ``sfg`` because a directory ``audios/sfg/`` sitting beside the
+#: module ``audios/sfg.py`` is a package/module name clash: Python resolves it
+#: in the module's favour today, but it is the kind of ambiguity that breaks
+#: the moment something adds an ``__init__.py`` or globs directories.
+OUT_DIR = Path(__file__).resolve().parent / "sfg_out"
 
 F_REF = 1000.0
 POOL_ST = (-24.0, 36.0)        # 250 Hz to 8 kHz
@@ -256,6 +266,7 @@ def main(argv=None) -> int:
                         "cloud must supply")
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
+    OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     lay = layout(args.n_tones, ceiling=args.ceiling,
                  min_share=args.min_share)
@@ -336,10 +347,12 @@ def main(argv=None) -> int:
               f"{c[isfig].min()}-{c[isfig].max()} ({isfig.sum()} ch), other "
               f"{c[~isfig].min()}-{c[~isfig].max()} ({(~isfig).sum()} ch); "
               f"per quarter {q.min()}-{q.max()}")
-        print(f"    -> {nm}.mp3   {nm}_alone.mp3\n")
+        print(f"    -> {OUT_DIR.name}/{nm}.mp3   "
+              f"{OUT_DIR.name}/{nm}_alone.mp3\n")
 
     if args.plot:
-        print(f"  -> {snapshot(cases, clouds, lay).name}")
+        out = snapshot(cases, clouds, lay)
+        print(f"  -> {out.parent.name}/{out.name}")
     return 0
 
 
