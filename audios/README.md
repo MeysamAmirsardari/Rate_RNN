@@ -475,7 +475,11 @@ never overlapping is checked on the built streams, not assumed.
 
 ### Past the repetition period
 
-Both sweeps run to a 1 s step, which is longer than the word repeats.  The
+The **syllable** sweep runs to a 1 s step, which is longer than the word
+repeats.  The tone step is not swept that far and should not be: it is the
+syllable's own frozen shape, fixed at a 20 ms step so the five tones span
+0-80 ms, and moving it changes what a syllable *is* rather than how syllables
+are strung together.  The
 period is deliberately **not** stretched to keep the instances apart.
 Stretching it would drop the figure's tone rate in step with the manipulation
 -- five tones per second at a 40 ms step against one per second at 1000 ms --
@@ -488,8 +492,8 @@ Consecutive instances therefore interleave, which is what the classic
 figure-ground picture shows anyway.  Each instance is still one frozen shape;
 several are simply in flight at once, and the count is reported per condition:
 
-    tone step      0-160   500   700   850   1000 ms
-    in flight        1       3     4     5      6
+    syllable step   80-500   700   850   1000 ms
+    in flight          1       2     2      2
 
 ### What is held constant
 
@@ -512,9 +516,24 @@ being measured -- never has to be used.  Sharing the pool makes frequency
 uninformative.  Two things follow and both are enforced: a cloud tone never
 lands on a figure tone in the same channel, and each channel's figure tones
 count toward its total, with the dealer working down the **total** so figure
-channels are neither rarer nor commoner than any other.  Measured: 69-73 tones
-per figure channel against 69-73 for the rest.  `--exclusive` restores the
-reserved version for comparison.
+channels are neither rarer nor commoner than any other.  Measured: 38-39 tones per figure channel
+against 38-39 for the rest.  `--exclusive` restores the reserved version for
+comparison.
+
+The count that governs the dealer has to be the count **so far**.  Charging a
+figure channel upfront for figure tones it has not played yet made those
+channels look fully used at time zero, so they were starved early and
+over-supplied late: level in total, but fluctuating three times as much as a
+plain cloud channel from second to second -- uniform where it was measured and
+lumpy where it is heard.  Counting each figure tone as it arrives holds
+per-quarter use at 8-11 tones per channel against 3-13 before, with figure and
+cloud channels finally indistinguishable, SD 0.51 against 0.53.
+
+    channel use, figure and cloud together, 61 channels
+      all      38-39, mean 38.4 +- 0.5
+      figure   38-39, mean 38.1   (15 channels)
+      other    38-39, mean 38.4   (46 channels)
+      per quarter of the stream, per channel: 8-11
 
 **The word onset is quantised to the cloud's tone length**, and this is why
 the background can stay thin.  The cloud tiles in 40 ms blocks; a word landing

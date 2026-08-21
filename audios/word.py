@@ -115,8 +115,7 @@ SYL_FREQ_STEP_ST = 3.0         # transposition between syllables
 SWEEPS = {
     "tone": dict(n_syl=1, period_ms=1000.0, n_words=14, jitter_ms=120.0,
                  syl_step_ms=0.0,
-                 steps=(0.0, 10.0, 20.0, 40.0, 80.0, 160.0,
-                        500.0, 700.0, 850.0, 1000.0)),
+                 steps=(0.0, 10.0, 20.0, 40.0, 80.0, 160.0)),
     "syllable": dict(n_syl=3, period_ms=1600.0, n_words=10, jitter_ms=240.0,
                      tone_step_ms=20.0,
                      steps=(80.0, 130.0, 200.0, 300.0, 450.0,
@@ -299,6 +298,36 @@ def figure(shown: list, stem: str, span_ms: float,
     return out
 
 
+def channel_check(counts: np.ndarray, isfig: np.ndarray, quarters: np.ndarray
+                  ) -> str:
+    """Is every channel used equally -- figure channels included?
+
+    Two questions, not one.  **Overall**: do the figure's channels carry the
+    same number of tones as the rest, once their figure tones are counted?  If
+    they carry fewer they are conspicuously quiet and if they carry more they
+    are conspicuously busy, and either way the figure can be found without
+    listening to the timing.  **Over time**: is each channel used at the same
+    rate throughout, or does the dealer drift?  A channel that is busy early
+    and idle late is uniform in total and non-uniform where it matters.
+
+    ``quarters`` is (n_channels, 4): tones per channel per quarter of the
+    stream, figure and cloud together.
+    """
+    tot = counts
+    f, o = tot[isfig], tot[~isfig]
+    per_q = quarters.sum(axis=0)
+    return (f"  channel use, figure and cloud together, {tot.size} channels\n"
+            f"    all      {tot.min()}-{tot.max()}, mean {tot.mean():.1f} "
+            f"+- {tot.std():.1f}\n"
+            f"    figure   {f.min()}-{f.max()}, mean {f.mean():.1f}   "
+            f"({isfig.sum()} channels)\n"
+            f"    other    {o.min()}-{o.max()}, mean {o.mean():.1f}   "
+            f"({(~isfig).sum()} channels)\n"
+            f"    per quarter of the stream, per channel: "
+            f"{quarters.min()}-{quarters.max()} "
+            f"(quarter totals {per_q.min()}-{per_q.max()})")
+
+
 def main(argv=None) -> int:
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--sweep", choices=sorted(SWEEPS), default="tone")
@@ -432,6 +461,17 @@ def main(argv=None) -> int:
               f"{dip:.1f} dB for {np.mean(tot < peak - 1) * 100:.1f}% of "
               f"the time; tones per channel {share}")
         print(f"    -> {nm}.mp3   {nm}_alone.mp3\n")
+
+    # uniformity across every channel, checked on the built streams
+    nm0, b0 = built[0][0], built[0][1]
+    cl0 = clouds[nm0]
+    T0 = b0["x"].size
+    ev = [(chan[int(round(st))], o) for st, o, _ in b0["events"]] + \
+         [(int(np.argmin(np.abs(freqs - f))), o) for f, o in cl0["events"]]
+    quarters = np.zeros((freqs.size, 4), dtype=int)
+    for k, o in ev:
+        quarters[k, min(3, int(4 * o / T0))] += 1
+    print(channel_check(cl0["counts"], cl0["fig_counts"] > 0, quarters))
 
     shown = [(b, clouds[nm], f"{level} step {s:g} ms")
              for nm, b, s in built]
