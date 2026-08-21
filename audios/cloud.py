@@ -161,3 +161,67 @@ def report(x: np.ndarray, freqs: np.ndarray, idx: np.ndarray, *,
             f"(constant at {n_voices - 1} by construction); "
             f"per-channel use {counts.min()}-{counts.max()} "
             f"(spread {counts.max() - counts.min()})")
+
+
+def concurrency(onsets, total: int, n_tone: int) -> np.ndarray:
+    """How many tones of length ``n_tone`` sound at each sample."""
+    c = np.zeros(total + n_tone, dtype=int)
+    for o in onsets:
+        c[int(o):int(o) + n_tone] += 1
+    return c
+
+
+def schedule(total: int, freqs: np.ndarray, fig_onsets, n_total: int, *,
+             tone_ms: float = TONE_MS, step_ms: float = 2.5,
+             seed: int = 5) -> dict:
+    """A cloud that fills the figure's complement, so the total never moves.
+
+    A fixed-voice cloud cannot do this.  A figure is a burst of tones followed
+    by silence, so the total swings with it and the figure can be found from
+    the envelope alone, with no grouping involved.  The cloud has to be
+    **denser between the figure's tokens and thinner inside them**, which
+    means scheduling it against the figure rather than on a grid of its own.
+
+    Greedy, and deliberately conservative: a tone is added at a candidate
+    onset only if it cannot push the total above ``n_total`` anywhere in its
+    own length.  That guarantees the ceiling is never crossed, and costs a
+    shallow dip just before each burst, where tones already sounding cannot be
+    withdrawn.
+
+    ``n_total`` must be at least the figure's own peak, because nothing the
+    cloud does can take a tone away from the figure.  Pass the peak taken
+    across **every condition of a series**, not each condition's own, or the
+    density becomes a cue that co-varies with the manipulation.
+    """
+    n_tone = core.samples(tone_ms)
+    c_tot = concurrency(fig_onsets, total, n_tone)
+    busy = np.zeros((freqs.size, total + n_tone), dtype=bool)
+    rng = np.random.default_rng(seed)
+    pack, i = rng.permutation(freqs.size), 0
+    ev = []
+    for o in range(0, total, core.samples(step_ms)):
+        w = slice(o, o + n_tone)
+        while c_tot[w].max() < n_total:
+            for _ in range(freqs.size):              # first free channel
+                if i >= pack.size:
+                    pack, i = rng.permutation(freqs.size), 0
+                k = int(pack[i])
+                i += 1
+                if not busy[k, w].any():
+                    break
+            else:
+                break
+            busy[k, w] = True
+            c_tot[w] += 1
+            ev.append((freqs[k], o))
+
+    x = np.zeros(total + n_tone)
+    pips: dict = {}
+    counts = np.zeros(freqs.size, dtype=int)
+    index = {float(f): j for j, f in enumerate(freqs)}
+    for f, o in ev:
+        if f not in pips:
+            pips[f] = core.tone(f, tone_ms)
+        x[o:o + n_tone] += pips[f]
+        counts[index[float(f)]] += 1
+    return dict(x=x[:total], freqs=freqs, events=ev, counts=counts)

@@ -417,3 +417,65 @@ hide it, and fifty channels is then close to enough.
 One 10.8 ms dip in 11.7 s, at the first token: a 40 ms cloud tone cannot fit a
 10 ms gap without crossing the ceiling.  Intrinsic, and the same limit as the
 shallow pre-burst dips above.
+
+## Words, and when a staircase stops being one thing (`word.py`)
+
+    python -m audios.word --sweep tone        word_tone{0,10,20,40,80,160}ms.mp3
+    python -m audios.word --sweep syllable    word_syl{80,130,200,300,450}ms.mp3
+    python -m audios.word --sweep tone --order perm      the trajectory control
+    python -m audios.word --sweep tone --redraw          the floor control
+
+A **tone** is 40 ms.  A **syllable** is five tones on a rising frequency ramp,
+each delayed a fixed step behind the one below.  A **word** is three
+syllables, the same staircase transposed up in frequency, each delayed a fixed
+step behind the last.  The word repeats on a fixed period, and every part of
+the pattern is frozen -- verified per condition by counting distinct word
+shapes across repetitions, which is 1 for every frozen file and equals the
+repetition count for every `--redraw` file.
+
+The same manipulation exists at both levels, and one step is the only thing
+that ever moves.
+
+### The regimes
+
+    step < 40 ms    successive units OVERLAP; simultaneous grouping available
+    step = 40 ms    they exactly abut; overlap ends here
+    step > 40 ms    a gap opens; nothing is simultaneous, so anything that
+                    still pops out is doing so sequentially
+
+The third regime is the one worth listening to.  A frozen repeating pattern
+can in principle be bound by its recurrence rather than by simultaneity, and
+nothing says that has to fail at 40 ms.  If pop-out survives well past the
+overlap limit, the figure is not a smeared chord -- it is an object defined by
+its repeating spectrotemporal shape.
+
+### What is held constant
+
+**Per-tone level.**  One common gain across a sweep, never per file.  Total
+energy is then identical across conditions (overall RMS constant to 0.3 dB)
+and each figure tone has the same level everywhere.  Peak level is *not*
+equalised: at step 0 the five tones sum coherently and the file genuinely
+peaks 13 dB higher, which is a consequence of coincidence, not an artifact.
+
+**Background density.**  The cloud ceiling is one number for the whole sweep
+*and across both sweeps* (default 6).  The tone sweep's figure peaks at five
+simultaneous tones and the syllable sweep's at three, so letting each take its
+own peak would make the two levels incomparable and would let density co-vary
+with the step.  Measured concurrency is 6.00 +- 0.04 to 0.07 throughout.
+
+**Frequencies are inharmonic** -- even semitone spacings, harmonics of
+nothing.  A harmonic series would confound the result completely: harmonicity
+fuses a complex on its own, so a fall-off with step size could be the loss of
+harmonic fusion rather than the loss of pattern grouping.
+
+### Controls
+
+`--order perm` keeps the same lags but assigns them to frequencies in a fixed
+random order, so the pattern is still frozen and still repeated but has no
+rising trajectory.  It separates "the figure is a glide" from "the figure is a
+fixed pattern".
+
+`--redraw` redraws the lags every repetition: same spread, same tone count,
+same marginal spectrum, nothing repeats.  At tone step 0 it degenerates -- a
+chord of zero spread has no lags to scramble -- so that one file is identical
+to its frozen counterpart, by construction rather than by accident.
