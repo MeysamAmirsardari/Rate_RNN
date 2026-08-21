@@ -6,8 +6,6 @@ The classic figure, and the same figure sheared into a staircase.
 
     sfg_coherent.mp3   n tones, all together, every 200 ms
     sfg_stair10.mp3    the same n, delayed 0 10 20 ... ms
-    sfg_switch.mp3     coherent for the first half, then the staircase,
-                       one cloud scheduled across the join
     sfg_check.png      with --plot
 
 The stimulus
@@ -28,14 +26,19 @@ Nothing else differs between the conditions.  Same frequencies, same tones per
 token, same token rate, same cloud, same per-tone level.  Total energy is
 identical; only the peak differs, and only because coincident tones sum.
 
-Why a switch file
------------------
-Two separate files ask "can you find the figure in this one?" twice, and the
-answer depends as much on how long you listened as on the stimulus.  One file
-that changes partway asks whether the figure you are *already holding onto*
-survives the shear, and the listener is their own control.  The cloud is
-scheduled once, across the join, so nothing in the background marks the
-moment.
+Token onsets are jittered
+-------------------------
+Every token is displaced independently, so the figure never arrives on a beat
+and cannot be tracked by rhythm instead of by pattern.  The displacement is in
+**whole tone lengths**, which is what keeps the cloud flat: the cloud tiles in
+40 ms blocks, and a token landing mid-block leaves the part of that block
+before it able to hold only one tone, opening a hole immediately in front of
+the figure -- the worst possible place, and deepest in the coherent condition.
+
+At 5 Hz that quantum is coarse against a 200 ms period, so the jitter has few
+distinct values; +-40 ms gives three arrival times and five distinct
+inter-token intervals, which is enough to destroy isochrony while keeping the
+mean rate exact.  ``--jitter-ms 0`` restores the isochronous version.
 
 Keeping the cloud balanced at any size
 --------------------------------------
@@ -77,7 +80,7 @@ Run
 ---
     python -m audios.sfg --plot
     python -m audios.sfg --n-tones 5 --step-ms 20 --order fall
-    python -m audios.sfg --duration 20 --jitter-ms 40 --plot
+    python -m audios.sfg --duration 20 --jitter-ms 80 --plot
 """
 
 from __future__ import annotations
@@ -103,7 +106,8 @@ RATE_HZ = 5.0                  # figure repetition
 
 N_TONES = 10
 STEP_MS = 10.0                 # the shear, per tone
-DURATION_S = 12.0              # per condition; the switch file is twice this
+DURATION_S = 12.0              # per condition
+JITTER_MS = 40.0               # token onset, in whole tone lengths
 CEILING_MIN = 6
 MIN_SHARE = 0.25               # of a figure channel's tones, supplied by cloud
 FIG_MARGIN = 0.15              # of the pool left clear above and below
@@ -192,8 +196,7 @@ def render(ev: list, tail_ms: float = TAIL_MS) -> np.ndarray:
     return x
 
 
-def snapshot(cases, clouds, lay, join_ms: float, span_ms: float = 1400.0
-             ) -> Path:
+def snapshot(cases, clouds, lay, span_ms: float = 1400.0) -> Path:
     """The figure-ground picture: cloud in black, figure in red."""
     import matplotlib
     matplotlib.use("Agg")
@@ -203,9 +206,8 @@ def snapshot(cases, clouds, lay, join_ms: float, span_ms: float = 1400.0
     fig, axes = plt.subplots(1, len(cases), figsize=(5.0 * len(cases), 4.8),
                              sharey=True, constrained_layout=True,
                              squeeze=False)
-    starts = [LEAD_MS - 100.0] * (len(cases) - 1) + [join_ms - span_ms / 2.0]
-
-    for ax, (nm, ev, ttl), t_lo in zip(axes[0], cases, starts):
+    t_lo = LEAD_MS - 100.0
+    for ax, (nm, ev, ttl) in zip(axes[0], cases):
         t0, t1 = core.samples(t_lo), core.samples(t_lo + span_ms)
         for f, o in clouds[nm]["events"]:
             if t0 <= o < t1:
@@ -217,9 +219,6 @@ def snapshot(cases, clouds, lay, join_ms: float, span_ms: float = 1400.0
                 ax.plot([(o - t0) / core.SR, (o - t0 + dur) / core.SR],
                         [st, st], color="#E8121A", lw=3.0,
                         solid_capstyle="butt")
-        if nm == "sfg_switch":
-            ax.axvline((core.samples(join_ms) - t0) / core.SR, color="#1B7837",
-                       lw=1.6, ls="--", zorder=6)
         ax.set_title(ttl, fontsize=10.5)
         ax.set_xlabel("Time (s)")
         ax.set_xlim(0, span_ms / 1000.0)
@@ -243,9 +242,10 @@ def main(argv=None) -> int:
     p.add_argument("--order", choices=("rise", "fall"), default="rise",
                    help="staircase direction: lowest tone first, or highest")
     p.add_argument("--duration", type=float, default=DURATION_S,
-                   help="seconds per condition; the switch file is twice this")
-    p.add_argument("--jitter-ms", type=float, default=0.0,
-                   help="displace whole tokens, in units of the tone length")
+                   help="seconds per condition")
+    p.add_argument("--jitter-ms", type=float, default=JITTER_MS,
+                   help="displace whole tokens, rounded down to a whole "
+                        "number of tone lengths; 0 is isochronous")
     p.add_argument("--plot", action="store_true",
                    help="write sfg_check.png, the figure in red on the cloud "
                         "in black")
@@ -265,14 +265,10 @@ def main(argv=None) -> int:
     rng = np.random.default_rng(3)
     kw = dict(order=args.order, jitter_ms=args.jitter_ms, rng=rng)
 
-    join = LEAD_MS + N * period
     cases = [
         ("sfg_coherent", tokens(lay, 0.0, N, LEAD_MS, **kw), "coherent, 0 ms"),
         (f"sfg_stair{S:g}", tokens(lay, S, N, LEAD_MS, **kw),
          f"staircase, {S:g} ms step, {args.order}"),
-        ("sfg_switch",
-         tokens(lay, 0.0, N, LEAD_MS, **kw) + tokens(lay, S, N, join, **kw),
-         f"coherent -> {S:g} ms at {join / 1000:.1f} s"),
     ]
 
     chan = {int(round(v * 2)): k for k, v in enumerate(lay["st_grid"])}
@@ -343,7 +339,7 @@ def main(argv=None) -> int:
         print(f"    -> {nm}.mp3   {nm}_alone.mp3\n")
 
     if args.plot:
-        print(f"  -> {snapshot(cases, clouds, lay, join).name}")
+        print(f"  -> {snapshot(cases, clouds, lay).name}")
     return 0
 
 

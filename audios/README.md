@@ -587,15 +587,13 @@ to its frozen counterpart, by construction rather than by accident.
     python -m audios.sfg --plot
         sfg_coherent.mp3   n tones together, every 200 ms
         sfg_stair10.mp3    the same n, delayed 0 10 20 ... ms
-        sfg_switch.mp3     coherent for the first half, then the staircase,
-                           one cloud scheduled across the join
         sfg_check.png      only with --plot
 
     --n-tones N       tones in the figure (default 10)
     --step-ms MS      shear per tone; 0 is the coherent chord
     --order rise|fall lowest tone first, or highest
     --duration S      seconds per condition; the switch file is twice this
-    --jitter-ms MS    displace whole tokens, in units of the tone length
+    --jitter-ms MS    displace whole tokens (default 40); 0 is isochronous
     --plot            write the snapshot, figure in red on cloud in black
     --ceiling N       tones at once; 0 solves for it
     --min-share F     least fraction of a figure channel's tones the cloud
@@ -605,12 +603,20 @@ Forty-millisecond tones against a ten-millisecond step still overlap by 30 ms,
 so the staircase is not a sequence of separate events -- it is the same event
 with its onsets pulled apart.
 
-The **switch** file is the one worth listening to.  Two separate files ask
-"can you find the figure in this one?" twice, and the answer depends as much
-on how long you listened as on the stimulus; one file that changes partway
-asks whether the figure you are *already holding onto* survives the shear, and
-the listener is their own control.  The cloud is scheduled once, across the
-join, so nothing in the background marks the moment.
+**Token onsets are jittered** (default +-40 ms).  Every token is displaced
+independently, so the figure never arrives on a beat and cannot be tracked by
+rhythm instead of by pattern.  The displacement is in **whole tone lengths**,
+which is what keeps the cloud flat: the cloud tiles in 40 ms blocks, and a
+token landing mid-block leaves the part of that block before it able to hold
+only one tone, opening a hole immediately in front of the figure -- the worst
+place for one, and deepest in the coherent condition.
+
+At 5 Hz that quantum is coarse against a 200 ms period, so the jitter has few
+distinct values.  Measured: deviations of -40, 0, +40 ms give **five distinct
+inter-token intervals, 120 to 280 ms**, mean 197.9 against a nominal 200.
+Enough to destroy isochrony while keeping the rate right.  `--jitter-ms 0`
+restores the isochronous version, `--jitter-ms 80` widens it to five arrival
+times at the cost of tokens interleaving.
 
 ### Keeping the cloud balanced at any size
 
@@ -664,6 +670,6 @@ are off the cloud's 40 ms tiling where the coherent figure's are on it.  About
 0.4 ms per token, far too brief to hear, but it does co-vary with the
 condition so it is worth knowing.
 
-Token onsets are **isochronous** by default, unlike `word.py`.  This is the
-classic figure and the rhythm is part of it; `--jitter-ms 40` turns it off,
-and balance and flatness both survive it (10-10, SD 0.00, measured).
+Balance and flatness both survive the jitter: 10-10 concurrency at SD 0.00 in
+the coherent condition, channel use 103-104 for figure channels against
+103-104 for the rest.
