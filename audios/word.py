@@ -113,31 +113,32 @@ SYL_FREQ_STEP_ST = 3.0         # transposition between syllables
 #: The two sweeps.  Each fixes its own repetition period, held constant across
 #: the series: the step is the only thing allowed to move.
 SWEEPS = {
-    "tone": dict(n_syl=1, period_ms=1000.0, n_words=14, syl_step_ms=0.0,
-                 steps=(0.0, 10.0, 20.0, 40.0, 80.0, 160.0)),
-    "syllable": dict(n_syl=3, period_ms=1600.0, n_words=10, tone_step_ms=20.0,
-                     steps=(80.0, 130.0, 200.0, 300.0, 450.0)),
+    "tone": dict(n_syl=1, period_ms=1000.0, n_words=14, jitter_ms=120.0,
+                 syl_step_ms=0.0,
+                 steps=(0.0, 10.0, 20.0, 40.0, 80.0, 160.0,
+                        500.0, 700.0, 850.0, 1000.0)),
+    "syllable": dict(n_syl=3, period_ms=1600.0, n_words=10, jitter_ms=240.0,
+                     tone_step_ms=20.0,
+                     steps=(80.0, 130.0, 200.0, 300.0, 450.0,
+                            500.0, 700.0, 850.0, 1000.0)),
 }
 
-#: Never let two words touch: the shortest interval a jittered grid can
-#: produce is ``period - 2*jitter``, and the word itself occupies its span
-#: plus a tone.  Anything less and consecutive repetitions would interleave,
-#: which would break the one thing the design guarantees -- that each token is
-#: a separate instance of the same frozen shape.
-WORD_GUARD_MS = 40.0
-JITTER_CAP = 0.35              # of the period, however much room there is
-
-
-def auto_jitter(period_ms: float, max_span_ms: float) -> float:
-    """The largest word-onset jitter that still keeps words apart.
-
-    Rounded down to a whole number of tone lengths, because the jitter is
-    applied in those units; one value for the whole sweep, not per condition,
-    since letting it shrink as the step grows would confound the two.
-    """
-    room = (period_ms - max_span_ms - TONE_MS - WORD_GUARD_MS) / 2.0
-    return float(np.floor(min(room, JITTER_CAP * period_ms) / TONE_MS)
-                 * TONE_MS)
+#: Consecutive words are allowed to interleave once the step grows past the
+#: repetition period, and the period is deliberately *not* stretched to
+#: prevent it.  Stretching it would drop the figure's tone rate in step with
+#: the manipulation -- five tones per second at a step of 40 ms against one
+#: per second at 1000 ms -- so the figure would grow sparser exactly as it
+#: grew slower, and the two could never be told apart.  Holding the period
+#: fixed keeps the figure's density, its repetition rate and the cloud's
+#: density all constant, leaving the step as the only variable.  Each instance
+#: is still one frozen shape; several are simply in flight at once, which is
+#: what the classic figure-ground picture shows.
+#: The word-onset jitter, in whole tone lengths, fixed per sweep.  It used to
+#: be derived from "words must never overlap", which no longer holds now that
+#: the step is allowed to run past the repetition period; a fixed value also
+#: keeps it from co-varying with the manipulation, which is what a control has
+#: to avoid.  Twelve and fifteen per cent of the period, three and six blocks:
+#: seven and thirteen distinct arrival times, enough to destroy isochrony.
 
 SCHED_STEP_MS = 2.5
 LEAD_MS, TAIL_MS = 400.0, 600.0
@@ -237,49 +238,63 @@ def report(b: dict, name: str, step_ms: float, level: str,
             f"{rel} by {abs(gap):.0f} ms; word spans {b['span']:.0f} ms, "
             f"{n} tones\n"
             f"    distinct word shapes across {len(per)} repetitions: "
-            f"{len(shapes)}\n"
+            f"{len(shapes)}; up to {b['in_flight']} in flight at once\n"
             f"    {core.levels(b['x'])}")
 
 
-def figure(shown: list, stem: str, span_ms: float) -> Path:
-    """The SFG picture: cloud in black, figure in red."""
+def figure(shown: list, stem: str, span_ms: float,
+           ncols: int = 5) -> Path:
+    """The figure-ground picture: cloud in black, figure in red.
+
+    One time window for every panel, wide enough for the longest condition,
+    so the slopes can actually be compared; wrapped onto rows of ``ncols``
+    once the sweep gets long.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
     k = len(shown)
+    ncols = min(ncols, k)
+    nrows = int(np.ceil(k / ncols))
     dur = core.samples(TONE_MS)
     span = core.samples(span_ms)
-    fig, axes = plt.subplots(1, k, figsize=(2.7 * k + 0.8, 5.4),
-                             sharey=True, constrained_layout=True)
-    axes = np.atleast_1d(axes)
 
-    for ax, (b, cl, title) in zip(axes, shown):
+    fig, axes = plt.subplots(nrows, ncols, sharey=True, sharex=True,
+                             figsize=(3.0 * ncols + 0.8, 4.6 * nrows),
+                             constrained_layout=True, squeeze=False)
+    for ax in axes.ravel()[k:]:
+        ax.set_visible(False)
+
+    for ax, (b, cl, title) in zip(axes.ravel(), shown):
         t0 = int(b["onsets"][0]) - core.samples(120.0)
         t1 = t0 + span
         for f, o in cl["events"]:
             if t0 <= o < t1:
                 y = 12 * np.log2(f / F_REF)
                 ax.plot([(o - t0) / core.SR, (o - t0 + dur) / core.SR], [y, y],
-                        color="#111111", lw=2.6, solid_capstyle="butt")
-        for s, o, _w in b["events"]:
+                        color="#111111", lw=2.0, solid_capstyle="butt")
+        for st, o, _w in b["events"]:
             if t0 <= o < t1:
-                ax.plot([(o - t0) / core.SR, (o - t0 + dur) / core.SR], [s, s],
-                        color="#E8121A", lw=3.0, solid_capstyle="butt")
+                ax.plot([(o - t0) / core.SR, (o - t0 + dur) / core.SR],
+                        [st, st], color="#E8121A", lw=2.6,
+                        solid_capstyle="butt")
         for o in b["onsets"]:
             if t0 <= o < t1:
                 ax.axvline((o - t0) / core.SR, color="#888", lw=0.6,
                            ls=(0, (3, 3)))
         ax.set_title(title, fontsize=10)
-        ax.set_xlabel("Time (s)")
         ax.set_xlim(0, span / core.SR)
         ax.set_ylim(POOL_ST[0] - 2, POOL_ST[1] + 2)
         for sp in ("top", "right"):
             ax.spines[sp].set_visible(False)
-    axes[0].set_ylabel(f"Semitones re {F_REF:.0f} Hz")
+    for ax in axes[-1]:
+        ax.set_xlabel("Time (s)")
+    for row in axes:
+        row[0].set_ylabel(f"Semitones re {F_REF:.0f} Hz")
 
     out = OUT_DIR / f"{stem}.png"
-    fig.savefig(out, dpi=190)
+    fig.savefig(out, dpi=150)
     plt.close(fig)
     return out
 
@@ -295,9 +310,9 @@ def main(argv=None) -> int:
     p.add_argument("--redraw", action="store_true",
                    help="the floor control: redraw the lags every repetition")
     p.add_argument("--word-jitter-ms", type=float, default=-1.0,
-                   help="displacement of each whole word; -1 picks the "
-                        "largest that keeps words from touching, 0 turns it "
-                        "off (isochronous, findable by rhythm alone)")
+                   help="displacement of each whole word; -1 takes the "
+                        "sweep's own value, 0 turns it off (isochronous, and "
+                        "then findable by rhythm alone)")
     p.add_argument("--exclusive", action="store_true",
                    help="keep the cloud off the figure's channels (leaks: "
                         "frequency alone then identifies the figure)")
@@ -324,19 +339,17 @@ def main(argv=None) -> int:
         tpl = template(args.n_tones, n_syl, order=args.order, **kw)
         templates.append((s, tpl))
 
-    max_span = max(max(t for _, t in tpl) for _, tpl in templates)
-    jit = (auto_jitter(period, max_span) if args.word_jitter_ms < 0
+    jit = (sw["jitter_ms"] if args.word_jitter_ms < 0
            else args.word_jitter_ms)
     for s, tpl in templates:
         b = build(tpl, period, n_words, redraw=args.redraw,
                   onset_jitter_ms=jit)
         built.append((f"word_{tag}{s:g}ms{suffix}", b, s))
 
-    # the guarantee, checked on the built streams rather than assumed
+    # measured, not assumed: how many instances of the figure are in flight
     for nm, b, _ in built:
-        gap = np.diff(b["onsets"]) / core.SR * 1000.0 - b["span"] - TONE_MS
-        if gap.min() < 0:
-            raise SystemExit(f"{nm}: words overlap by {-gap.min():.0f} ms")
+        gap = np.diff(b["onsets"]) / core.SR * 1000.0
+        b["in_flight"] = int(np.ceil((b["span"] + TONE_MS) / gap.min()))
 
     # One ceiling for the whole sweep, so density never co-varies with step.
     n_tone = core.samples(TONE_MS)
@@ -422,7 +435,10 @@ def main(argv=None) -> int:
 
     shown = [(b, clouds[nm], f"{level} step {s:g} ms")
              for nm, b, s in built]
-    print(f"  -> {figure(shown, f'word_{tag}{suffix}_check', 2.2 * period).name}")
+    # one window for every panel: the longest span plus a repetition, so the
+    # shallow and the steep staircases are drawn to the same time scale
+    win = max(2.2 * period, max(b["span"] for _, b, _ in built) + period)
+    print(f"  -> {figure(shown, f'word_{tag}{suffix}_check', win).name}")
     return 0
 
 

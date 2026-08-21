@@ -420,8 +420,10 @@ shallow pre-burst dips above.
 
 ## Words, and when a staircase stops being one thing (`word.py`)
 
-    python -m audios.word --sweep tone        word_tone{0,10,20,40,80,160}ms.mp3
-    python -m audios.word --sweep syllable    word_syl{80,130,200,300,450}ms.mp3
+    python -m audios.word --sweep tone
+        word_tone{0,10,20,40,80,160,500,700,850,1000}ms.mp3
+    python -m audios.word --sweep syllable
+        word_syl{80,130,200,300,450,500,700,850,1000}ms.mp3
     python -m audios.word --sweep tone --order perm      the trajectory control
     python -m audios.word --sweep tone --redraw          the floor control
 
@@ -470,6 +472,24 @@ step grows would confound the jitter with the manipulation.  The periods were
 raised from 800 and 1200 ms to make room for a jitter worth having.  Words
 never overlapping is checked on the built streams, not assumed.
 `--word-jitter-ms 0` restores the isochronous version.
+
+### Past the repetition period
+
+Both sweeps run to a 1 s step, which is longer than the word repeats.  The
+period is deliberately **not** stretched to keep the instances apart.
+Stretching it would drop the figure's tone rate in step with the manipulation
+-- five tones per second at a 40 ms step against one per second at 1000 ms --
+so the figure would grow sparser exactly as it grew slower and the two could
+never be told apart.  Holding the period fixed keeps the figure's density, its
+repetition rate and the cloud's density all constant, leaving the step as the
+only thing that moves.
+
+Consecutive instances therefore interleave, which is what the classic
+figure-ground picture shows anyway.  Each instance is still one frozen shape;
+several are simply in flight at once, and the count is reported per condition:
+
+    tone step      0-160   500   700   850   1000 ms
+    in flight        1       3     4     5      6
 
 ### What is held constant
 
