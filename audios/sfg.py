@@ -44,48 +44,41 @@ distinct values; +-40 ms gives three arrival times and five distinct
 inter-token intervals, which is enough to destroy isochrony while keeping the
 mean rate exact.  ``--jitter-ms 0`` restores the isochronous version.
 
-Keeping the cloud balanced at any size
---------------------------------------
-Three things have to hold at once, and two of them fight each other as the
-figure grows.  The module solves for them rather than leaving them to a
-constant that happened to work at one setting:
+What makes the figure audible
+-----------------------------
+In this paradigm the figure **is** the set of channels that recur more often
+than the background.  An earlier version of this module levelled every
+channel's total count -- the same number of tones in a figure channel as in a
+background one -- and that silently removed the figure: measured, 79 tones per
+figure channel against 79 per background channel, with the cloud arriving as
+synchronous ten-tone chords that the figure was simply another instance of.
 
-**The ceiling cannot be below the figure's own peak.**  A coherent figure of
-``n`` tones sounds ``n`` tones at once, and nothing the cloud does can take one
-away, so the total is at least ``n`` at that instant -- and to keep the
-envelope flat it must be ``n`` everywhere else too.  A ten-tone chord
-therefore *requires* a ten-tone background.  This is not a choice; it is what
-hiding a ten-tone burst costs.
+Two things restore it, and both are measured rather than assumed.
 
-**Every channel must be used at the same rate.**  A figure channel is used
-once per token, so at ``rate`` tones per second, whatever ``n`` is.  The cloud
-supplies ``ceiling / tone`` tones per second spread over ``C`` channels, so
-the average channel rate is ``ceiling / (tone * C)`` and balance needs
+**The cloud levels its own counts, not the totals.**  It treats every channel
+alike, never avoiding or favouring the figure's -- so frequency alone still
+gives nothing away -- and the figure's tones sit on top.  ``--contrast`` sets
+how many times more often a figure channel then sounds than a background one,
+and asking for a ratio fixes the pool size:
 
-    ceiling / (tone_s * C)  >=  rate
+    cloud_rate = (ceiling - n * tone_s * rate) / (tone_s * C)
+    contrast   = (rate + cloud_rate) / cloud_rate
 
-Rearranged, ``C <= ceiling / (tone_s * rate)``.  This is a **bound on the
-number of channels**, and it tightens as the figure gets faster, not as it
-gets bigger.  Exceed it and the figure's channels are simply busier than the
-rest -- which identifies the figure without listening to the timing at all.
+A big ratio needs a big pool.  Four needs about 120 channels, which a
+half-semitone grid over five octaves just provides; classic figure-ground runs
+nearer thirteen, which would need 480 channels an eighth of a semitone apart,
+finer than the ear resolves.  Four is where this span tops out.
 
-**The cloud has to sound the figure's channels.**  If it cannot, every tone at
-those frequencies is a figure tone and frequency alone gives the answer.  That
-needs headroom above the bound, not merely equality: ``--min-share`` sets how
-much of a figure channel's traffic the cloud must supply, and the bound
-becomes ``C <= (1 - share) * ceiling / (tone_s * rate)``.
+**The background has to be irregular.**  Dealing strictly least-used-first
+spaces a channel's returns far more evenly than chance -- CV 0.41 against 1.00
+for a random process -- so the background acquires exactly the regularity the
+figure is supposed to own alone.  ``DEALER_SLACK`` buckets the counts before
+ranking and hands the choice back to the rng: CV 0.97, counts still level,
+concurrency still exactly flat.
 
-Note which way that runs.  A *larger* share means a *smaller* pool, because
-the cloud has to fit its own traffic into the same per-channel budget.  Since
-balance already forces every channel to sound at least ``rate`` times a
-second, every pitch in the cloud recurs at least that often no matter what is
-chosen -- lowering the share buys more distinct pitches sharing the load, not
-a quieter channel.  Only slowing the figure lowers the floor itself.
-
-The grid spacing is then the finest that fits inside the bound, so the cloud
-stays as spectrally rich as the balance permits.  The figure's own tones are
-placed on grid indices, evenly spread across the middle of the pool, so they
-are always on the grid however many there are.
+Nothing in the cloud repeats.  Over a 13 s stream: 262 simultaneous groups, all
+262 distinct, no group ever reused; 5897 of 7260 possible channel pairs occur,
+the commonest 8 times.
 
 Run
 ---
@@ -126,22 +119,24 @@ STEP_MS = 10.0
 DURATION_S = 20.0
 JITTER_MS = 40.0
 CEILING_MIN = 6
-MIN_SHARE = 0.15               # cloud's share of a figure channel; see below
+CONTRAST = 4.0                 # figure channel rate / background channel rate
+DEALER_SLACK = 5               # how loosely the cloud levels its channels
 FIG_MARGIN = 0.15
 
-#: ``MIN_SHARE`` is the only real lever on how varied the cloud sounds, and it
-#: runs backwards from the obvious direction: a *larger* share means a
-#: *smaller* pool, because the cloud must fit its own traffic into the same
-#: per-channel budget.  Balance already forces every channel to sound at least
-#: ``RATE_HZ`` times a second, so every cloud pitch recurs about five times a
-#: second whatever is chosen -- only slowing the figure lowers that floor.
-#: What the share buys is how many distinct pitches share the load:
+#: ``CONTRAST`` is what makes the figure audible, and it replaced an earlier
+#: rule that levelled every channel's *total* count.  That rule was a mistake:
+#: in this paradigm the figure IS the set of channels that recur more often
+#: than the background, so equalising the totals sets the contrast to 1 and
+#: leaves nothing to hear.  Measured on the levelled version: 79 tones per
+#: figure channel against 79 per background channel, and no figure.
 #:
-#:     0.25   31 channels, 2 st grid, 8.1 tones/s each, 32% sounding at once
-#:     0.15   41 channels, 1.5 st,    6.1 tones/s each, 24% sounding at once
-#:
-#: with flatness and balance identical either way (10-10 at SD 0.00, 53-54
-#: tones per figure channel against 53-54 for the rest).
+#: A figure channel sounds ``RATE_HZ`` times a second from the figure plus its
+#: share of the cloud; a background channel gets the cloud's share alone.
+#: Asking for a ratio therefore fixes the pool size, and a big ratio needs a
+#: big pool: 4 needs about 120 channels, which a half-semitone grid over five
+#: octaves just provides.  Classic figure-ground runs nearer 13, which would
+#: need 480 channels an eighth of a semitone apart -- finer than the ear
+#: resolves, so 4 is where this span tops out.
 
 #: Candidate grid spacings, finest first.
 GRIDS = tuple(np.arange(0.5, 12.5, 0.5))
@@ -151,7 +146,7 @@ LEAD_MS, TAIL_MS = 400.0, 600.0
 
 
 def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
-           ceiling: int = 0, min_share: float = MIN_SHARE) -> dict:
+           ceiling: int = 0, contrast: float = CONTRAST) -> dict:
     """Solve for the ceiling, the grid and the figure's channels.
 
     Returns everything downstream needs, plus the numbers behind it so the
@@ -159,16 +154,26 @@ def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
     """
     tone_s = TONE_MS / 1000.0
     ceil = ceiling or max(n_tones, CEILING_MIN)
-    c_max = int(np.floor((1.0 - min_share) * ceil / (tone_s * rate_hz)))
-    if c_max < n_tones:
-        raise SystemExit(
-            f"{n_tones} tones at {rate_hz:g} Hz cannot be balanced: the pool "
-            f"would need {n_tones} channels but the rate allows {c_max}.  "
-            f"Raise --ceiling (>= {int(np.ceil(n_tones * tone_s * rate_hz / (1 - min_share)))}) "
-            f"or lower --min-share.")
 
+    # The pool is as large as the span and the grid allow, and the grid is set
+    # by ``--contrast``: how many times more often a figure channel sounds
+    # than a background one.  A figure channel sounds ``rate`` times a second
+    # from the figure plus its share of the cloud; a background channel gets
+    # the cloud's share alone.  The cloud has ``ceil - fig_load`` voices to
+    # spread over C channels, so
+    #
+    #     cloud_rate = (ceil - n*tone_s*rate) / (tone_s * C)
+    #     contrast   = (rate + cloud_rate) / cloud_rate
+    #
+    # and asking for a contrast fixes C.  This is the opposite of levelling
+    # the totals, which is what removed the figure: at equal totals the
+    # contrast is 1 and there is nothing to hear.
+    fig_load = n_tones * tone_s * rate_hz          # mean concurrency of figure
+    cloud_rate = rate_hz / max(contrast - 1.0, 1e-9)
+    c_want = (ceil - fig_load) / (tone_s * cloud_rate)
     span = POOL_ST[1] - POOL_ST[0]
-    grid = next(g for g in GRIDS if int(np.floor(span / g)) + 1 <= c_max)
+    grid = min(GRIDS, key=lambda g: abs(int(np.floor(span / g)) + 1 - c_want))
+    c_max = int(c_want)
     freqs = cloud.channels([], f_ref=F_REF, st_lo=POOL_ST[0],
                            st_hi=POOL_ST[1], grid_st=grid)
     st_grid = 12.0 * np.log2(freqs / F_REF)
@@ -181,10 +186,11 @@ def layout(n_tones: int, rate_hz: float = RATE_HZ, *,
     idx = np.unique(np.round(np.linspace(lo, hi, n_tones)).astype(int))
     if idx.size < n_tones:                      # pool too coarse to separate
         idx = np.arange(lo, lo + n_tones)
+    cr = (ceil - fig_load) / (tone_s * freqs.size)
     return dict(ceiling=ceil, grid_st=grid, freqs=freqs, st_grid=st_grid,
                 fig_idx=idx, fig_st=st_grid[idx], c_max=c_max,
-                avg_rate=ceil / (tone_s * freqs.size), rate_hz=rate_hz,
-                share=1.0 - rate_hz * freqs.size * tone_s / ceil)
+                cloud_rate=cr, fig_rate=rate_hz + cr, rate_hz=rate_hz,
+                contrast=(rate_hz + cr) / cr)
 
 
 def tokens(lay: dict, step_ms: float, n_tokens: int, phase_ms: float, *,
@@ -282,15 +288,15 @@ def main(argv=None) -> int:
                         "in black")
     p.add_argument("--ceiling", type=int, default=0,
                    help="tones sounding at once; 0 solves for it")
-    p.add_argument("--min-share", type=float, default=MIN_SHARE,
-                   help="least fraction of a figure channel's tones that the "
-                        "cloud must supply")
+    p.add_argument("--contrast", type=float, default=CONTRAST,
+                   help="how many times more often a figure channel sounds "
+                        "than a background one; 1 means no figure")
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
     lay = layout(args.n_tones, ceiling=args.ceiling,
-                 min_share=args.min_share)
+                 contrast=args.contrast)
     period = 1000.0 / RATE_HZ
     N = max(1, int(round(args.duration * RATE_HZ)))
     S, freqs = args.step_ms, lay["freqs"]
@@ -317,7 +323,8 @@ def main(argv=None) -> int:
     ceil = max(peak, lay["ceiling"])
     clouds = {nm: cloud.schedule(
         xs[nm].size, freqs, [(chan[int(round(st * 2))], o) for st, o, _ in ev],
-        ceil, tone_ms=TONE_MS, step_ms=SCHED_STEP_MS)
+        ceil, tone_ms=TONE_MS, step_ms=SCHED_STEP_MS, count_figure=False,
+        slack=DEALER_SLACK)
         for nm, ev, _ in cases}
 
     print(f"{core.SR} Hz | {args.n_tones}-tone figure at {RATE_HZ:g} Hz "
@@ -327,13 +334,12 @@ def main(argv=None) -> int:
           f"{(args.n_tones - 1) * S + TONE_MS:.0f} ms, successive tones "
           f"{'overlap by' if S < TONE_MS else 'gap by'} "
           f"{abs(TONE_MS - S):.0f} ms")
-    print(f"          balance: ceiling {ceil} (>= the {peak}-tone peak), "
-          f"at most {lay['c_max']} channels at {RATE_HZ:g} Hz -> grid "
+    print(f"          ceiling {ceil} (>= the {peak}-tone peak); grid "
           f"{lay['grid_st']:g} st, {freqs.size} channels "
           f"{freqs[0]:.0f}-{freqs[-1]:.0f} Hz")
-    print(f"          every channel {lay['avg_rate']:.1f} tones/s, of which "
-          f"the figure supplies {RATE_HZ:g} in its own "
-          f"({lay['share'] * 100:.0f}% left to the cloud); "
+    print(f"          a figure channel sounds {lay['fig_rate']:.1f} times/s "
+          f"against {lay['cloud_rate']:.1f} for a background one: "
+          f"contrast {lay['contrast']:.1f}x; "
           f"token jitter +-{args.jitter_ms:g} ms\n")
 
     mixes = {nm: xs[nm] + clouds[nm]["x"][:xs[nm].size] for nm, _, _ in cases}

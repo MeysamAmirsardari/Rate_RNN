@@ -174,7 +174,8 @@ def concurrency(onsets, total: int, n_tone: int) -> np.ndarray:
 
 def schedule(total: int, freqs: np.ndarray, fig, n_total: int, *,
              tone_ms: float = TONE_MS, step_ms: float = 2.5,
-             guard_ms: float | None = None, seed: int = 5) -> dict:
+             guard_ms: float | None = None, count_figure: bool = True,
+             slack: int = 1, seed: int = 5) -> dict:
     """A cloud that fills the figure's complement, so the total never moves.
 
     ``fig`` is the figure as ``(channel index, onset sample)`` pairs -- the
@@ -232,8 +233,18 @@ def schedule(total: int, freqs: np.ndarray, fig, n_total: int, *,
     n_fig = counts.copy()
 
     rng = np.random.default_rng(seed)
+    # ``count_figure`` decides what the dealer is levelling.  True levels the
+    # TOTAL, so a figure channel receives fewer cloud tones to compensate for
+    # its figure tones and every channel ends equally busy.  That is right
+    # when the figure is defined by its shape in time -- and fatal when it is
+    # defined by recurring in fixed channels, because recurring more often
+    # than the background is then the whole of what the figure is.  False
+    # levels the CLOUD's own counts instead: the cloud treats every channel
+    # alike, never avoiding or favouring the figure's, and the figure's tones
+    # sit on top of an unbiased background.
     seen = np.zeros(freqs.size, dtype=int)      # tones placed *so far*
-    pending = deque(sorted(fig, key=lambda p: p[1]))
+    pending = deque(sorted(fig, key=lambda p: p[1])) if count_figure \
+        else deque()
 
     ev = []
     for o in range(0, total, core.samples(step_ms)):
@@ -243,10 +254,20 @@ def schedule(total: int, freqs: np.ndarray, fig, n_total: int, *,
         w = slice(o, o + n_tone)
         wg = slice(max(0, o - guard), o + n_tone + guard)
         while c_tot[w].max() < n_total:
-            # least-used SO FAR first, random among equals: the counts stay
+            # Least-used SO FAR first, random among equals: the counts stay
             # level as the stream runs, not merely by the end of it, and the
-            # order stays unpredictable, which is what the cloud is for
-            for k in np.lexsort((rng.random(freqs.size), seen)):
+            # order stays unpredictable, which is what the cloud is for.
+            #
+            # ``slack`` buckets the counts before ranking, and it matters more
+            # than it looks.  Strict least-used-first spaces a channel's
+            # returns far more evenly than chance -- measured CV 0.41 against
+            # 1.00 for a random process -- so the background acquires a
+            # regularity of its own, which is precisely the property a figure
+            # is supposed to have alone.  Bucketing widens the tie and hands
+            # the choice back to the rng: slack 5 gives CV 0.97, with the
+            # counts still level (20-24 per channel) and concurrency still
+            # exactly flat.
+            for k in np.lexsort((rng.random(freqs.size), seen // slack)):
                 if not busy[k, w].any():
                     break
             else:
