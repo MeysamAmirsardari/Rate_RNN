@@ -75,6 +75,13 @@ needs headroom above the bound, not merely equality: ``--min-share`` sets how
 much of a figure channel's traffic the cloud must supply, and the bound
 becomes ``C <= (1 - share) * ceiling / (tone_s * rate)``.
 
+Note which way that runs.  A *larger* share means a *smaller* pool, because
+the cloud has to fit its own traffic into the same per-channel budget.  Since
+balance already forces every channel to sound at least ``rate`` times a
+second, every pitch in the cloud recurs at least that often no matter what is
+chosen -- lowering the share buys more distinct pitches sharing the load, not
+a quieter channel.  Only slowing the figure lowers the floor itself.
+
 The grid spacing is then the finest that fits inside the bound, so the cloud
 stays as spectrally rich as the balance permits.  The figure's own tones are
 placed on grid indices, evenly spread across the middle of the pool, so they
@@ -112,15 +119,29 @@ OUT_DIR = Path(__file__).resolve().parent / "sfg_out"
 F_REF = 1000.0
 POOL_ST = (-24.0, 36.0)        # 250 Hz to 8 kHz
 TONE_MS = 40.0
-RATE_HZ = 5.0                  # figure repetition
+RATE_HZ = 5.0            
 
 N_TONES = 10
-STEP_MS = 10.0                 # the shear, per tone
-DURATION_S = 12.0              # per condition
-JITTER_MS = 40.0               # token onset, in whole tone lengths
+STEP_MS = 10.0
+DURATION_S = 20.0
+JITTER_MS = 40.0
 CEILING_MIN = 6
-MIN_SHARE = 0.25               # of a figure channel's tones, supplied by cloud
-FIG_MARGIN = 0.15              # of the pool left clear above and below
+MIN_SHARE = 0.15               # cloud's share of a figure channel; see below
+FIG_MARGIN = 0.15
+
+#: ``MIN_SHARE`` is the only real lever on how varied the cloud sounds, and it
+#: runs backwards from the obvious direction: a *larger* share means a
+#: *smaller* pool, because the cloud must fit its own traffic into the same
+#: per-channel budget.  Balance already forces every channel to sound at least
+#: ``RATE_HZ`` times a second, so every cloud pitch recurs about five times a
+#: second whatever is chosen -- only slowing the figure lowers that floor.
+#: What the share buys is how many distinct pitches share the load:
+#:
+#:     0.25   31 channels, 2 st grid, 8.1 tones/s each, 32% sounding at once
+#:     0.15   41 channels, 1.5 st,    6.1 tones/s each, 24% sounding at once
+#:
+#: with flatness and balance identical either way (10-10 at SD 0.00, 53-54
+#: tones per figure channel against 53-54 for the rest).
 
 #: Candidate grid spacings, finest first.
 GRIDS = tuple(np.arange(0.5, 12.5, 0.5))
