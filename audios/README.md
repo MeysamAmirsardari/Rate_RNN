@@ -496,17 +496,35 @@ channels are neither rarer nor commoner than any other.  Measured: 69-73 tones
 per figure channel against 69-73 for the rest.  `--exclusive` restores the
 reserved version for comparison.
 
-**The residual notch, and why the cloud is thick.**  Forty-millisecond tones
-cannot tile the thirty milliseconds before a five-tone wall, so the coherent
-condition keeps a shallow dip just before each burst that the spread
-conditions do not have -- a dip that co-varies with the manipulation, which is
-the worst kind.  It cannot be removed: a finer scheduling grid does not touch
-it (identical at 2.5, 1.0 and 0.5 ms) and priority-ordering the candidates
-makes it worse.  What can be changed is its depth in dB, since power goes with
-the number of tones sounding and the shortfall is a fixed number of tones.  At
-a ceiling of 6 the dip is 7.8 dB and plainly audible as a gap; at 12 it is
-2.3 dB, against 0.4 dB in every other condition.  Hence a ceiling of 12, which
-is also squarely in the classic SFG range of 5-15 components per chord.
+**The word onset is quantised to the cloud's tone length**, and this is why
+the background can stay thin.  The cloud tiles in 40 ms blocks; a word landing
+mid-block leaves the part of that block before it able to hold only one tone,
+because a 40 ms cloud tone starting there would run into the figure and break
+the ceiling.  The hole is `onset mod 40 ms` wide -- 20 ms on average, up to 40
+-- and it sits immediately before the figure, which is the worst possible
+place, and it is *deepest in the coherent condition*, so it would flatter the
+reference and exaggerate the fall-off.
+
+Landing every word on a block boundary removes it exactly:
+
+    tone step        0    10    20    40    80   160 ms
+    concurrency    6-6   3-6   5-6   6-6   6-6   6-6
+    deepest dip    0.0   3.0   0.8   0.0   0.0   0.0 dB
+
+Seven distinct jitter values at +-120 ms still destroys isochrony, and the
+mean rate stays exact because the draw is symmetric.  The earlier fix for this
+-- doubling the cloud to twelve concurrent tones so the same shortfall was
+shallower in dB -- worked on the number and ruined the stimulus; alignment
+costs nothing.
+
+**A caveat that survives.**  The residual belongs to 10 and 20 ms, the two
+steps that are not multiples of the cloud's 40 ms block, so their figure tones
+sit off the cloud's onset grid while 0, 40, 80 and 160 sit on it.  Being
+on-grid or off-grid therefore co-varies weakly with the step.  It is small --
+3.0 dB for 0.2% of the stream at step 10, nothing anywhere else -- but for a
+comparison with no such asymmetry at all, use `--steps 0 40 80 120 160`.  The
+syllable sweep does not have the problem: every condition there measures
+0.8 dB for 0.0% of the time, identically.
 
 **Frequencies are inharmonic** -- even semitone spacings, harmonics of
 nothing.  A harmonic series would confound the result completely: harmonicity

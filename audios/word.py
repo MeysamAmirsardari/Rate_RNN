@@ -131,11 +131,13 @@ JITTER_CAP = 0.35              # of the period, however much room there is
 def auto_jitter(period_ms: float, max_span_ms: float) -> float:
     """The largest word-onset jitter that still keeps words apart.
 
-    One value for the whole sweep, not per condition: the jitter is a control,
-    and letting it shrink as the step grows would confound the two.
+    Rounded down to a whole number of tone lengths, because the jitter is
+    applied in those units; one value for the whole sweep, not per condition,
+    since letting it shrink as the step grows would confound the two.
     """
     room = (period_ms - max_span_ms - TONE_MS - WORD_GUARD_MS) / 2.0
-    return float(np.floor(min(room, JITTER_CAP * period_ms) / 10.0) * 10.0)
+    return float(np.floor(min(room, JITTER_CAP * period_ms) / TONE_MS)
+                 * TONE_MS)
 
 SCHED_STEP_MS = 2.5
 LEAD_MS, TAIL_MS = 400.0, 600.0
@@ -177,8 +179,21 @@ def build(tpl: list, period_ms: float, n_words: int, *,
     lag = np.array([t for _, t in tpl])
     span = float(lag.max())
 
-    onsets = core.jittered_onsets(n_words, period_ms, onset_jitter_ms, rng,
-                                  phase_ms=LEAD_MS + onset_jitter_ms)
+    # The word onset is quantised to the cloud's tone length, and this is the
+    # whole reason the background can be thin.  The cloud tiles in 40 ms
+    # blocks; a word landing mid-block leaves the part of that block before it
+    # able to hold only one tone, because a 40 ms cloud tone starting there
+    # would run into the figure and break the ceiling.  The hole is
+    # ``onset mod 40 ms`` wide -- 20 ms on average, up to 40 -- and it sits
+    # immediately before the figure, which is the worst place for it.  Landing
+    # the word on a block boundary removes it exactly.  Seven distinct jitter
+    # values at +-120 ms is still ample to destroy isochrony, and the mean
+    # rate stays exact because the draw is symmetric.
+    q = core.samples(TONE_MS)
+    grid = (np.arange(n_words) * core.samples(period_ms)
+            + core.samples(LEAD_MS))
+    k = int(core.samples(onset_jitter_ms) // q)
+    onsets = grid + (rng.integers(-k, k + 1, size=n_words) * q if k else 0)
     total = int(onsets[-1]) + core.samples(span + TONE_MS + TAIL_MS)
     x = np.zeros(total)
 
@@ -286,12 +301,9 @@ def main(argv=None) -> int:
     p.add_argument("--exclusive", action="store_true",
                    help="keep the cloud off the figure's channels (leaks: "
                         "frequency alone then identifies the figure)")
-    p.add_argument("--ceiling", type=int, default=12,
+    p.add_argument("--ceiling", type=int, default=6,
                    help="tones sounding at once, figure plus cloud; raised to "
-                        "the figure's own peak if that is larger.  Twelve "
-                        "rather than six because the residual pre-burst notch "
-                        "is a fixed number of tones deep, so a higher ceiling "
-                        "makes it shallower in dB")
+                        "the figure's own peak if that is larger")
     p.add_argument("--cloud-db", type=float, default=0.0)
     p.add_argument("--keep-wav", action="store_true")
     args = p.parse_args(argv)
