@@ -12,6 +12,7 @@ for i = 1:2:numel(varargin)
 end
 rng(cfg.seed);
 
+check_flat(cfg);
 pool = make_pool(cfg);
 fig  = make_figure(cfg, pool);
 cld  = make_cloud(cfg, pool, fig);
@@ -51,12 +52,9 @@ cfg.freezeInternal = true;    % draw the within-word jitter once and reuse it
 
 % --- cloud
 cfg.cloudTones     = 3;       % tones sounding at once: the sparsity control
-cfg.flatEnvelope   = false;   % true: cloud fills the figure's gaps so the
-                              % total never moves. Forces cloudTones up to the
-                              % figure's peak, and is only exactly flat when
-                              % toneStepMs is a multiple of toneMs -- the
-                              % cloud tiles in toneMs blocks and cannot fill
-                              % around tones that land off them.
+cfg.flatEnvelope   = true;    % true: cloud fills the figure's gaps so the
+                              % total never moves. See check_flat below for
+                              % the two conditions this needs.
 cfg.shareChannels  = false;   % let the cloud use the figure's own channels
 cfg.contrast       = 4;       % figure/background per-channel rate ratio,
                               % which sets the pool size
@@ -77,6 +75,42 @@ cfg.peakDbfs       = -3;
 cfg.doPlay         = true;
 cfg.doPlot         = true;
 cfg.wavFile        = 'sfg_stimulus.wav';
+end
+
+% ------------------------------------------------------------------- check
+function check_flat(cfg)
+% A uniform envelope needs the cloud to fill whatever the figure leaves, and
+% it can only do that with tones of its own length. Two things follow.
+if ~cfg.flatEnvelope, return; end
+
+% The figure's own profile must be piecewise constant on tone-length blocks,
+% which means the shear is 0 or a whole number of tones. Anything between
+% makes the figure's concurrency change faster than the cloud can track:
+% measured at a 25 ms tone, a 10 ms shear leaves the total below target 26%
+% of the time and a 20 ms shear 49%, against under 1% at 0, 25 or 50 ms.
+r = mod(cfg.toneStepMs, cfg.toneMs);
+if r > 1e-9
+    warning('sfg:shear', ...
+        ['toneStepMs %g is not a multiple of toneMs %g, so the envelope ' ...
+         'cannot be uniform. Use %g or %g.'], ...
+        cfg.toneStepMs, cfg.toneMs, ...
+        floor(cfg.toneStepMs/cfg.toneMs)*cfg.toneMs, ...
+        ceil(cfg.toneStepMs/cfg.toneMs)*cfg.toneMs);
+end
+
+% The total can never be below the figure's own peak, so a coherent n-tone
+% chord forces an n-tone background however sparse you asked for.
+if cfg.toneStepMs < cfg.toneMs
+    peak = cfg.nTones;
+else
+    peak = max(1, ceil(cfg.toneMs / max(cfg.toneStepMs, eps)));
+end
+if peak > cfg.cloudTones
+    warning('sfg:density', ...
+        ['the figure peaks at %d tones, so a uniform envelope needs %d ' ...
+         'in the background, not the %d requested.'], ...
+        peak, peak, cfg.cloudTones);
+end
 end
 
 % -------------------------------------------------------------------- pool
