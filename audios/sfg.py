@@ -111,18 +111,26 @@ OUT_DIR = Path(__file__).resolve().parent / "sfg_out"
 
 F_REF = 1000.0
 POOL_ST = (-24.0, 36.0)        # 250 Hz to 8 kHz
-TONE_MS = 25.0                 # set from --tone-ms at run time
-RATE_HZ = 5.0            
+TONE_MS = 20.0                 # set from --tone-ms at run time
+RATE_HZ = 3.0
 
-N_TONES = 10
-STEP_MS = 0.0
+N_TONES = 7
+STEP_MS = 20.0
 DURATION_S = 20.0
 JITTER_MS = 40.0
 CEILING_MIN = 6
-CLOUD_TONES = 3                # the cloud's own concurrency, sparse mode
-CONTRAST = 4.0                 # figure channel rate / background channel rate
-DEALER_SLACK = 1               # how loosely the cloud levels its channels
+CLOUD_TONES = 3
+CONTRAST = 4.0
+DEALER_SLACK = 5               # how loosely the cloud levels its channels
 FIG_MARGIN = 0.15
+
+
+
+
+
+
+
+
 
 #: ``CONTRAST`` is what makes the figure audible, and it replaced an earlier
 #: rule that levelled every channel's *total* count.  That rule was a mistake:
