@@ -13,13 +13,14 @@ from .stimulus import make_pool, trial
 RED = "#E8121A"
 
 
-def raster_ax(d: Design, pl: dict, sch: dict, ax, seconds: float | None = None):
+def raster_ax(d: Design, pl: dict, sch: dict, ax, seconds: float | None = None,
+              bg: str = "k", ms: float = 2.6):
     """One interval: every tone a dot, the figure's tones in red."""
     t = sch["slot"] * d.hop_ms / 1000.0
     f = pl["st"][sch["chan"]]
     g = sch["is_fig"]
-    ax.plot(t[~g], f[~g], "s", ms=2.6, color="k", mec="none")
-    ax.plot(t[g], f[g], "s", ms=2.6, color=RED, mec="none")
+    ax.plot(t[~g], f[~g], "s", ms=ms, color=bg, mec="none")
+    ax.plot(t[g], f[g], "s", ms=ms, color=RED, mec="none")
     ax.set_xlim(0, seconds or d.interval_s)
     for s in ("top", "right"):
         ax.spines[s].set_visible(False)
