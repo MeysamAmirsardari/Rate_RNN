@@ -1,17 +1,19 @@
 function out = sfg_staircase(varargin)
 % Stochastic figure-ground with a staircase figure.
 %
-% Time is a grid of chords. Every chord holds exactly nChord tones, so the
-% envelope is uniform by construction. The figure is a fixed set of channels
-% that recurs; stepChords shears it from a chord into a diagonal.
+% Everything is set in milliseconds. Internally time runs on a grid of hopMs
+% slots and a tone lasts several of them; if the same number of tones starts
+% in every slot, the number sounding is constant and the envelope is uniform
+% by construction. hopMs is therefore the resolution of every timing control,
+% and it is independent of the tone length.
 %
-%   sfg_staircase                          % 7-tone staircase, one chord/step
-%   sfg_staircase('stepChords', 0)         % the classic coherent figure
-%   sfg_staircase('stepChords', 2, 'nChord', 2)
+%   sfg_staircase                        % 7-tone staircase, 35 ms per step
+%   sfg_staircase('stepMs', 0)           % the classic coherent figure
+%   sfg_staircase('stepMs', 10, 'hopMs', 5)
 %
 % Writes the mix and a figure-only wav, and returns audioplayer objects:
 %   out = sfg_staircase; pause(out.player); resume(out.player)
-%   play(out.figurePlayer)                  % the figure without the cloud
+%   play(out.figurePlayer)               % the figure without the cloud
 
 cfg = config();
 for i = 1:2:numel(varargin)
@@ -20,11 +22,11 @@ end
 rng(cfg.seed);
 
 pool = make_pool(cfg);
-[chan, chord, isFig] = schedule(cfg, pool);
-out = render(cfg, pool, chan, chord, isFig);
+[chan, slot, isFig, k, starts] = schedule(cfg, pool);
+out = render(cfg, pool, chan, slot, isFig, k);
 
-report(cfg, pool, chan, chord, isFig, out);
-if cfg.doPlot, show(cfg, pool, chan, chord, isFig); end
+report(cfg, pool, chan, slot, isFig, out, k, starts);
+if cfg.doPlot, show(cfg, pool, chan, slot, isFig); end
 
 if ~isempty(cfg.wavFile)
     [d, f, e] = fileparts(cfg.wavFile);
@@ -34,7 +36,6 @@ if ~isempty(cfg.wavFile)
     fprintf('  wrote %s and %s\n', cfg.wavFile, out.figureFile);
 end
 
-% audioplayer rather than sound(), so playback can be paused
 out.player       = audioplayer(out.y, cfg.fs);
 out.figurePlayer = audioplayer(out.figure, cfg.fs);
 if cfg.doPlay, play(out.player); end
@@ -46,18 +47,23 @@ function cfg = config()
 cfg.fs           = 48000;
 cfg.seed         = 3;
 
-cfg.chordMs      = 35;      % the time grid; every tone starts on it
-cfg.rampMs       = 5;       % raised-cosine, power-complementary across chords
+cfg.hopMs        = 5;       % time grid: the resolution of every control below
+cfg.toneMs       = 35;      % tone duration, a whole number of hops
 
 cfg.nTones       = 7;       % tones in the figure
-cfg.stepChords   = 1;       % staircase step, in chords (0 = coherent chord)
+cfg.stepMs       = 35;      % staircase step (0 = coherent chord)
 cfg.order        = 'rise';  % 'rise' or 'fall'
 cfg.spanSt       = 24;      % frequency span of the figure, semitones
 cfg.rateHz       = 5;       % figure repetition rate
-cfg.jitterChords = 1;       % random displacement of each figure onset
-cfg.wobbleChords = 0;       % frozen irregularity of the staircase, in chords
+cfg.jitterMs     = 40;      % random displacement of each figure onset
+cfg.wobbleMs     = 0;       % frozen irregularity of the staircase
 
-cfg.nChord       = 3;       % tones per chord: the density, and the envelope
+cfg.startsPerSlot= 0;       % tones starting per slot; 0 solves for it.
+                            % tones sounding = startsPerSlot * toneMs/hopMs,
+                            % so a fine hopMs buys resolution with density.
+                            % Comparing conditions? Fix this by hand at the
+                            % largest any of them needs, or the background
+                            % density moves with the step.
 cfg.contrast     = 4;       % figure/background per-channel rate, sets the pool
 cfg.shareChannels= true;    % let the background use the figure's channels
 
@@ -73,11 +79,13 @@ end
 
 % -------------------------------------------------------------------- pool
 function pool = make_pool(cfg)
-% A figure channel sounds rateHz times a second; the background shares what
-% is left of the chords between the remaining channels. Asking for a contrast
-% therefore fixes how many channels the pool needs.
-cloudPerS = cfg.nChord * 1000/cfg.chordMs - cfg.nTones * cfg.rateHz;
-want = cloudPerS * cfg.contrast / cfg.rateHz + cfg.nTones;
+% A figure channel sounds rateHz times a second; the background shares the
+% rest between the remaining channels, so asking for a contrast fixes the
+% pool size.
+k = round(cfg.toneMs / cfg.hopMs);
+starts = max(cfg.startsPerSlot, 1);
+cloudPerS = starts * 1000/cfg.hopMs - cfg.nTones * cfg.rateHz;
+want = max(cloudPerS, 1) * cfg.contrast / cfg.rateHz + cfg.nTones;
 
 grids  = 0.25:0.25:12;
 counts = floor(diff(cfg.poolSt) ./ grids) + 1;
@@ -94,91 +102,109 @@ if lo + span > pool.n
     error('figure spans %g st, pool only %g st', cfg.spanSt, diff(cfg.poolSt));
 end
 pool.figIdx = round(linspace(lo, lo + span, cfg.nTones));
+if pool.n < k * starts + 2
+    error('pool of %d channels cannot hold %d tones sounding at once', ...
+        pool.n, k * starts);
+end
 end
 
 % ---------------------------------------------------------------- schedule
-function [chan, chord, isFig] = schedule(cfg, pool)
-nChords  = floor(cfg.durationS * 1000 / cfg.chordMs);
-periodCh = max(1, round(1000 / (cfg.rateHz * cfg.chordMs)));
-
-lag = (0:cfg.nTones-1) * cfg.stepChords;
-if strcmp(cfg.order, 'fall'), lag = fliplr(lag); end
-if cfg.wobbleChords > 0
-    lag = lag + randi([0 cfg.wobbleChords], 1, cfg.nTones);  % frozen
+function [chan, slot, isFig, k, starts] = schedule(cfg, pool)
+k = cfg.toneMs / cfg.hopMs;
+if abs(k - round(k)) > 1e-9
+    error('toneMs %g must be a whole number of hopMs %g', ...
+        cfg.toneMs, cfg.hopMs);
 end
+k = round(k);
 
-% figure first: which of its channels sound in which chord
-occ = cell(1, nChords);
-for w = 0 : floor(nChords / periodCh)
-    c0 = w * periodCh + 1 + randi([-cfg.jitterChords cfg.jitterChords]);
-    for k = 1:cfg.nTones
-        c = c0 + lag(k);
-        if c >= 1 && c <= nChords
-            occ{c}(end+1) = pool.figIdx(k);
+nSlots = floor(cfg.durationS * 1000 / cfg.hopMs);
+period = max(1, round(1000 / (cfg.rateHz * cfg.hopMs)));
+
+lag = round((0:cfg.nTones-1) * cfg.stepMs / cfg.hopMs);
+if strcmp(cfg.order, 'fall'), lag = fliplr(lag); end
+if cfg.wobbleMs > 0
+    lag = lag + randi([0 round(cfg.wobbleMs/cfg.hopMs)], 1, cfg.nTones);
+end
+jit = round(cfg.jitterMs / cfg.hopMs);
+
+occ = cell(1, nSlots);
+for w = 0 : floor(nSlots / period)
+    c0 = w * period + 1;
+    if jit > 0, c0 = c0 + randi([-jit jit]); end
+    for i = 1:cfg.nTones
+        c = c0 + lag(i);
+        if c >= 1 && c <= nSlots
+            occ{c}(end+1) = pool.figIdx(i);
         end
     end
 end
 
+% The figure can put several tones in one slot once its copies overlap or the
+% jitter shifts them together. That sets the floor on how many tones start
+% per slot, and everything sounding follows from it.
 most = max(cellfun(@numel, occ));
-if most > cfg.nChord
-    error('the figure needs %d tones in one chord but nChord is %d', ...
-        most, cfg.nChord);
+starts = cfg.startsPerSlot;
+if starts == 0
+    starts = most;
+elseif starts < most
+    error(['the figure starts %d tones in one slot, so startsPerSlot must ' ...
+           'be at least %d (or reduce jitterMs / stepMs)'], most, most);
 end
 
-% then fill every chord to exactly nChord, dealing from a shuffled pack so
-% the channels stay level, and never repeating one in adjacent chords
-chan = zeros(nChords * cfg.nChord, 1);
-chord = zeros(size(chan));
+chan  = zeros(nSlots * starts, 1);
+slot  = zeros(size(chan));
 isFig = false(size(chan));
 
 pack = randperm(pool.n); p = 1;
-prev = [];
+live = [];                     % channels still sounding, so never reused
 m = 0;
-for c = 1:nChords
+for c = 1:nSlots
     here = occ{c};
     nFig = numel(here);
     tries = 0;
-    while numel(here) < cfg.nChord
+    while numel(here) < starts
         if p > numel(pack), pack = randperm(pool.n); p = 1; end
-        k = pack(p); p = p + 1;
+        ch = pack(p); p = p + 1;
         tries = tries + 1;
         if tries > 20 * pool.n
-            error('cannot fill chord %d: pool too small', c);
+            error('cannot fill slot %d: pool too small', c);
         end
-        if any(here == k) || any(prev == k), continue; end
-        if ~cfg.shareChannels && any(pool.figIdx == k), continue; end
-        here(end+1) = k; %#ok<AGROW>
+        if any(here == ch) || any(live == ch), continue; end
+        if ~cfg.shareChannels && any(pool.figIdx == ch), continue; end
+        here(end+1) = ch; %#ok<AGROW>
     end
-    idx = m + (1:cfg.nChord);
-    chan(idx)  = here;
-    chord(idx) = c;
+    idx = m + (1:starts);
+    chan(idx) = here;
+    slot(idx) = c;
     isFig(idx(1:nFig)) = true;
-    prev = here;
-    m = m + cfg.nChord;
+    live = [live here]; %#ok<AGROW>
+    if numel(live) > k * starts
+        live = live(end - k*starts + 1 : end);
+    end
+    m = m + starts;
 end
 end
 
 % ------------------------------------------------------------------ render
-function out = render(cfg, pool, chan, chord, isFig)
-% Tones are one ramp longer than a chord so consecutive chords cross-fade.
-% With power-complementary ramps the total power is then constant across the
-% join; abutting tones would leave a dip at every chord boundary.
-hop = round(cfg.chordMs * cfg.fs / 1000);
-r   = round(cfg.rampMs * cfg.fs / 1000);
-n   = hop + r;
+function out = render(cfg, pool, chan, slot, isFig, k)
+% A tone is k hops long plus one hop of ramp, so at every slot boundary the
+% tones ramping out are matched by the ones ramping in. With
+% power-complementary ramps the total power is constant across the join.
+hop = round(cfg.hopMs * cfg.fs / 1000);
+n   = k * hop + hop;
 
 t   = (0:n-1) / cfg.fs;
+x   = (0:hop-1) / hop;
 env = ones(1, n);
-x   = (0:r-1) / r;
-env(1:r)       = sin(pi/2 * x);
-env(end-r+1:end) = cos(pi/2 * x);
+env(1:hop)         = sin(pi/2 * x);
+env(end-hop+1:end) = cos(pi/2 * x);
 pips = sin(2*pi * pool.f(:) * t) .* env;
 
-N = max(chord) * hop + n;
-y = zeros(1, N);
+N  = max(slot) * hop + n;
+y  = zeros(1, N);
 yF = zeros(1, N);
 for i = 1:numel(chan)
-    s = (chord(i) - 1) * hop + 1;
+    s = (slot(i) - 1) * hop + 1;
     y(s:s+n-1) = y(s:s+n-1) + pips(chan(i), :);
     if isFig(i)
         yF(s:s+n-1) = yF(s:s+n-1) + pips(chan(i), :);
@@ -195,45 +221,43 @@ out.fs     = cfg.fs;
 end
 
 % ------------------------------------------------------------------ report
-function report(cfg, pool, chan, chord, isFig, out)
-perChord = accumarray(chord, 1);
+function report(cfg, pool, chan, slot, isFig, out, k, starts)
+perSlot = accumarray(slot, 1);
 use = accumarray(chan, 1, [pool.n 1]);
 isf = false(pool.n, 1); isf(pool.figIdx) = true;
 dur = numel(out.y) / cfg.fs;
 
-fprintf('%d Hz | %d-tone figure, step %d chord(s), %g ms chords at %g Hz\n', ...
-    cfg.fs, cfg.nTones, cfg.stepChords, cfg.chordMs, cfg.rateHz);
+fprintf('%d Hz | %d-tone figure, %g ms step, %g ms tones at %g Hz\n', ...
+    cfg.fs, cfg.nTones, cfg.stepMs, cfg.toneMs, cfg.rateHz);
+fprintf('  %g ms grid: step %d slots, jitter +-%d slots, tone %d slots\n', ...
+    cfg.hopMs, round(cfg.stepMs/cfg.hopMs), round(cfg.jitterMs/cfg.hopMs), k);
+fprintf('  starts per slot %d-%d, so %d tones sounding throughout\n', ...
+    min(perSlot), max(perSlot), k * starts);
 fprintf('  pool %d channels %.0f-%.0f Hz on a %g st grid\n', ...
     pool.n, pool.f(1), pool.f(end), pool.gridSt);
-fprintf('  tones per chord %d-%d (uniform envelope requires one value)\n', ...
-    min(perChord), max(perChord));
 fprintf('  figure channel %.1f/s vs background %.1f/s: contrast %.1fx\n', ...
     mean(use(isf))/dur, mean(use(~isf))/dur, ...
     mean(use(isf)) / max(mean(use(~isf)), eps));
-fprintf('  channel use %d-%d, %d figure tones of %d, %.1f s\n', ...
-    min(use), max(use), sum(isFig), numel(chan), dur);
-% the figure-only file shares the mix's gain, so it is quieter by exactly the
-% amount the cloud contributes -- that is the point, not a fault
-fprintf('  peak: mix %.1f dBFS, figure alone %.1f dBFS\n', ...
-    20*log10(max(abs(out.y))), 20*log10(max(abs(out.figure))));
+fprintf('  peak: mix %.1f dBFS, figure alone %.1f dBFS, %.1f s\n', ...
+    20*log10(max(abs(out.y))), 20*log10(max(abs(out.figure))), dur);
 end
 
 % -------------------------------------------------------------------- plot
-function show(cfg, pool, chan, chord, isFig)
-nShow = min(max(chord), round(1400 / cfg.chordMs));
-k = chord <= nShow;
-t = (chord(k) - 1) * cfg.chordMs / 1000;
-f = pool.st(chan(k))';
-g = isFig(k);
+function show(cfg, pool, chan, slot, isFig)
+nShow = min(max(slot), round(1400 / cfg.hopMs));
+sel = slot <= nShow;
+t = (slot(sel) - 1) * cfg.hopMs / 1000;
+f = reshape(pool.st(chan(sel)), [], 1);
+g = isFig(sel);
 
 figure('Color', 'w', 'Position', [100 100 900 520]); hold on
 plot(t(~g), f(~g), 's', 'MarkerSize', 4, 'MarkerFaceColor', 'k', ...
     'MarkerEdgeColor', 'none');
 plot(t(g), f(g), 's', 'MarkerSize', 4, 'MarkerFaceColor', [0.9 0.1 0.1], ...
     'MarkerEdgeColor', 'none');
-xlim([0 nShow * cfg.chordMs / 1000]); ylim(cfg.poolSt + [-2 2]);
+xlim([0 nShow * cfg.hopMs / 1000]); ylim(cfg.poolSt + [-2 2]);
 xlabel('Time (s)'); ylabel(sprintf('Semitones re %g Hz', cfg.fRefHz));
-title(sprintf('%d tones, step %d chord(s), %d per chord', ...
-    cfg.nTones, cfg.stepChords, cfg.nChord));
+title(sprintf('%d tones, %g ms step, %g ms tones', ...
+    cfg.nTones, cfg.stepMs, cfg.toneMs));
 box off
 end
