@@ -32,12 +32,12 @@ cfg.fs             = 48000;
 cfg.seed           = 3;
 
 % --- tone
-cfg.toneMs         = 25;      % duration of every tone, figure and cloud
+cfg.toneMs         = 35;      % duration of every tone, figure and cloud
 cfg.rampMs         = 5;       % raised-cosine onset/offset
 
 % --- figure
-cfg.nTones         = 10;      % tones per syllable
-cfg.nSyllables     = 1;       % syllables per word
+cfg.nTones         = 7;      % tones per syllable
+cfg.nSyllables     = 3;       % syllables per word
 cfg.rateHz         = 5;       % word repetition rate
 cfg.toneStepMs     = 0;       % shear between successive tones (0 = chord)
 cfg.syllableStepMs = 200;     % onset spacing between syllables
@@ -46,7 +46,7 @@ cfg.spanSt         = 24;      % frequency span of one syllable, semitones
 cfg.syllableStepSt = 3;       % transposition between syllables
 
 % --- jitter
-cfg.toneJitterMs   = 0;       % random offset of each tone within a syllable
+cfg.toneJitterMs   = 50;       % random offset of each tone within a syllable
 cfg.wordJitterMs   = 40;      % random displacement of each whole word
 cfg.freezeInternal = true;    % draw the within-word jitter once and reuse it
 
@@ -55,7 +55,7 @@ cfg.cloudTones     = 3;       % tones sounding at once: the sparsity control
 cfg.flatEnvelope   = true;    % true: cloud fills the figure's gaps so the
                               % total never moves. See check_flat below for
                               % the two conditions this needs.
-cfg.shareChannels  = false;   % let the cloud use the figure's own channels
+cfg.shareChannels  = true;   % let the cloud use the figure's own channels
 cfg.contrast       = 4;       % figure/background per-channel rate ratio,
                               % which sets the pool size
 cfg.dealerSlack    = 5;       % looseness of channel balancing; 1 makes the
