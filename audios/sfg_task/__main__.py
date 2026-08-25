@@ -13,11 +13,14 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+import matplotlib
 import numpy as np
 import soundfile as sf
 
-from .config import Design
-from .plot import envelopes, psychometric, raster
+matplotlib.use("Agg")                     # the CLI is the headless one; the
+                                          # notebook wants its own backend
+from .config import Design                # noqa: E402
+from .plot import envelopes, psychometric, raster   # noqa: E402
 
 HERE = Path(__file__).resolve().parent
 OUT, DATA = HERE / "out", HERE / "data"

@@ -4,15 +4,26 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import matplotlib
-matplotlib.use("Agg")
-import matplotlib.pyplot as plt          # noqa: E402
-import numpy as np                       # noqa: E402
+import matplotlib.pyplot as plt
+import numpy as np
 
-from .config import Design               # noqa: E402
-from .stimulus import make_pool, trial    # noqa: E402
+from .config import Design
+from .stimulus import make_pool, trial
 
 RED = "#E8121A"
+
+
+def raster_ax(d: Design, pl: dict, sch: dict, ax, seconds: float | None = None):
+    """One interval: every tone a dot, the figure's tones in red."""
+    t = sch["slot"] * d.hop_ms / 1000.0
+    f = pl["st"][sch["chan"]]
+    g = sch["is_fig"]
+    ax.plot(t[~g], f[~g], "s", ms=2.6, color="k", mec="none")
+    ax.plot(t[g], f[g], "s", ms=2.6, color=RED, mec="none")
+    ax.set_xlim(0, seconds or d.interval_s)
+    for s in ("top", "right"):
+        ax.spines[s].set_visible(False)
+    return ax
 
 
 def raster(d: Design, path: Path, steps=None, seed: int = 7,
@@ -26,14 +37,7 @@ def raster(d: Design, path: Path, steps=None, seed: int = 7,
     for row, step in zip(ax, steps):
         pair = trial(d, pl, step_ms=step, seed=seed, variant=variant)
         for a, sch, name in zip(row, pair, ("figure", "no figure")):
-            t = sch["slot"] * d.hop_ms / 1000.0
-            f = pl["st"][sch["chan"]]
-            g = sch["is_fig"]
-            a.plot(t[~g], f[~g], "s", ms=2.6, color="k", mec="none")
-            a.plot(t[g], f[g], "s", ms=2.6, color=RED, mec="none")
-            a.set_xlim(0, d.interval_s)
-            for s in ("top", "right"):
-                a.spines[s].set_visible(False)
+            raster_ax(d, pl, sch, a)
             if step == steps[0]:
                 a.set_title(name, fontsize=10)
         row[0].set_ylabel(f"{step:g} ms\nst re {d.f_lo:.0f} Hz", fontsize=9)

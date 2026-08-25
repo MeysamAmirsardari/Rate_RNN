@@ -1,5 +1,9 @@
 # Does a figure survive being sheared in time?
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MeysamAmirsardari/Rate_RNN/blob/main/audios/sfg_task/SFG_playground.ipynb)
+&nbsp;**Listen to it first** — the notebook builds the real stimuli in the browser, plays
+every step of the sweep, and lets you turn the knobs. No install, no account.
+
 A two-interval figure-ground detection experiment whose only variable is the
 **onset asynchrony between successive tones of the figure**.  At 0 ms the
 seven tones are a coherent chord — the classic stochastic figure-ground
@@ -166,6 +170,9 @@ python -m audios.sfg_task run S01                   # resumes if interrupted
 python -m audios.sfg_task run S01 --controls
 python -m audios.sfg_task analyse S01
 ```
+
+`SFG_playground.ipynb` is the Colab notebook behind the badge above; it imports this
+package rather than reimplementing anything, so what it plays is what a subject hears.
 
 Everything is set in `config.py`; nothing is decided anywhere else.
 `check` and `demo` write to `out/`, sessions to `data/<subject>/`, both
