@@ -35,12 +35,15 @@ def make_pool(cfg: SFGConfig) -> dict:
     return dict(st=st, f=f, n=st.size, grid_st=grid, amp=amp / amp.max())
 
 
-def figure_channels(pool: dict, cfg: SFGConfig,
-                    rng: np.random.Generator) -> np.ndarray:
-    """`coherence` channels, evenly spread over the middle of the pool.
+def figure_channels(pool: dict, cfg: SFGConfig, rng: np.random.Generator,
+                    avoid: list[np.ndarray] | None = None) -> np.ndarray:
+    """`coherence` channels, evenly spread, at a position drawn uniformly.
 
     Redrawn per stimulus so the figure is never in a learnable place, but
     always spanning the same range so its spectral extent is not a cue.
+    `avoid` rejects positions sharing more than one channel with any
+    earlier draw, which is what stops the figure-absent control from
+    stumbling into a figure of its own.
     """
     if cfg.coherence == 0:
         return np.zeros(0, int)
@@ -50,27 +53,47 @@ def figure_channels(pool: dict, cfg: SFGConfig,
     if lo + width > hi:
         raise ValueError("figure span does not fit inside the pool")
 
-    # Where the figure sits is drawn fresh per stimulus so it is never in a
-    # learnable place -- but not uniformly.  Under equal-loudness weighting
-    # the channels differ in amplitude by several dB, so a figure that
-    # happens to sit on loud channels adds more energy than the background
-    # tones it replaces, and that difference recurs at the figure's own rate.
-    # Choosing among positions whose summed weight is closest to what the
-    # background would have contributed removes the bias; measured, it takes
-    # the figure/no-figure envelope difference from +0.14 dB to under 0.02.
-    amp = pool["amp"]
-    target = cfg.coherence * amp.mean()
-    bases = np.arange(lo, hi - width + 1)
-    sets = [np.unique(np.round(np.linspace(b, b + width, cfg.coherence))
-                      .astype(int)) for b in bases]
-    err = np.array([abs(amp[i].sum() - target) for i in sets])
-    good = np.flatnonzero(err <= np.quantile(err, 0.15))
-    return sets[int(rng.choice(good))]
+    for b in rng.permutation(np.arange(lo, hi - width + 1)):
+        ch = np.round(np.linspace(b, b + width, cfg.coherence)).astype(int)
+        if all(np.intersect1d(ch, a).size <= 1 for a in avoid or ()):
+            return ch
+    raise ValueError("no figure position left that avoids the earlier ones")
+
+
+def comb_gain(pool: dict, ch: np.ndarray) -> float:
+    """Level correction that gives every draw the same total power.
+
+    Under equal-loudness weighting the channels differ by several dB, so a
+    figure that happens to sit on loud channels adds more energy than the
+    background tones it replaces -- and that difference recurs at the
+    figure's own rate, which is a modulation cue rather than a coherence
+    cue.  Equalising the summed power of each draw removes it while leaving
+    the position free; measured, it takes the figure/no-figure envelope
+    difference at the figure rate from +0.14 dB to under 0.02.
+    """
+    if ch.size == 0:
+        return 1.0
+    a = pool["amp"]
+    return float(np.sqrt(ch.size * np.mean(a ** 2) / np.sum(a[ch] ** 2)))
 
 
 # ------------------------------------------------------------- the schedule
-def _lags(cfg: SFGConfig, n: int, rng: np.random.Generator) -> np.ndarray:
-    """Each figure tone's delay behind the first, in slots."""
+def _lags(cfg: SFGConfig, n: int, rng: np.random.Generator,
+          redraw: bool = False) -> np.ndarray:
+    """Each figure tone's delay behind the first, in slots.
+
+    `redraw` keeps the extent and the number of tones but throws away the
+    pattern: the delays are drawn afresh, so the figure is still the same
+    seven channels arriving inside the same window and is still the same
+    thing spectrally, but there is nothing frozen to learn.
+    """
+    span = int(round((n - 1) * cfg.step_ms / cfg.hop))
+    if redraw:
+        if span == 0 or n < 3:
+            return np.zeros(n, int)
+        mid = rng.choice(np.arange(1, span), size=n - 2, replace=False)
+        return np.concatenate(([0], mid, [span]))[rng.permutation(n)]
+
     lag = np.arange(n) * cfg.step_ms
     if cfg.order == "fall":
         lag = lag[::-1]
@@ -101,18 +124,24 @@ def schedule(cfg: SFGConfig, pool: dict, rng: np.random.Generator) -> dict:
     fig_ch = figure_channels(pool, cfg, rng)
     lag = _lags(cfg, fig_ch.size, rng) if fig_ch.size else np.zeros(0, int)
 
-    occ: list[list[int]] = [[] for _ in range(n_slots)]
+    occ: list[list[tuple[int, float]]] = [[] for _ in range(n_slots)]
     onsets = []
+    seen = [fig_ch]
     for w in range((n_slots - lead) // period + 1):
         s0 = lead + w * period + (int(rng.integers(-jit, jit + 1)) if jit else 0)
         if s0 < 0 or s0 >= n_slots:
             continue
         onsets.append(s0)
-        ch = fig_ch if cfg.coherent else figure_channels(pool, cfg, rng)
-        lg = _lags(cfg, ch.size, rng) if cfg.redraw_lags else lag
+        if cfg.coherent:
+            ch = fig_ch
+        else:
+            ch = figure_channels(pool, cfg, rng, avoid=seen[-6:])
+            seen.append(ch)
+        lg = _lags(cfg, ch.size, rng, redraw=True) if cfg.redraw_lags else lag
+        g = comb_gain(pool, ch)
         for c, l in zip(ch, lg):
             if 0 <= s0 + l < n_slots:
-                occ[s0 + l].append(int(c))
+                occ[s0 + l].append((int(c), g))
 
     need = max((len(o) for o in occ), default=0)
     density = cfg.density
@@ -124,35 +153,39 @@ def schedule(cfg: SFGConfig, pool: dict, rng: np.random.Generator) -> dict:
 
     chan = np.zeros(n_slots * density, int)
     slot = np.zeros(n_slots * density, int)
+    gain = np.ones(n_slots * density)
     is_fig = np.zeros(n_slots * density, bool)
 
     # Least-used-first with a loose tie so the counts stay level while the
     # order stays unpredictable; strict ranking makes each channel return at
     # suspiciously even intervals, which is the one property the figure is
     # supposed to have alone.
-    seen = np.zeros(pool["n"])
+    used = np.zeros(pool["n"])
     live: list[int] = []
     m = 0
     for s in range(n_slots):
-        here = list(occ[s])
+        here = [c for c, _ in occ[s]]
+        gs = [g for _, g in occ[s]]
         n_fig = len(here)
         for c in here:
-            seen[c] += 1
+            used[c] += 1
         while len(here) < density:
-            for c in np.argsort(seen // 4 + rng.random(pool["n"])):
+            for c in np.argsort(used // 4 + rng.random(pool["n"])):
                 if c not in here and c not in live:
                     here.append(int(c))
-                    seen[c] += 1
+                    gs.append(1.0)
+                    used[c] += 1
                     break
             else:
                 raise ValueError(f"cannot fill slot {s}: pool too small")
         chan[m:m + density] = here
         slot[m:m + density] = s
+        gain[m:m + density] = gs
         is_fig[m:m + density][:n_fig] = True
         live = (live + here)[-k * density:]
         m += density
 
-    return dict(chan=chan, slot=slot, is_fig=is_fig, fig_ch=fig_ch,
+    return dict(chan=chan, slot=slot, gain=gain, is_fig=is_fig, fig_ch=fig_ch,
                 onsets=np.array(onsets), density=density, n_slots=n_slots,
                 lag=lag)
 
@@ -184,11 +217,12 @@ def render(cfg: SFGConfig, pool: dict, sch: dict) -> dict:
     N = sch["n_slots"] * hop + n
     y = np.zeros(N)
     yf = np.zeros(N)
-    for c, s, f in zip(sch["chan"], sch["slot"], sch["is_fig"]):
+    for c, s, g, f in zip(sch["chan"], sch["slot"], sch["gain"],
+                          sch["is_fig"]):
         a = s * hop
-        y[a:a + n] += pips[c]
+        y[a:a + n] += g * pips[c]
         if f:
-            yf[a:a + n] += pips[c]
+            yf[a:a + n] += g * pips[c]
 
     g = 10 ** (cfg.peak_dbfs / 20) / np.max(np.abs(y))
     return dict(mix=y * g, figure=yf * g, ground=(y - yf) * g, fs=cfg.fs)

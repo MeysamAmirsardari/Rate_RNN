@@ -22,12 +22,12 @@ class SFGConfig:
     # stimulus that starts off-grid.
     hop_ms: float = 0.0         # 0 solves it: the coarsest grid that both
                                 # the tone and the shear land on exactly
-    tone_ms: float = 40.0
+    tone_ms: float = 30.0
 
     # --- figure ------------------------------------------------------
     coherence: int = 7          # channels in the figure; 0 = figure absent
     rate_hz: float = 5.0        # figure repetition rate
-    step_ms: float = 0.0        # shear per tone (0 = a coherent chord)
+    step_ms: float = 5.0        # shear per tone (0 = a coherent chord)
     order: str = "rise"         # 'rise' | 'fall' | 'perm'
     wobble_ms: float = 0.0      # frozen irregularity of the staircase
     jitter_ms: float = 60.0     # displacement of each figure onset
