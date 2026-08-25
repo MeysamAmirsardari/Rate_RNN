@@ -39,11 +39,13 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
     """Build `n` trials at one step and compare the two intervals."""
     pl = make_pool(d)
     fs = d.fs
+    cfg_extent = d.extent_ms(step_ms)
     a0, a1 = (int(round(w * fs / 1000.0)) for w in win_ms)
 
     acc: dict[str, list] = {k: [[], []] for k in
                             ("tones", "snd_lo", "snd_hi", "rms", "fig", "bg",
-                             "epoch", "band", "elem_cv", "repeat")}
+                             "epoch", "band", "elem_cv", "repeat", "beat",
+                             "flat", "low")}
     for i in range(n):
         for j, sch in enumerate(trial(d, pl, step_ms=step_ms, seed=9000 + i,
                                       variant=variant, rove=False)):
@@ -81,10 +83,32 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
             pw = pw.reshape(-1, d.coherence).sum(axis=1)
             acc["elem_cv"][j].append(pw.std() / pw.mean())
             acc["repeat"][j].append(rep)
+            acc["flat"][j].append(sch["flat_db"])
+
+            # tones sounding at once inside one critical band, which is what
+            # a listener hears as a beating or warbling partial
+            o = np.argsort(sch["slot"])
+            cs, ss = sch["chan"][o], sch["slot"][o]
+            beat = 0
+            for u in range(cs.size):
+                v = u + 1
+                while v < cs.size and ss[v] < ss[u] + d.k:
+                    beat += abs(pl["erb"][cs[v]] - pl["erb"][cs[u]]) < 1.0
+                    v += 1
+            acc["beat"][j].append(beat)
+            e2 = pl["amp"][sch["chan"]] ** 2
+            acc["low"][j].append(
+                100 * e2[pl["f"][sch["chan"]] < 400].sum() / e2.sum())
 
     m = {k: [np.mean(v[0], axis=0), np.mean(v[1], axis=0)]
          for k, v in acc.items()}
     ep_db = [20 * np.log10(x) for x in m["epoch"]]
+    # the element window against the window before it, which is the same
+    # statistic on both sides; the peak of a noisy profile is biased upwards
+    on = slice(-a0, -a0 + int(round(max(cfg_extent, 50.0) * fs / 1000.0)))
+    before = slice(0, max(1, -a0 - int(round(0.05 * fs))))
+    peak = [10 * np.log10(np.mean(x[on] ** 2) / np.mean(x[before] ** 2))
+            for x in m["epoch"]]
     band_d = m["band"][0] - m["band"][1]
 
     # Half of the figure-present epochs against the other half: what the
@@ -103,12 +127,15 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
         fig_rate=(m["fig"][0], m["fig"][1]),
         bg_rate=(m["bg"][0], m["bg"][1]),
         contrast=(m["fig"][0] / m["bg"][0], m["fig"][1] / m["bg"][1]),
-        elem_peak_db=(ep_db[0].max(), ep_db[1].max()),
+        elem_peak_db=(peak[0], peak[1]),
         d_elem_peak_db=float(np.abs(ep_db[0] - ep_db[1]).max()),
         noise_floor_db=float(floor),
         d_rms_db=float(m["rms"][0] - m["rms"][1]),
         d_band_db=float(np.abs(band_d).max()),
         elem_gain_cv=(m["elem_cv"][0], m["elem_cv"][1]),
+        beating=(m["beat"][0], m["beat"][1]),
+        flat_db=(m["flat"][0], m["flat"][1]),
+        low_pct=(m["low"][0], m["low"][1]),
         shared_channels=(m["repeat"][0], m["repeat"][1]),
         epoch=ep_db, bands=m["band"],
     )
@@ -123,6 +150,9 @@ ROWS = [
     ("contrast", "contrast", "{:.2f}"),
     ("element loudness peak, dB", "elem_peak_db", "{:.2f}"),
     ("element power spread, CV", "elem_gain_cv", "{:.4f}"),
+    ("beating pairs (< 1 ERB)", "beating", "{:.0f}"),
+    ("levelling gain, dB range", "flat_db", "{:.2f}"),
+    ("energy below 400 Hz, %", "low_pct", "{:.0f}"),
     ("channels shared by 2 elements", "shared_channels", "{:.1f}"),
 ]
 DIFFS = [

@@ -138,6 +138,7 @@ __marimo__/
 __pycache__/
 __pypackages__/
 activemq-data/
+audios/sfg_task/data/
 audios/sfg_task/out/*.wav
 build/
 celerybeat-schedule

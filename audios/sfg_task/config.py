@@ -26,19 +26,30 @@ class Design:
     fs: int = 48_000
     hop_ms: float = 5.0
     tone_ms: float = 50.0        # as in Teki 2013 / O'Sullivan 2015
+    ramp_ms: float = 10.0        # raised cosine, independent of the grid
 
     # --- the cloud ----------------------------------------------------
     # 179-7246 Hz on a 1/24 octave grid is Teki's pool; 10 tones sounding is
     # their mean chord.  Holding the count fixed is O'Sullivan's control --
     # broadband power and every other low-level feature stay constant.
-    f_lo: float = 179.0
-    f_hi: float = 7246.0
+    f_lo: float = 250.0          # Teki's pool starts at 179 Hz, but they do
+    f_hi: float = 7246.0         # not weight for equal loudness; at 60 phon
+                                 # that octave is boosted 11 dB and takes
+                                 # over the stimulus
     grid_st: float = 0.5
-    bg_sounding: int = 10
+    bg_sounding: int = 8
     dealer_slack: float = 3.0    # counts stay level, order stays unguessable
     guard_ms: float = 50.0       # rest before a channel may sound again, so
                                  # two background tones never abut into one
                                  # long tone and pop out on their own
+    min_sep_erb: float = 1.0     # no two tones sounding at once inside one
+                                 # critical band.  Without it a 1/24 octave
+                                 # pool puts 4-8 channels in every ERB and
+                                 # two thirds of the tones acquire a beating
+                                 # partner -- at the bottom of the pool that
+                                 # is a 5 Hz throb, which is what a listener
+                                 # hears as a repeated beep rather than as
+                                 # a cloud
 
     # --- where the figure sits ----------------------------------------
     fig_span_st: float = 30.0    # frequency extent of the figure
@@ -46,12 +57,14 @@ class Design:
     phon: float = 60.0           # ISO 226 weighting, so no region dominates
 
     # --- one interval -------------------------------------------------
-    # A fixed number of figure elements per interval, at irregular spacing.
+    # Long, because the figure has to be found by accumulating evidence over
+    # elements rather than caught in one.  A fixed number of elements per
+    # interval, at irregular spacing.
     # Successive elements never overlap -- at 50 ms per step a figure is
     # 350 ms long -- so the number of coherent components sounding at once
     # is the same in every condition.
-    interval_s: float = 3.5
-    events: int = 6
+    interval_s: float = 6.0
+    events: int = 11
     lead_ms: float = 300.0
     tail_ms: float = 200.0
     gap_guard_ms: float = 60.0   # silence between the end of one element and
@@ -61,11 +74,11 @@ class Design:
     rms_dbfs: float = -26.0      # calibrate this to 65 dB SPL once
     rove_db: float = 3.0         # +-, drawn per interval, so neither overall
                                  # level nor a level difference is a cue
-    edge_ms: float = 20.0        # on/off ramp of the whole interval
+    edge_ms: float = 50.0        # on/off ramp of the whole interval
 
     # --- the task -----------------------------------------------------
     task: str = "2ifc"           # '2ifc' (criterion-free) | 'yesno'
-    trials_per_step: int = 30    # doubled automatically for yes/no, which
+    trials_per_step: int = 20    # doubled automatically for yes/no, which
                                  # needs figure-absent trials of its own
     practice_trials: int = 16
     practice_criterion: int = 8  # correct out of the last 10 to move on
@@ -78,7 +91,7 @@ class Design:
     # --- trial timing -------------------------------------------------
     ready_ms: float = 400.0
     isi_ms: float = 500.0
-    response_s: float = 5.0
+    response_s: float = 10.0
     feedback_ms: float = 350.0
     iti_ms: float = 600.0
 
@@ -108,9 +121,9 @@ class Design:
         return int(round(self.tone_ms / self.hop_ms))
 
     @property
-    def density(self) -> int:
-        """Background tones starting per slot."""
-        return int(round(self.bg_sounding / self.k))
+    def density(self) -> float:
+        """Background tones starting per slot, on average."""
+        return self.bg_sounding / self.k
 
     @property
     def guard(self) -> int:
@@ -171,8 +184,10 @@ class Design:
         for s in self.steps_ms + self.control_steps_ms:
             if s and abs(s / self.hop_ms - round(s / self.hop_ms)) > 1e-9:
                 raise ValueError(f"step {s} ms is not a whole number of hops")
-        if self.density < 1:
-            raise ValueError("bg_sounding is smaller than one tone length")
+        if self.bg_sounding < 1:
+            raise ValueError("bg_sounding must be at least 1")
+        if self.ramp_ms * 2 > self.tone_ms:
+            raise ValueError("ramps do not fit inside the tone")
         if self.slack < 0:
             raise ValueError(
                 f"{self.events} elements of {self.extent_ms(max(self.steps_ms)):.0f} ms "

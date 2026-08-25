@@ -82,10 +82,22 @@ def run(d: Design, subject: str, out: Path, *, device=None,
                       n_per=n_per, tag=tag)
     print(d.summary())
     print(f"\n  subject {subject} -> {out}")
-    audio = prerender(d, rows)
 
+    # The list is regenerated identically from the subject and the seed, so
+    # a session can be stopped and picked up later -- which it has to be,
+    # at this length.
     csv_path = out / f"responses_{tag}.csv"
     new = not csv_path.exists()
+    if not new:
+        with csv_path.open() as f:
+            done = {int(r["trial"]) for r in csv.DictReader(f) if r["trial"]}
+        rows = [r for r in rows if r["trial"] not in done]
+        print(f"  resuming: {len(done)} trials already done, "
+              f"{len(rows)} left")
+        if not rows:
+            return print("  nothing left to run")
+        practice = False
+    audio = prerender(d, rows)
     fh = csv_path.open("a", newline="")
     w = csv.DictWriter(fh, FIELDS)
     if new:
@@ -117,7 +129,8 @@ def run(d: Design, subject: str, out: Path, *, device=None,
                 ok = _one(d, r, a, fd, ask, keys, n_int, device, True, w, fh)
                 if ok is None:
                     return _bye(fh)
-                hits.append(ok)
+                if ok is not ...:            # a trial with no answer at all
+                    hits.append(ok)
                 if len(hits) >= 10 and sum(hits[-10:]) >= d.practice_criterion:
                     break
             print(f"  practice: {sum(hits)}/{len(hits)} correct\n")
@@ -129,7 +142,8 @@ def run(d: Design, subject: str, out: Path, *, device=None,
             ok = _one(d, r, a, fd, ask, keys, n_int, device, d.feedback, w, fh)
             if ok is None:
                 return _bye(fh)
-            done.append(ok)
+            if ok is not ...:
+                done.append(ok)
 
     print(f"\n  done: {sum(done)}/{len(done)} correct "
           f"({100 * np.mean(done):.0f}%)  ->  {csv_path}")
@@ -156,6 +170,7 @@ def _one(d, r, a, fd, ask, keys, n_int, device, feedback, w, fh):
         resp = {1: 1, 2: 0, 0: -1}[resp]
     ok = bool(c) and resp == r["target"]
 
+
     w.writerow({**{k: r.get(k, "") for k in
                    ("trial", "block", "variant", "step_ms", "target", "seed")},
                 "response": resp if c else "", "correct": int(ok),
@@ -169,7 +184,7 @@ def _one(d, r, a, fd, ask, keys, n_int, device, feedback, w, fh):
               flush=True)
         time.sleep(d.feedback_ms / 1000)
     time.sleep(d.iti_ms / 1000)
-    return ok
+    return ok if c else ...
 
 
 def _break(fd, d, i, n, done):

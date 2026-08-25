@@ -12,26 +12,50 @@ the figure stops being one thing?
 
 ## The stimulus
 
-A cloud of 50 ms tones drawn from 129 channels spanning 179–7246 Hz on a
-1/24-octave grid (Teki et al. 2013), weighted to equal loudness at 60 phon
-(ISO 226:2003).  Ten tones sound at every instant.
+A cloud of 50 ms tones (10 ms raised-cosine ramps) drawn from 117 channels
+spanning 250–7246 Hz on a 1/24-octave grid, weighted to equal loudness at
+60 phon (ISO 226:2003).  Eight tones sound at every instant — exactly eight,
+by a start pattern that puts `bg_sounding` starts in every tone length, which
+works for any count and not only for multiples of it.
 
-Onsets fall on a 5 ms grid; a tone lasts `k = tone_ms / hop_ms` slots and is
-one ramp longer than its slots, with power-complementary ramps, so tones
-ramping out are matched by tones ramping in and the background envelope is
-flat by construction rather than by smoothing.  A finer grid costs nothing:
-the cloud starts `bg_sounding / tone_ms` tones a second whatever the grid is,
-so the grid is set by the finest step to be tested and then **held fixed for
-the whole experiment**.  If it moved with the step, so would the background,
-and every condition would face a different cloud.
+**No two tones ever sound at once inside one critical band.**  A
+1/24-octave pool puts four to eight channels inside every ERB, and without
+this rule two thirds of the tones acquire a beating partner; at the bottom
+of the pool, where the channels are 5 Hz apart and the equal-loudness curve
+adds 11 dB, that is a 5 Hz throb, and it is what a listener hears as a
+repeated beep rather than as a cloud.  Teki's pool starts at 179 Hz, but
+Teki does not weight for equal loudness; with the weighting that octave
+takes over the stimulus, so the pool starts at 250 Hz here.
 
-The **figure** is a discrete element: seven channels evenly spread over
-30 semitones, each delayed `step_ms` behind the one below it.  Six elements
-per 3.5 s interval, at irregular spacing.  The minimum gap is set by the
-*longest* element in the experiment (350 ms), not by the current condition,
-so element timing is drawn from one distribution in every condition.
-Elements never overlap, so the number of coherent components sounding at
-once is the same at every step.
+Onsets fall on a 5 ms grid.  A finer grid costs nothing — the cloud starts
+`bg_sounding / tone_ms` tones a second whatever the grid is — so the grid is
+set by the finest step to be tested and then **held fixed for the whole
+experiment**.  If it moved with the step, so would the background, and every
+condition would face a different cloud.
+
+The **figure** is a discrete element: seven channels drawn at random inside
+a band 30 semitones wide, each delayed `step_ms` behind the one below it.
+Eleven elements per 6 s interval, at irregular spacing.  The interval is
+long because the figure has to be found by accumulating evidence across
+elements rather than caught in one.  The minimum gap is set by the *longest*
+element in the experiment (350 ms), not by the current condition, so element
+timing is drawn from one distribution in every condition.  Elements never
+overlap, so the number of coherent components sounding at once is the same
+at every step.
+
+**The loudness is flat, not the tone count.**  Holding the count constant
+while the figure switches seven tones on at once would need at least
+`coherence` tones starting in every slot — 1400 onsets a second at this
+resolution, which leaves the figure with no contrast at all.  So the count
+is allowed to rise and the level of everything is scaled against the
+analytic power envelope instead: the sum of the tones' own squared amplitude
+envelopes, which is the expected power because the tones are mutually
+incoherent.  Measured, the element leaves 0.0 dB behind at every step, in
+both intervals, against 2.5 dB before.  It has to be the power and not the
+count: counting is exact only if every tone carries the same power, and
+under equal loudness they do not — the critical-band rule blocks the
+channels around the figure, which pushes the background towards the loud
+edges of the pool for as long as an element lasts, and leaves 0.9 dB behind.
 
 ## The comparison
 
@@ -62,8 +86,10 @@ every one of these.  Construction arguments are not evidence.
 | tones sounding | identical range at every step |
 | long-term level | RMS-normalised; 0.000 dB apart |
 | long-term spectrum | ≤ 0.2 dB in any third-octave band |
-| element loudness pulse | element-locked envelope of both intervals, present − absent, against the same measure split within one condition — the difference sits **below** the noise floor of the measurement |
-| element power | equalised per draw; CV 0.0000 in both |
+| element loudness pulse | element-locked power of both intervals against the window before them: −0.06 to −0.02 dB at every step, and the same in both |
+| element loudness cue | present − absent, against the same measure split within one condition — the difference (0.10–0.13 dB) sits **below** the noise floor of the measurement (0.14–0.17 dB) |
+| element power | equalised per draw, against the power the background actually realised rather than the pool average; CV 0.0000 in both |
+| beating | no two tones inside one critical band at once: 0 pairs, at every step |
 | accidental coherence | no two elements of a figure-absent interval share more than one channel |
 | figure position | uniform over the allowed range, redrawn every trial, so it is never in a learnable place |
 | overall level | roved ±3 dB per interval |
@@ -105,6 +131,9 @@ system so a meter at the headphone reads 65 dB SPL and leave it.
 maximum likelihood, and reports the step at which d' falls to 1, with a
 bootstrap CI.  On simulated data with a true midpoint of 25 ms, 30 trials
 per step recovers the threshold to about ±7 ms; double the trials for ±5.
+At 20 trials per step the session is 35 minutes, which is already long —
+`run` picks up where it stopped, so split it over two sittings rather than
+cutting trials.
 
 ## What is *not* controlled, and cannot be
 
@@ -116,10 +145,16 @@ per step recovers the threshold to about ±7 ms; double the trials for ±5.
   50 ms.  It is matched between the two intervals at every step, so it
   cannot support the discrimination — but the acoustic salience of *an
   element happening at all* does fall with step.
-* **Contrast is 2.1×**, against roughly 10× for chord-grid figure-ground.
+* **Contrast is 2.5×**, against roughly 10× for chord-grid figure-ground.
   A 350 ms element cannot repeat at 20 Hz; a slow figure has a low contrast
   and there is no way around it.  Detection at 0 ms should be good, not
   perfect — which is what you want, or the sweep starts at ceiling.
+* **Levelling the power jitters the tones.**  The compensating gain wanders
+  over about 7 dB, 1.6 dB SD, so each tone sits within a decibel or two of
+  its equal-loudness level rather than exactly on it.  That is the price of
+  a flat envelope, it is matched between the intervals, and the
+  equal-loudness shape survives it: measured by octave, the realised levels
+  still trace the ISO 226 curve.
 
 ## Usage
 
@@ -127,7 +162,7 @@ per step recovers the threshold to about ±7 ms; double the trials for ±5.
 python -m audios.sfg_task check                    # the battery + figures
 python -m audios.sfg_task demo --step-ms 20 --play # listen to one trial
 python -m audios.sfg_task calibrate
-python -m audios.sfg_task run S01
+python -m audios.sfg_task run S01                   # resumes if interrupted
 python -m audios.sfg_task run S01 --controls
 python -m audios.sfg_task analyse S01
 ```
