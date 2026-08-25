@@ -8,6 +8,10 @@ function out = sfg_staircase(varargin)
 %   sfg_staircase                          % 7-tone staircase, one chord/step
 %   sfg_staircase('stepChords', 0)         % the classic coherent figure
 %   sfg_staircase('stepChords', 2, 'nChord', 2)
+%
+% Writes the mix and a figure-only wav, and returns audioplayer objects:
+%   out = sfg_staircase; pause(out.player); resume(out.player)
+%   play(out.figurePlayer)                  % the figure without the cloud
 
 cfg = config();
 for i = 1:2:numel(varargin)
@@ -17,14 +21,24 @@ rng(cfg.seed);
 
 pool = make_pool(cfg);
 [chan, chord, isFig] = schedule(cfg, pool);
-out = render(cfg, pool, chan, chord);
+out = render(cfg, pool, chan, chord, isFig);
 
 report(cfg, pool, chan, chord, isFig, out);
 if cfg.doPlot, show(cfg, pool, chan, chord, isFig); end
+
 if ~isempty(cfg.wavFile)
+    [d, f, e] = fileparts(cfg.wavFile);
     audiowrite(cfg.wavFile, out.y(:), cfg.fs, 'BitsPerSample', 24);
+    out.figureFile = fullfile(d, [f '_figure' e]);
+    audiowrite(out.figureFile, out.figure(:), cfg.fs, 'BitsPerSample', 24);
+    fprintf('  wrote %s and %s\n', cfg.wavFile, out.figureFile);
 end
-if cfg.doPlay, sound(out.y, cfg.fs); end
+
+% audioplayer rather than sound(), so playback can be paused
+out.player       = audioplayer(out.y, cfg.fs);
+out.figurePlayer = audioplayer(out.figure, cfg.fs);
+if cfg.doPlay, play(out.player); end
+fprintf('  play(out.player) | pause | resume | stop  (also out.figurePlayer)\n');
 end
 
 % ------------------------------------------------------------------ config
@@ -54,7 +68,7 @@ cfg.durationS    = 20;
 cfg.peakDbfs     = -3;
 cfg.doPlay       = true;
 cfg.doPlot       = true;
-cfg.wavFile      = 'sfg_staircase.wav';
+cfg.wavFile      = 'sfg_staircase.wav';   % _figure.wav written alongside
 end
 
 % -------------------------------------------------------------------- pool
@@ -145,7 +159,7 @@ end
 end
 
 % ------------------------------------------------------------------ render
-function out = render(cfg, pool, chan, chord)
+function out = render(cfg, pool, chan, chord, isFig)
 % Tones are one ramp longer than a chord so consecutive chords cross-fade.
 % With power-complementary ramps the total power is then constant across the
 % join; abutting tones would leave a dip at every chord boundary.
@@ -160,15 +174,24 @@ env(1:r)       = sin(pi/2 * x);
 env(end-r+1:end) = cos(pi/2 * x);
 pips = sin(2*pi * pool.f(:) * t) .* env;
 
-N = (max(chord)) * hop + n;
+N = max(chord) * hop + n;
 y = zeros(1, N);
+yF = zeros(1, N);
 for i = 1:numel(chan)
     s = (chord(i) - 1) * hop + 1;
     y(s:s+n-1) = y(s:s+n-1) + pips(chan(i), :);
+    if isFig(i)
+        yF(s:s+n-1) = yF(s:s+n-1) + pips(chan(i), :);
+    end
 end
 
-out.y  = y * (10^(cfg.peakDbfs/20) / max(abs(y)));
-out.fs = cfg.fs;
+% one gain for both, so the figure-only file is exactly the figure you hear
+% inside the mix rather than a louder version of it
+g = 10^(cfg.peakDbfs/20) / max(abs(y));
+out.y      = y * g;
+out.figure = yF * g;
+out.cloud  = (y - yF) * g;
+out.fs     = cfg.fs;
 end
 
 % ------------------------------------------------------------------ report
@@ -187,9 +210,12 @@ fprintf('  tones per chord %d-%d (uniform envelope requires one value)\n', ...
 fprintf('  figure channel %.1f/s vs background %.1f/s: contrast %.1fx\n', ...
     mean(use(isf))/dur, mean(use(~isf))/dur, ...
     mean(use(isf)) / max(mean(use(~isf)), eps));
-fprintf('  channel use %d-%d, %d figure tones of %d, %.1f s, peak %.1f dBFS\n', ...
-    min(use), max(use), sum(isFig), numel(chan), dur, ...
-    20*log10(max(abs(out.y))));
+fprintf('  channel use %d-%d, %d figure tones of %d, %.1f s\n', ...
+    min(use), max(use), sum(isFig), numel(chan), dur);
+% the figure-only file shares the mix's gain, so it is quieter by exactly the
+% amount the cloud contributes -- that is the point, not a fault
+fprintf('  peak: mix %.1f dBFS, figure alone %.1f dBFS\n', ...
+    20*log10(max(abs(out.y))), 20*log10(max(abs(out.figure))));
 end
 
 % -------------------------------------------------------------------- plot
