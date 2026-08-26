@@ -148,7 +148,7 @@ def timecourse(tc: dict, summary, path: Path, sessions=None,
         # panel on the right carries the uncertainty properly
         ax[0].plot(cur[s]["x"], cur[s]["pc"], color=col[s], lw=1.8,
                    label=f"{s:g} ms")
-    for b in (sessions or []):
+    for b in ([] if sessions is None else list(sessions)):
         ax[0].axvline(b, color="0.55", lw=.9, ls="--")
     ax[0].axhline(chance, color="0.55", lw=.9)
     ax[0].set_xlabel("trial in the experiment")

@@ -120,7 +120,11 @@ def cmd_analyse(a) -> None:
     label = "sfgcontrols" if a.controls else "sfg"
     raw = load(root, a.subject, task=label, session=a.session)
     if raw.empty:
-        return print(f"  no answered trials for sub-{a.subject}, task {label}")
+        have = sorted(p.name[4:] for p in root.glob("sub-*") if p.is_dir())
+        print(f"  no answered trials for sub-{a.subject}, task {label}, "
+              f"in {root}")
+        return print(f"  subjects recorded here: "
+                     f"{', '.join(have) if have else 'none'}")
 
     summary = score(raw, d.task)
     f = fit(summary, d.task)

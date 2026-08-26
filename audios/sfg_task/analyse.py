@@ -31,7 +31,10 @@ def load(root: Path, sid: str, task: str = "sfg", session: int | None = None,
         files = [f for f in files if f"ses-{session:02d}" in f.name]
     if not files:
         return pd.DataFrame()
-    d = pd.concat([pd.read_csv(f, sep="\t") for f in files], ignore_index=True)
+    parts = [x for x in (pd.read_csv(f, sep="\t") for f in files) if len(x)]
+    if not parts:
+        return pd.DataFrame()
+    d = pd.concat(parts, ignore_index=True)
     d = d[d.block == block].dropna(subset=["response"])
     d = d[d.response >= 0].copy()
     # position in the experiment, counting sessions end to end
@@ -312,10 +315,25 @@ def report(summary: pd.DataFrame, f: dict | None, tr: dict,
                f"p = {tr['p']:.2g}  (single-trial logistic, slope "
                f"{tr['slope']:+.2f})")
     if f:
+        g = summary[summary.variant == "rise"]
+        span = g.step_ms.max() - g.step_ms.min()
+        wide = not np.isfinite(f["ci"][0]) or (f["ci"][1] - f["ci"][0]) > span
+        best = g.pc.idxmax() != g.index[0]
         out.append(f"  d' = 1 at {f['step_at_d1']:.1f} ms "
                    f"[{f['ci'][0]:.1f}, {f['ci'][1]:.1f}] 95% CI")
         out.append(f"  half-way at {f['s50']:.1f} ms, width {f['width']:.1f} ms,"
                    f" lapse {f['lapse']:.3f}")
+        if wide or best:
+            out.append("")
+            out.append("  DO NOT USE THAT THRESHOLD:")
+            if wide:
+                out.append("    its interval is wider than the range of delays "
+                           "that were tested, so the fit is unconstrained")
+            if best:
+                out.append(f"    accuracy peaks at "
+                           f"{g.loc[g.pc.idxmax()].step_ms:g} ms rather than at "
+                           f"the smallest delay, so the function is not "
+                           f"monotonic and a threshold has no meaning")
     out += ["", "  checks"]
     for r in ck.itertuples():
         out.append(f"    {r.check:<22} {r.value:5.2f}  "
