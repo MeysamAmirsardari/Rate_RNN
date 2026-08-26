@@ -74,17 +74,23 @@ class Design:
 
     # --- one interval -------------------------------------------------
     # Long, because the figure has to be found by accumulating evidence over
-    # elements rather than caught in one.  A fixed number of elements per
-    # interval, at irregular spacing.
-    # Successive elements never overlap -- at 50 ms per step a figure is
-    # 350 ms long -- so the number of coherent components sounding at once
-    # is the same in every condition.
+    # elements rather than caught in one.
+    #
+    # Elements repeat at `rate_hz` and ARE ALLOWED TO OVERLAP.  At 5 Hz the
+    # period is 200 ms and a 50 ms-per-step element is 350 ms long, so at
+    # the wide delays nearly two elements sound at once and the figure is a
+    # continuous ascending stream rather than a discrete object.  The number
+    # of coherent components sounding therefore varies with delay, which the
+    # non-overlapping version was built to avoid.  It is matched between the
+    # two intervals of a trial, so it cannot be a cue, but it does mean the
+    # conditions differ in more than asynchrony.  Chosen deliberately, to
+    # keep the figure at a speech rate.
     interval_s: float = 6.0
-    events: int = 11
+    rate_hz: float = 5.0
+    jitter_ms: float = 40.0      # +- on each interval between elements, so
+                                 # the rhythm is not isochronous
     lead_ms: float = 300.0
     tail_ms: float = 200.0
-    gap_guard_ms: float = 60.0   # silence between the end of one element and
-                                 # the onset of the next
 
     # --- level --------------------------------------------------------
     rms_dbfs: float = -26.0      # calibrate this to 65 dB SPL once
@@ -168,21 +174,26 @@ class Design:
 
     @property
     def max_extent(self) -> int:
-        """In slots, over every step in the experiment -- so the spacing of
-        the elements can be identical in every condition."""
+        """In slots, over every step in the experiment -- so the room left
+        for the elements is identical in every condition."""
         return int(round(self.extent_ms(max(self.steps_ms)) / self.hop_ms))
 
     @property
-    def min_gap(self) -> int:
-        return self.max_extent + int(round(self.gap_guard_ms / self.hop_ms))
+    def span(self) -> int:
+        """Slots between the first element onset and the last."""
+        return self.n_slots - self.tail - self.max_extent - self.lead
 
     @property
-    def slack(self) -> int:
-        """Slots left over to spread among the gaps, which is what makes the
-        rhythm irregular."""
-        first = self.lead
-        last = self.n_slots - self.tail - self.max_extent
-        return last - first - (self.events - 1) * self.min_gap
+    def events(self) -> int:
+        """Elements per interval, from the rate and the room available."""
+        return max(2, int(round(self.rate_hz * self.span * self.hop_ms / 1000)) + 1)
+
+    @property
+    def min_gap(self) -> int:
+        """Two elements may overlap, but a channel may not sound twice at
+        once: every element uses the same channels, so the interval between
+        elements has to clear one tone plus its rest."""
+        return int(round((self.tone_ms + self.guard_ms) / self.hop_ms))
 
     @property
     def n_per_step(self) -> int:
@@ -209,11 +220,12 @@ class Design:
             raise ValueError("bg_sounding must be at least 1")
         if self.ramp_ms * 2 > self.tone_ms:
             raise ValueError("ramps do not fit inside the tone")
-        if self.slack < 0:
+        if self.span < (self.events - 1) * self.min_gap:
             raise ValueError(
-                f"{self.events} elements of {self.extent_ms(max(self.steps_ms)):.0f} ms "
-                f"do not fit in {self.interval_s} s: shorten the interval's "
-                f"lead/tail, drop an element, or lengthen the interval")
+                f"{self.events} elements at {self.rate_hz:g} Hz need gaps of "
+                f"{self.min_gap * self.hop_ms:.0f} ms and there is only "
+                f"{self.span * self.hop_ms:.0f} ms of room: slow the rate, "
+                f"shorten the tones, or lengthen the interval")
         if self.task not in ("2ifc", "yesno"):
             raise ValueError("task must be '2ifc' or 'yesno'")
 
@@ -221,7 +233,8 @@ class Design:
         span = 12 * math.log2(self.f_hi / self.f_lo)
         n_ch = int(span / self.grid_st) + 1
         bg = self.density * 1000.0 / self.hop_ms
-        rate = self.events / (self.interval_s - (self.lead_ms + self.tail_ms) / 1000)
+        rate = self.rate_hz
+        ov = self.extent_ms(max(self.steps_ms)) * rate / 1000.0
         lines = [
             f"{self.task}  {len(self.steps_ms)} steps "
             f"{', '.join(f'{s:g}' for s in self.steps_ms)} ms  x "
@@ -233,12 +246,12 @@ class Design:
             f"  cloud     {self.bg_sounding} tones sounding, "
             f"{bg:.0f} onsets/s, {bg / n_ch:.2f}/s per channel",
             f"  figure    {self.coherence} tones over {self.fig_span_st:g} st, "
-            f"{self.events} elements per interval at {rate:.2f}/s "
-            f"-> contrast {1 + rate / (bg / n_ch):.1f}x",
+            f"{self.events} elements per interval at {rate:g} Hz "
+            f"+-{self.jitter_ms:g} ms -> contrast "
+            f"{1 + self.events / self.interval_s / (bg / n_ch):.1f}x",
             f"  element   {self.extent_ms(min(self.steps_ms)):.0f}-"
-            f"{self.extent_ms(max(self.steps_ms)):.0f} ms long, "
-            f"gaps {self.min_gap * self.hop_ms:.0f}-"
-            f"{(self.min_gap + self.slack) * self.hop_ms:.0f} ms",
+            f"{self.extent_ms(max(self.steps_ms)):.0f} ms long against a "
+            f"{1000 / rate:.0f} ms period, so up to {ov:.1f} sound at once",
             f"  session   {self.n_trials * self.trial_s / 60:.0f} min "
             f"+ practice + {self.n_trials // self.break_every} breaks",
         ]

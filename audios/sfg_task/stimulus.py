@@ -67,13 +67,17 @@ def comb(d: Design, pl: dict, rng: np.random.Generator,
     hi = pl["n"] - 1 - lo - width
     if hi < 0:
         raise ValueError("figure band does not fit inside the pool")
-    for _ in range(500):
-        b = lo + int(rng.integers(0, hi + 1))
-        ch = _draw(d, pl, np.arange(b, b + width + 1), rng)
-        if ch is None:
-            continue
-        if all(np.intersect1d(ch, a).size <= 1 for a in avoid or ()):
-            return ch
+    # Twenty-seven draws that pairwise share at most one channel is a tight
+    # packing, and an unlucky one must not end a session.  Relax the rule
+    # rather than raise; the battery reports what was actually achieved.
+    for limit in (1, 2, 3):
+        for _ in range(200):
+            b = lo + int(rng.integers(0, hi + 1))
+            ch = _draw(d, pl, np.arange(b, b + width + 1), rng)
+            if ch is None:
+                continue
+            if all(np.intersect1d(ch, a).size <= limit for a in avoid or ()):
+                return ch
     raise ValueError("no figure draw left that avoids the earlier elements")
 
 
@@ -120,12 +124,23 @@ def redrawn(d: Design, step_ms: float, rng: np.random.Generator) -> np.ndarray:
 
 
 def element_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
-    """Irregular element onsets, in slots, with the spacing every condition
-    shares: the minimum gap is set by the longest element in the experiment,
-    not by this condition's."""
-    cuts = np.sort(rng.integers(0, d.slack + 1, d.events))
-    parts = np.diff(np.concatenate(([0], cuts, [d.slack])))[:d.events]
-    return d.lead + np.cumsum(parts) + np.arange(d.events) * d.min_gap
+    """Element onsets, in slots: `rate_hz` with `jitter_ms` either way.
+
+    The intervals are rescaled to fill the same span in every condition, so
+    the rate and the element count do not move with the delay.  Elements may
+    overlap; what may not happen is a channel sounding twice at once, which
+    is what `min_gap` protects."""
+    n = d.events
+    mean = d.span / (n - 1)
+    j = d.jitter_ms / d.hop_ms
+    for _ in range(200):
+        gaps = mean + rng.uniform(-j, j, n - 1)
+        gaps = gaps * (d.span / gaps.sum())
+        g = np.round(gaps).astype(int)
+        g[-1] += d.span - g.sum()
+        if g.min() >= d.min_gap:
+            return d.lead + np.concatenate(([0], np.cumsum(g)))
+    raise ValueError("jitter_ms is too wide for this rate")
 
 
 def scatter_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
@@ -165,14 +180,25 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
             for s in ts:
                 put(c, s, 0)
     else:
-        combs = []
+        # Overlapping elements can collide: two of them can want the same
+        # channel at the same moment, or two channels inside one critical
+        # band.  Where there is something to redraw, redraw it.
+        combs, clash = [], 0
         for i, s0 in enumerate(ons):
-            ch = (combs[0] if coherent and combs
-                  else comb(d, pl, rng, avoid=None if coherent else combs))
+            fixed = coherent and variant != "redraw"
+            for attempt in range(120):
+                ch = (combs[0] if coherent and combs
+                      else comb(d, pl, rng, avoid=None if coherent else combs))
+                lg = redrawn(d, step_ms, rng) if variant == "redraw" else lag
+                cand = [(int(c), int(s0 + l)) for c, l in zip(ch, lg)
+                        if 0 <= s0 + l < d.n_slots]
+                if fixed or not any(busy[c, s:s + d.k].any() for c, s in cand):
+                    break
+            else:
+                clash += 1
             combs.append(ch)
-            lg = redrawn(d, step_ms, rng) if variant == "redraw" else lag
-            for c, l in zip(ch, lg):
-                put(c, s0 + l, i)
+            for c, s in cand:
+                put(c, s, i)
     fig_ch = combs[0]
 
     # Exactly `bg_sounding` background tones sound at every instant: over any
@@ -209,7 +235,8 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
         gain[elem == i] = comb_gain(pl, ch, target)
     return dict(chan=chan, slot=slot, gain=gain, is_fig=is_fig,
                 fig_ch=fig_ch, onsets=ons, lag=lag, step_ms=step_ms,
-                coherent=coherent, variant=variant)
+                coherent=coherent, variant=variant,
+                clash=locals().get("clash", 0))
 
 
 # ---------------------------------------------------------------- render

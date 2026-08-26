@@ -98,7 +98,9 @@ these. Construction arguments are not evidence.
 
 | control | how |
 |---|---|
-| tone count | identical by construction; measured, 672 in both |
+| tone count | identical by construction; measured, 784 in both |
+| figure tones at once | identical in both intervals at every delay |
+| figure duty cycle | identical in both intervals at every delay |
 | tones sounding | identical range at every step |
 | long-term level | RMS-normalised, 0.000 dB apart |
 | long-term spectrum | within 0.4 dB in any third-octave band |
@@ -108,6 +110,7 @@ these. Construction arguments are not evidence.
 | element loudness cue | present minus absent, against the same measure split within one condition. The difference (0.10 to 0.13 dB) sits below the noise floor of the measurement (0.14 to 0.17 dB) |
 | element power | equalised per draw, against the power the background actually realised. CV 0.0000 in both |
 | beating | no two tones inside one critical band at once: 0 pairs, at every step |
+| envelope at the figure rate | 0.02 dB in both intervals, at every delay: the levelling removes the 5 Hz pulse entirely |
 | accidental coherence | no two elements of a figure-absent interval share more than one channel |
 | figure position | uniform over the allowed range, redrawn every trial, so it is never in a learnable place |
 | overall level | roved 3 dB either way per interval |
@@ -121,8 +124,9 @@ no criterion; proportion correct maps straight to d'. Yes/no is available
 (`--task yesno`), which doubles the trials per step so false alarms can be estimated per
 step.
 
-Practice runs at 0 ms with feedback until 8 of the last 10 are right. Then 20 trials at
-each of 7 steps, 140 trials, about 35 minutes with three self-paced breaks.
+Practice runs at 0 ms with feedback until 8 of the last 10 are right, and says so if it
+ends below criterion rather than sliding into the main block. Then 20 trials at each of
+7 steps, 140 trials, about 35 minutes with three self-paced breaks.
 
 The trial line does not show the step. A subject who can see the condition will use it.
 `--show-step` puts it back for when you are testing the runner yourself, and the data
@@ -268,10 +272,22 @@ sessions halve that. Decide which you need before running twenty people once.
 
 ## What is not controlled, and cannot be
 
-* Element extent grows with step. A 0 ms element is 50 ms long, a 50 ms element is
-  350 ms. That is the manipulation, not a confound, but it does mean the conditions
-  differ in more than asynchrony. `perm` and `scatter` are what bound the alternative
-  explanations.
+* **The figure changes character across the sweep, not just its asynchrony.** A 0 ms
+  element is 50 ms long and puts seven tones on at once; a 50 ms element is 350 ms long,
+  overlaps its neighbour, and never has more than three tones sounding together.
+  Measured, a figure tone is sounding 23% of the time at 0 ms and 93% at 50 ms, and the
+  most that ever sound together falls from 7 to 3. Same total tone count, same rate,
+  same contrast, very different object. This is inherent to running a 350 ms element at
+  a 200 ms period and was chosen deliberately to keep the figure at a speech rate; the
+  alternative is to cap the sweep at 25 ms, which is what a non-overlapping 5 Hz figure
+  allows. `perm` and `scatter` are what bound the alternative explanations, and this is
+  the first limitation a referee will find.
+* **The long-term spectrum carries more of the answer than it used to.** At 6.3x
+  contrast the seven figure channels stand up to 0.8 dB above the figure-absent interval
+  in a third-octave band, against a measurement noise floor of 0.2 dB. A listener could
+  in principle use that rather than temporal coherence. `scatter`, which has the
+  identical long-term spectrum and no temporal coherence at all, is the control that
+  separates them, and it matters more at this contrast than it did at 2.4x.
 * Contrast is 2.5x, against roughly 10x for chord-grid figure-ground. A 350 ms element
   cannot repeat at 20 Hz, and a slow figure has a low contrast. Detection at 0 ms should
   be good rather than perfect, which is what you want, or the sweep starts at ceiling.

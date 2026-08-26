@@ -196,7 +196,7 @@ def main(argv=None) -> int:
         q.add_argument("--steps-ms", type=float, nargs="+")
         q.add_argument("--coherence", type=int)
         q.add_argument("--bg-sounding", type=int)
-        q.add_argument("--events", type=int)
+        q.add_argument("--rate-hz", type=float)
         q.add_argument("--interval-s", type=float)
         q.add_argument("--trials-per-step", type=int)
         q.add_argument("--order", choices=("rise", "fall"))
