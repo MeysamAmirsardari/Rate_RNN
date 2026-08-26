@@ -8,6 +8,7 @@
     python -m audios.sfg_task run S01 --controls   # the control session
     python -m audios.sfg_task subjects             # what has been recorded
     python -m audios.sfg_task analyse S01
+    python -m audios.sfg_task group                # across subjects
 """
 
 from __future__ import annotations
@@ -110,7 +111,9 @@ def cmd_subjects(a) -> None:
 
 
 def cmd_analyse(a) -> None:
-    from .analyse import fit, load, report, score
+    from .analyse import (checks, fit, load, report, score, stars,
+                          timecourse, trend)
+    from . import plot as P
     from .session import subject_dir
     d = design(a)
     root = Path(a.root) if a.root else DATA
@@ -118,19 +121,64 @@ def cmd_analyse(a) -> None:
     raw = load(root, a.subject, task=label, session=a.session)
     if raw.empty:
         return print(f"  no answered trials for sub-{a.subject}, task {label}")
+
     summary = score(raw, d.task)
     f = fit(summary, d.task)
+    tr = trend(raw)
+    ck, cmp = checks(raw, d.task)
     ses = sorted(raw.session.unique())
     print(f"  sub-{a.subject}  task-{label}  "
           f"session{'s' if len(ses) > 1 else ''} "
-          f"{', '.join(str(int(x)) for x in ses)}  {len(raw)} trials\n")
-    print(report(summary, f, d.task))
+          f"{', '.join(str(int(x)) for x in ses)}  {len(raw)} trials, "
+          f"{100 * raw.correct.mean():.1f}% correct overall\n")
+    print(report(summary, f, tr, ck, cmp, d.task))
+
     out = subject_dir(root, a.subject)
     tag = label if a.session is None else f"{label}_ses-{a.session:02d}"
-    summary.to_csv(out / f"sub-{a.subject}_task-{tag}_summary.csv", index=False)
-    p = psychometric(summary, f,
-                     out / f"sub-{a.subject}_task-{tag}_psychometric.png", 0.5)
-    print(f"\n  -> {p.name} and the summary csv, in {out}")
+    base = out / f"sub-{a.subject}_task-{tag}"
+    summary.to_csv(f"{base}_summary.csv", index=False)
+    ck.to_csv(f"{base}_checks.csv", index=False)
+    cmp.to_csv(f"{base}_comparisons.csv", index=False)
+
+    # stars on one line at the top rather than chasing each error bar
+    marks = [(r.step_ms, 1.02, stars(r.q_chance))
+             for r in summary[summary.variant == "rise"].itertuples()]
+    bounds = raw.groupby("session").size().cumsum().values[:-1]
+    P.psychometric(summary, f, Path(f"{base}_psychometric.png"), marks=marks)
+    P.timecourse(timecourse(raw[raw.variant == "rise"], a.window), summary,
+                 Path(f"{base}_timecourse.png"), sessions=bounds)
+    P.diagnostics(ck, cmp, raw, Path(f"{base}_checks.png"))
+    print(f"\n  -> psychometric, timecourse and checks figures, plus the two "
+          f"csvs, in {out}")
+
+
+def cmd_group(a) -> None:
+    from .analyse import fit, group, load, score
+    from . import plot as P
+    d = design(a)
+    root = Path(a.root) if a.root else DATA
+    label = "sfgcontrols" if a.controls else "sfg"
+    rows = []
+    for p in sorted(root.glob("sub-*")):
+        sid = p.name[4:]
+        raw = load(root, sid, task=label)
+        if raw.empty:
+            continue
+        sm = score(raw, d.task)
+        ft = fit(sm, d.task)
+        rows.append(dict(subject=sid, n=len(raw), pc=raw.correct.mean(),
+                         summary=sm, threshold=ft["step_at_d1"] if ft
+                         else float("nan")))
+    if not rows:
+        return print(f"  nothing to pool in {root}")
+    print(f"  {'subject':<10}{'trials':>7}{'overall':>9}{'d1 threshold':>15}")
+    for r in rows:
+        print(f"  {r['subject']:<10}{r['n']:>7}{100 * r['pc']:>8.1f}%"
+              f"{r['threshold']:>13.1f} ms")
+    print()
+    print(group(rows))
+    p = P.group_curves(rows, root / f"group_task-{label}.png")
+    print(f"\n  -> {p.name} in {root}")
 
 
 def main(argv=None) -> int:
@@ -191,8 +239,15 @@ def main(argv=None) -> int:
                    help="the control session rather than the sweep")
     q.add_argument("--session", type=int,
                    help="one session; the default pools every session")
+    q.add_argument("--window", type=float,
+                   help="smoothing width of the time course, in trials")
     q.add_argument("--root")
     q.set_defaults(fn=cmd_analyse)
+
+    q = common(sub.add_parser("group", help="pool subjects"))
+    q.add_argument("--controls", action="store_true")
+    q.add_argument("--root")
+    q.set_defaults(fn=cmd_group)
 
     a = p.parse_args(argv)
     a.fn(a)

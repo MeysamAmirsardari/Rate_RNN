@@ -186,11 +186,86 @@ default, or takes `--session N`.
 
 ## Analysis
 
-`analyse <subject>` scores d' per step, fits a descending logistic by maximum
-likelihood, and reports the step at which d' falls to 1 with a bootstrap CI. On
-simulated data with a true midpoint of 25 ms, 30 trials per step recovers the threshold
-to about 7 ms either way; double the trials for 5. At 20 trials per step the session is
-already 35 minutes, so split it over two sittings rather than cutting trials.
+```
+python -m audios.sfg_task analyse S01           # one subject, all sessions
+python -m audios.sfg_task analyse S01 --session 2
+python -m audios.sfg_task analyse S01 --controls
+python -m audios.sfg_task group                 # across subjects
+```
+
+`analyse` prints a table and writes three figures and three csvs beside the subject's
+sessions. It pools sessions by default, since a session is a sitting and not a
+condition.
+
+### The number the experiment is for
+
+Accuracy is turned into d' (for 2IFC, `d' = sqrt(2) z(pc)`, which needs no criterion),
+a descending logistic is fitted to the seven points by maximum likelihood, and the
+threshold reported is **the delay at which d' falls to 1**. That level is chosen because
+the task can resolve it; a half-way point often sits off the end of the range that was
+tested. Its 95% CI comes from a parametric bootstrap over the per-cell binomials.
+
+### Error bars and tests
+
+* Each point carries a **Wilson 95% interval**, which behaves at 0 and 1 where the
+  normal approximation does not.
+* d' carries a standard error by the delta method, from the binomial on pc.
+* Stars above each point are a one-sided binomial test **against chance**, corrected
+  across the seven delays with Benjamini-Hochberg.
+* `vs best` in the table is a Fisher exact test of each delay **against the 0 ms
+  chord**, also FDR corrected. This is the column that says where performance first
+  falls away.
+* `step effect` is a single-trial logistic of correct on delay, with guessing built into
+  the link, tested by likelihood ratio against the same model with the slope removed.
+  That is the one test of whether delay matters at all, and it uses every trial rather
+  than seven summary points.
+
+### The figures
+
+**`_psychometric.png`** Accuracy and d' against delay, with the fit, the threshold and
+its bootstrap CI shaded.
+
+**`_timecourse.png`** Accuracy against position in the experiment, one colour per delay,
+with the pooled curve in black and its standard error band, and each delay's overall
+accuracy on the right on the same axis. Dashed verticals are session boundaries. A trial
+of any one delay happens once every few trials, so a plain sliding window would hold
+four or five of them and be unreadable; each delay's trials are weighted by a Gaussian in
+trial index instead, and the error band uses the effective N from the sum of the weights.
+`--window` sets the width, in trials.
+
+This is where a session goes wrong visibly: a subject who is still learning shows every
+curve climbing early, one who is tiring shows the black curve sagging late, and one who
+has stopped trying shows the 0 ms anchor coming down to meet the rest.
+
+**`_checks.png`** The checks as a forest plot, and response time against delay.
+
+### What to check before believing the threshold
+
+The table's second half is there to be read, not skipped. Only the response bias has
+chance for a null; the rest come in pairs, and the question about a pair is whether its
+two halves agree.
+
+| check | what a failure means |
+|---|---|
+| said interval 1 | an interval preference. 2IFC is robust to a mild one, but a strong one means the subject is not using both intervals |
+| figure in 1 vs in 2 | the two intervals are not equally good, which should not happen if the stimulus is matched |
+| first vs second half | practice or fatigue. Also tested on single trials as `drift over the session` |
+| after a correct vs after an error | sequential effects, usually post-error slowing |
+| anchor, first vs second half | whether the subject is still trying. The 0 ms condition should stay easy all the way through |
+
+Response time should rise with delay. If it is flat, the subject may be answering on a
+fixed schedule rather than on the evidence.
+
+### Across subjects
+
+`group` fits each subject separately, prints the per-subject thresholds, and gives the
+mean with its SEM and a t-based 95% CI. Per-subject thresholds then mean, rather than
+pooling raw trials, because subjects differ and the claim is about listeners. On
+simulated data with true thresholds of 17 to 33 ms, five subjects recovered 13 to 37 ms
+and a group mean within 1 ms of the truth.
+
+At 20 trials per step, one subject's threshold carries a CI about 14 ms wide. Two
+sessions halve that. Decide which you need before running twenty people once.
 
 ## What is not controlled, and cannot be
 
