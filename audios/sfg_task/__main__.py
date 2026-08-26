@@ -6,6 +6,7 @@
     python -m audios.sfg_task run                  # asks who is sitting down
     python -m audios.sfg_task run S01 --resume     # finish an interrupted one
     python -m audios.sfg_task run S01 --controls   # the control session
+    python -m audios.sfg_task selftest            # what is not working
     python -m audios.sfg_task subjects             # what has been recorded
     python -m audios.sfg_task analyse S01
     python -m audios.sfg_task group                # across subjects
@@ -91,6 +92,75 @@ def cmd_run(a) -> None:
     else:
         run(d, a.subject, root, device=a.device, resume=a.resume,
             practice=not a.no_practice)
+
+
+def cmd_selftest(a) -> None:
+    """Check each part a session needs, separately, and say which one is out."""
+    import sys
+    import time
+
+    G, R_, O = "\033[32m", "\033[31m", "\033[0m"
+    def mark(b):
+        return f"{G}ok{O}    " if b else f"{R_}FAILED{O}"
+
+    try:
+        d = design(a)
+        d.validate()
+        print(f"  design      {mark(True)}  {len(d.steps_ms)} delays, "
+              f"{d.n_trials} trials, {d.n_trials * d.trial_s / 60:.0f} min")
+    except Exception as e:                                    # noqa: BLE001
+        return print(f"  design      {mark(False)}  {e}")
+
+    try:
+        from .stimulus import make_pool, trial
+        t0 = time.perf_counter()
+        pl = make_pool(d)
+        for st in d.steps_ms:
+            trial(d, pl, step_ms=st, seed=1)
+        print(f"  stimulus    {mark(True)}  every delay builds, "
+              f"{(time.perf_counter() - t0) / len(d.steps_ms) * 1000:.0f} ms each")
+    except Exception as e:                                    # noqa: BLE001
+        return print(f"  stimulus    {mark(False)}  {type(e).__name__}: {e}")
+
+    tty = sys.stdin.isatty()
+    print(f"  terminal    {mark(tty)}  " + ("keypresses can be read" if tty else
+          "stdin is not a terminal. Run from a shell, not an IDE console, "
+          "a pipe or a notebook"))
+
+    try:
+        import sounddevice as sd
+        outs = [(i, x) for i, x in enumerate(sd.query_devices())
+                if x["max_output_channels"] > 0]
+        print(f"  devices     {mark(bool(outs))}  {len(outs)} output device(s)")
+        for i, x in outs:
+            d_ = " <- default, --device changes it" if i == sd.default.device[1] else ""
+            print(f"                        {i}: {x['name']}{d_}")
+    except Exception as e:                                    # noqa: BLE001
+        print(f"  devices     {mark(False)}  {type(e).__name__}: {e}")
+
+    if not a.quiet:
+        try:
+            from .run import calibrate
+            print("  playback    ...two seconds of 1 kHz, both ears")
+            calibrate(d, seconds=2.0, device=a.device)
+            print(f"  playback    {mark(True)}  no error. Did you hear it, "
+                  f"in both ears?")
+        except Exception as e:                                # noqa: BLE001
+            print(f"  playback    {mark(False)}  {type(e).__name__}: {e}")
+
+    if tty:
+        from .run import keyboard, wait_key
+        print("  keyboard    ...press 1 then 2, within 10 s each")
+        got = []
+        try:
+            with keyboard() as fd:
+                for _ in range(2):
+                    got.append(wait_key(fd, "12q", 10.0)[0])
+            print(f"  keyboard    {mark(got == ['1', '2'])}  got {got}"
+                  + ("" if got == ["1", "2"] else
+                     "  <- this is what a session needs and it is not working"))
+        except Exception as e:                                # noqa: BLE001
+            print(f"  keyboard    {mark(False)}  {type(e).__name__}: {e}")
 
 
 def cmd_subjects(a) -> None:
@@ -238,6 +308,11 @@ def main(argv=None) -> int:
     q.add_argument("--device")
     q.add_argument("--root", help=f"data root (default {DATA})")
     q.set_defaults(fn=cmd_run)
+
+    q = common(sub.add_parser("selftest", help="check audio, keyboard, stimulus"))
+    q.add_argument("--device")
+    q.add_argument("--quiet", action="store_true", help="skip the tone")
+    q.set_defaults(fn=cmd_selftest)
 
     q = sub.add_parser("subjects", help="what has been recorded")
     q.add_argument("--root")
