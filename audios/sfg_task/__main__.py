@@ -148,12 +148,18 @@ def cmd_analyse(a) -> None:
     marks = [(r.step_ms, 1.02, stars(r.q_chance))
              for r in summary[summary.variant == "rise"].itertuples()]
     bounds = raw.groupby("session").size().cumsum().values[:-1]
+    ok = raw.correct.sum()
+    P.accuracy(summary, f, Path(f"{base}_accuracy.png"), marks=marks,
+               title=f"sub-{a.subject}   task-{label}",
+               note=f"{len(raw)} trials, {len(raw) // len(summary)} per delay, "
+                    f"{100 * ok / len(raw):.1f}% overall;  delay effect "
+                    f"p = {tr['p']:.2g};  bars are Wilson 95% CI")
     P.psychometric(summary, f, Path(f"{base}_psychometric.png"), marks=marks)
     P.timecourse(timecourse(raw[raw.variant == "rise"], a.window), summary,
                  Path(f"{base}_timecourse.png"), sessions=bounds)
     P.diagnostics(ck, cmp, raw, Path(f"{base}_checks.png"))
-    print(f"\n  -> psychometric, timecourse and checks figures, plus the two "
-          f"csvs, in {out}")
+    print(f"\n  -> accuracy, timecourse, psychometric and checks figures, "
+          f"plus the csvs, in {out}")
 
 
 def cmd_group(a) -> None:

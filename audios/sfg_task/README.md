@@ -225,8 +225,11 @@ tested. Its 95% CI comes from a parametric bootstrap over the per-cell binomials
 
 ### The figures
 
-**`_psychometric.png`** Accuracy and d' against delay, with the fit, the threshold and
-its bootstrap CI shaded.
+**`_accuracy.png`** The figure the experiment is for, on its own: accuracy against delay,
+Wilson intervals, chance shaded, and the delay effect in one line under the title. The
+fitted curve and the threshold appear only when the fit is worth believing.
+
+**`_psychometric.png`** The same accuracy panel beside d', for when you want both.
 
 **`_timecourse.png`** Accuracy against position in the experiment, one colour per delay,
 with the pooled curve in black and its standard error band, and each delay's overall
@@ -241,6 +244,13 @@ curve climbing early, one who is tiring shows the black curve sagging late, and 
 has stopped trying shows the 0 ms anchor coming down to meet the rest.
 
 **`_checks.png`** The checks as a forest plot, and response time against delay.
+
+### When the fit refuses itself
+
+A threshold is only printed and only drawn when it means something. It is withheld, with
+the reason, when the bootstrap interval comes out wider than the range of delays that
+were tested, or when accuracy does not peak at the smallest delay, because a logistic
+fitted to a non-monotonic function will report a number and that number will be noise.
 
 ### What to check before believing the threshold
 

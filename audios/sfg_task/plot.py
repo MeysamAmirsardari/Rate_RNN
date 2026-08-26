@@ -81,6 +81,68 @@ def colours(steps):
     return dict(zip(u, plt.cm.viridis(np.linspace(0, .88, len(u)))))
 
 
+def accuracy(summary, fit, path: Path, marks=None, chance: float = .5,
+             title: str = "", note: str = "") -> Path:
+    """Accuracy against delay, on its own, as large and plain as it goes.
+
+    This is the figure the experiment is for, so it carries nothing that is
+    not the answer: the seven points, what they mean, and how sure they are.
+    """
+    g = summary[summary.variant == "rise"].sort_values("step_ms")
+    col = colours(g.step_ms)
+    x = g.step_ms.values
+    pad = max(2.0, .04 * (x.max() - x.min()))
+
+    fig, ax = plt.subplots(figsize=(6.8, 4.9), constrained_layout=True)
+    ax.axhspan(0, chance, color="0.945", lw=0, zorder=0)
+    ax.axhline(chance, color="0.45", lw=1.0, zorder=1)
+    ax.annotate("chance", (x.min() - pad, chance), xytext=(3, 4),
+                textcoords="offset points", ha="left", va="bottom",
+                fontsize=8.5, color="0.45")
+
+    if fit is not None and fit["trusted"]:
+        z = np.linspace(x.min(), x.max(), 300)
+        ax.plot(z, fit["curve"](z), "-", color=RED, lw=1.8, zorder=2)
+        if np.isfinite(fit["ci"][0]):
+            ax.axvspan(max(fit["ci"][0], x.min() - pad),
+                       min(fit["ci"][1], x.max() + pad),
+                       color=RED, alpha=.10, lw=0, zorder=1)
+        ax.axvline(fit["step_at_d1"], color=RED, lw=1.1, ls="--", zorder=2)
+        ax.annotate("d' = 1 at {:.0f} ms\n[{:.0f}, {:.0f}]".format(
+            fit["step_at_d1"], *fit["ci"]), (fit["step_at_d1"], 1.045),
+            xytext=(5, 0), textcoords="offset points", fontsize=9,
+            color=RED, va="top")
+    else:
+        ax.plot(x, g.pc, "-", color="0.62", lw=1.3, zorder=2)
+
+    ax.errorbar(x, g.pc, yerr=[g.pc - g.lo, g.hi - g.pc], fmt="none",
+                ecolor="0.15", elinewidth=1.4, capsize=4, capthick=1.4,
+                zorder=3)
+    ax.scatter(x, g.pc, s=95, c=[col[s] for s in x], edgecolors="k",
+               linewidths=1.0, zorder=4)
+    for x_, y_, m in (marks or []):
+        ax.annotate(m, (x_, y_), ha="center", va="bottom", fontsize=9,
+                    color="0.3")
+
+    lo = min(.35, float(g.lo.min()) - .04)
+    ax.set_ylim(lo, 1.09)
+    ax.set_xlim(x.min() - pad, x.max() + pad)
+    ax.set_xticks(x)
+    ax.set_xlabel("delay between successive figure tones (ms)", fontsize=11)
+    ax.set_ylabel("proportion correct", fontsize=11)
+    if title:
+        ax.set_title(title, fontsize=11.5, loc="left", pad=22)
+    if note:
+        ax.annotate(note, (0, 1), xycoords="axes fraction", xytext=(0, 3),
+                    textcoords="offset points", va="bottom", fontsize=8.5,
+                    color="0.42")
+    _bare(ax)
+    ax.tick_params(labelsize=10)
+    fig.savefig(path, dpi=200)
+    plt.close(fig)
+    return path
+
+
 def psychometric(summary, fit, path: Path, chance: float = .5,
                  marks=None) -> Path:
     """Proportion correct and d' against step, with the fit and its CI."""
@@ -101,16 +163,23 @@ def psychometric(summary, fit, path: Path, chance: float = .5,
                       c=[col[s] for s in g.step_ms] if main else "0.6",
                       edgecolors="k", linewidths=.8,
                       marker="o" if main else "s")
-    if fit:
-        x = np.linspace(0, max(summary.step_ms) * 1.05, 300)
-        ax[0].plot(x, fit["curve"](x), "-", color=RED, lw=1.8, zorder=1)
+    xs = np.sort(summary.step_ms.unique())
+    pad = max(2.0, .04 * (xs.max() - xs.min()))
+    if fit and fit["trusted"]:
+        z = np.linspace(xs.min(), xs.max(), 300)
+        ax[0].plot(z, fit["curve"](z), "-", color=RED, lw=1.8, zorder=1)
         ax[0].axhline(fit["pc_at_d1"], color="0.8", lw=.8, ls=":")
         ax[1].axhline(1.0, color="0.8", lw=.8, ls=":")
         if np.isfinite(fit["ci"][0]):
-            ax[0].axvspan(*fit["ci"], color=RED, alpha=.10, lw=0)
+            ax[0].axvspan(max(fit["ci"][0], xs.min() - pad),
+                          min(fit["ci"][1], xs.max() + pad),
+                          color=RED, alpha=.10, lw=0)
         ax[0].axvline(fit["step_at_d1"], color=RED, lw=1.0, ls="--")
         ax[0].set_title("d' = 1 at {:.0f} ms [{:.0f}, {:.0f}] 95% CI".format(
             fit["step_at_d1"], *fit["ci"]), fontsize=10)
+    elif fit:
+        ax[0].set_title("no usable threshold: " + fit["why"][0],
+                        fontsize=9, color=RED, wrap=True)
     for x_, y_, m in (marks or []):
         ax[0].annotate(m, (x_, y_), ha="center", va="bottom", fontsize=8.5,
                        color="0.35")
@@ -121,6 +190,8 @@ def psychometric(summary, fit, path: Path, chance: float = .5,
     ax[1].axhline(0, color="0.55", lw=.9)
     for a in ax:
         a.set_xlabel("delay between successive figure tones (ms)")
+        a.set_xlim(xs.min() - pad, xs.max() + pad)
+        a.set_xticks(xs)
         if summary.variant.nunique() > 1:
             a.legend(frameon=False, fontsize=8)
         _bare(a)

@@ -183,11 +183,19 @@ def fit(summary: pd.DataFrame, task: str, n_boot: int = 400) -> dict | None:
                      for _ in range(n_boot)])
     boot = boot[np.isfinite(boot)]
     s50, w, lam = p
+    ci = (float(np.percentile(boot, 2.5)), float(np.percentile(boot, 97.5))) \
+        if boot.size else (np.nan, np.nan)
+    span = x.max() - x.min()
+    why = []
+    if not np.isfinite(ci[0]) or (ci[1] - ci[0]) > span:
+        why.append("its interval is wider than the range of delays that were "
+                   "tested, so the fit is unconstrained")
+    if g.pc.idxmax() != g.index[0]:
+        why.append(f"accuracy peaks at {g.loc[g.pc.idxmax()].step_ms:g} ms "
+                   f"rather than at the smallest delay, so the function is "
+                   f"not monotonic and a threshold has no meaning")
     return dict(s50=s50, width=w, lapse=lam, pc_at_d1=pc1,
-                step_at_d1=step_at(p),
-                ci=(float(np.percentile(boot, 2.5)),
-                    float(np.percentile(boot, 97.5))) if boot.size
-                else (np.nan, np.nan),
+                step_at_d1=step_at(p), ci=ci, trusted=not why, why=why,
                 curve=lambda z: CHANCE + (1 - CHANCE - lam)
                 / (1 + np.exp((z - s50) / w)))
 
@@ -315,25 +323,14 @@ def report(summary: pd.DataFrame, f: dict | None, tr: dict,
                f"p = {tr['p']:.2g}  (single-trial logistic, slope "
                f"{tr['slope']:+.2f})")
     if f:
-        g = summary[summary.variant == "rise"]
-        span = g.step_ms.max() - g.step_ms.min()
-        wide = not np.isfinite(f["ci"][0]) or (f["ci"][1] - f["ci"][0]) > span
-        best = g.pc.idxmax() != g.index[0]
         out.append(f"  d' = 1 at {f['step_at_d1']:.1f} ms "
                    f"[{f['ci'][0]:.1f}, {f['ci'][1]:.1f}] 95% CI")
         out.append(f"  half-way at {f['s50']:.1f} ms, width {f['width']:.1f} ms,"
                    f" lapse {f['lapse']:.3f}")
-        if wide or best:
+        if not f["trusted"]:
             out.append("")
             out.append("  DO NOT USE THAT THRESHOLD:")
-            if wide:
-                out.append("    its interval is wider than the range of delays "
-                           "that were tested, so the fit is unconstrained")
-            if best:
-                out.append(f"    accuracy peaks at "
-                           f"{g.loc[g.pc.idxmax()].step_ms:g} ms rather than at "
-                           f"the smallest delay, so the function is not "
-                           f"monotonic and a threshold has no meaning")
+            out += [f"    {w}" for w in f["why"]]
     out += ["", "  checks"]
     for r in ck.itertuples():
         out.append(f"    {r.check:<22} {r.value:5.2f}  "
