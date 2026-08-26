@@ -29,7 +29,7 @@ def make_pool(d: Design) -> dict:
     span = 12 * np.log2(d.f_hi / d.f_lo)
     st = np.arange(0.0, span + 1e-9, d.grid_st)
     f = d.f_lo * 2.0 ** (st / 12.0)
-    amp = weights(f, d.phon)
+    amp = weights(f, d.phon) if d.equal_loudness else np.ones_like(f)
     e = erb_number(f)
     near = np.abs(e[:, None] - e[None, :]) < d.min_sep_erb
     np.fill_diagonal(near, False)

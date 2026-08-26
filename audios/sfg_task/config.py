@@ -54,7 +54,19 @@ class Design:
     # --- where the figure sits ----------------------------------------
     fig_span_st: float = 30.0    # frequency extent of the figure
     fig_edge_st: float = 8.0     # kept this far clear of both pool edges
-    phon: float = 60.0           # ISO 226 weighting, so no region dominates
+
+    # ISO 226 corrects for the threshold of hearing, and nothing here is
+    # anywhere near threshold: measured, the masking the cloud throws at
+    # every frequency in this pool sits 30 to 45 dB above the threshold, so
+    # masking and not audibility is what limits every channel.  The
+    # correction therefore buys no evenness at all -- audibility spreads
+    # 6.0 dB across the pool without it and 6.9 dB with it -- while costing
+    # 12.6 dB of level range, putting the two loudest bands at the two pool
+    # edges where least masks them (which is what a listener hears as a
+    # beep), and leaving the seven tones of an element up to 12.6 dB apart
+    # when they are meant to bind into one thing.  Flat, as in Teki 2013.
+    equal_loudness: bool = False
+    phon: float = 60.0           # only when equal_loudness is on
 
     # --- one interval -------------------------------------------------
     # Long, because the figure has to be found by accumulating evidence over
@@ -211,7 +223,9 @@ class Design:
             f"{', '.join(f'{s:g}' for s in self.steps_ms)} ms  x "
             f"{self.n_per_step} trials = {self.n_trials} trials",
             f"  pool      {n_ch} channels, {self.f_lo:.0f}-{self.f_hi:.0f} Hz, "
-            f"{self.grid_st:g} st grid, {self.phon:g} phon weighting",
+            f"{self.grid_st:g} st grid, "
+            + (f"{self.phon:g} phon weighted" if self.equal_loudness
+               else "flat level"),
             f"  cloud     {self.bg_sounding} tones sounding, "
             f"{bg:.0f} onsets/s, {bg / n_ch:.2f}/s per channel",
             f"  figure    {self.coherence} tones over {self.fig_span_st:g} st, "

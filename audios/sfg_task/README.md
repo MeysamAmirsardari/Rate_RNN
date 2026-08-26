@@ -16,18 +16,36 @@ thing?
 ## The stimulus
 
 A cloud of 50 ms tones with 10 ms raised-cosine ramps, drawn from 117 channels spanning
-250 to 7246 Hz on a 1/24 octave grid, weighted to equal loudness at 60 phon
-(ISO 226:2003). Exactly eight tones sound at every instant, by a start pattern that puts
-`bg_sounding` starts in every tone length. That works for any count, not only for
-multiples of it.
+250 to 7246 Hz on a 1/24 octave grid, all at the same level. Exactly eight tones sound
+at every instant, by a start pattern that puts `bg_sounding` starts in every tone
+length. That works for any count, not only for multiples of it.
 
 No two tones ever sound at once inside one critical band. A 1/24 octave pool puts four
 to eight channels inside every ERB, and without this rule two thirds of the tones
-acquire a beating partner. At the bottom of the pool, where the channels are 5 Hz apart
-and the equal-loudness curve adds 11 dB, that is a 5 Hz throb, and it is what a listener
-hears as a repeated beep rather than as a cloud. Teki's pool starts at 179 Hz, but Teki
-does not weight for equal loudness; with the weighting, that octave takes over the
-stimulus, so the pool starts at 250 Hz here.
+acquire a beating partner, which at the bottom of the pool is a 5 Hz throb. A listener
+hears that as a repeated beep rather than as a cloud.
+
+### Why the levels are flat and not equal-loudness weighted
+
+ISO 226 corrects for the threshold of hearing, and nothing in this stimulus is anywhere
+near threshold. Measured, the masking the cloud throws at each frequency sits 30 to
+45 dB above the absolute threshold at every point in the pool, so masking and not
+audibility is what limits every channel. The correction therefore buys no evenness:
+modelled against threshold and cloud masking together, audibility spreads 6.0 dB across
+the pool flat and 6.9 dB weighted.
+
+What it cost was substantial. At 60 phon the weighting spans 12.6 dB, and because the
+pool covers exactly the two rising arms of the curve, its two loudest bands land on the
+two pool edges, which are also the places with least masking on one side. Measured on
+rendered stimuli, long-term power varied 12.4 dB across channels and the top of the pool
+stood 2.4 dB above its own 3-ERB neighbourhood. That is audible as a beep. Worse, the
+seven tones of one figure element came out a median 5.9 dB and up to 12.6 dB apart, when
+the whole premise is that they are seven equally audible tones that bind by common
+onset.
+
+Flat, as in Teki 2013: long-term power now varies 1.4 dB across channels, the worst
+prominence is 1.0 dB, and the tones of an element are identical in level. The residual
+1.0 dB sits at the bottom edge of the pool, which has nothing below it to mask it.
 
 Onsets fall on a 5 ms grid. A finer grid costs nothing, since the cloud starts
 `bg_sounding / tone_ms` tones a second whatever the grid is, so the grid is set by the
@@ -85,6 +103,8 @@ these. Construction arguments are not evidence.
 | tones sounding | identical range at every step |
 | long-term level | RMS-normalised, 0.000 dB apart |
 | long-term spectrum | within 0.4 dB in any third-octave band |
+| channel balance | long-term power varies 1.4 dB across the pool; no channel stands more than 1.0 dB above its own 3-ERB neighbourhood |
+| within an element | the seven tones are identical in level, so none of them carries the figure on its own |
 | element loudness pulse | element-locked power against the window before it: -0.06 to -0.02 dB at every step, the same in both |
 | element loudness cue | present minus absent, against the same measure split within one condition. The difference (0.10 to 0.13 dB) sits below the noise floor of the measurement (0.14 to 0.17 dB) |
 | element power | equalised per draw, against the power the background actually realised. CV 0.0000 in both |
