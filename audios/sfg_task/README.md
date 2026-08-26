@@ -315,6 +315,16 @@ sessions halve that. Decide which you need before running twenty people once.
 
   Trial-by-trial feedback interacts with this: it does not bias 2IFC, but it does teach
   whatever cue works. Consider turning it off after practice.
+
+  The obvious repair does not work. Making the figure-absent interval carry the same
+  seven recurring channels, ungrouped, takes the ideal observer from d' 12-18 down to
+  about 2, but not to zero, and the residue is instructive: **levelling the power and
+  equating per-channel energy are incompatible.** The compensating gain is lowest
+  exactly when the figure's tones are bunched, so at 0 ms the coherent interval delivers
+  2.2 dB *less* energy in the figure's channels than the scattered one, and at 50 ms
+  slightly more. Flatten the envelope and the per-channel spectrum moves with the
+  manipulation; equate the spectrum and the envelope pulses. There appears to be no
+  setting of this stimulus in which an ideal observer is at chance.
 * Contrast is 2.5x, against roughly 10x for chord-grid figure-ground. A 350 ms element
   cannot repeat at 20 Hz, and a slow figure has a low contrast. Detection at 0 ms should
   be good rather than perfect, which is what you want, or the sweep starts at ceiling.

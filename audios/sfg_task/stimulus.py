@@ -144,18 +144,32 @@ def element_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
 
 
 def scatter_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
-    """`events` onsets per figure channel, ungrouped, with the same minimum
-    rest between two tones of a channel that the background obeys."""
+    """`events` onsets per figure channel, ungrouped.
+
+    Drawn from the *same* interval distribution the elements use -- the rate
+    with `jitter_ms` either way -- but independently per channel.  Anything
+    else and the control gives itself away on within-channel regularity
+    rather than on grouping: a uniform composition puts the gaps at a
+    coefficient of variation near 0.43 where the elements sit near 0.24, and
+    a listener can hear that in one channel without ever comparing two.
+    """
+    n = d.events
     room = d.n_slots - d.tail - d.k - d.lead
+    mean = room / (n - 1)
+    j = d.jitter_ms / d.hop_ms
     sep = d.k + d.guard
-    free = room - (d.events - 1) * sep
-    if free < 0:
-        raise ValueError("scatter control does not fit in the interval")
     out = []
     for _ in range(d.coherence):
-        cuts = np.sort(rng.integers(0, free + 1, d.events - 1))
-        parts = np.diff(np.concatenate(([0], cuts, [free])))[:d.events]
-        out.append(d.lead + np.cumsum(parts) + np.arange(d.events) * sep)
+        for _ in range(200):
+            gaps = mean + rng.uniform(-j, j, n - 1)
+            gaps = gaps * (room / gaps.sum())
+            g = np.round(gaps).astype(int)
+            g[-1] += room - g.sum()
+            if g.min() >= sep:
+                break
+        else:
+            raise ValueError("scatter control does not fit in the interval")
+        out.append(d.lead + np.concatenate(([0], np.cumsum(g))))
     return np.array(out)
 
 
