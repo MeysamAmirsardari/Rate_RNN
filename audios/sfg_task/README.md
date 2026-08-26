@@ -316,7 +316,33 @@ sessions halve that. Decide which you need before running twenty people once.
   Trial-by-trial feedback interacts with this: it does not bias 2IFC, but it does teach
   whatever cue works. Consider turning it off after practice.
 
-  The obvious repair does not work. Making the figure-absent interval carry the same
+  **What the repair does and does not reach.** The figure now *substitutes*
+  background tones rather than being added on top of them: the same number of tones
+  starts in every slot whatever the figure does, so the count is constant, no levelling
+  gain is needed, and the levelling excursion falls from 5.0 dB to between 0.00 and
+  0.54 dB. That removes the interaction between levelling and grouping entirely. The
+  price is the 0 ms chord: seven simultaneous tones would need seven starts in one slot,
+  1400 a second, and no contrast left. The sweep runs from 5 ms, which is 30 ms from the
+  figure's first tone to its last.
+
+  It does not touch the present-against-absent cue, which stays at d' 17-19. Nothing
+  will: one interval has seven elevated channels and the other does not, and that is
+  what "figure" means.
+
+  For coherent against scattered it helps a great deal, from a d' that reversed sign
+  across the sweep (-6.3 at 0 ms, +2.2 at 50) to a small monotone one:
+
+  | delay | 5 | 10 | 20 | 30 | 40 | 50 |
+  |---|---|---|---|---|---|---|
+  | spectrum-only d' | 1.18 | 0.89 | 0.90 | 0.82 | 0.57 | 0.25 |
+  | spectrum-only 2IFC | 80% | 74% | 74% | 72% | 66% | 57% |
+
+  Read that row as a floor under the psychometric function, and note which way it
+  points: it falls with delay, in the same direction as the effect being looked for. A
+  behavioural curve is only evidence of temporal coherence to the extent that it drops
+  further and faster than this one does. Plot them together.
+
+  The older repair does not work either. Making the figure-absent interval carry the same
   seven recurring channels, ungrouped, takes the ideal observer from d' 12-18 down to
   about 2, but not to zero, and the residue is instructive: **levelling the power and
   equating per-channel energy are incompatible.** The compensating gain is lowest

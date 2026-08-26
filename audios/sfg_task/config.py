@@ -12,7 +12,12 @@ class Design:
     # How far each successive tone of the figure is delayed behind the one
     # below it.  0 ms is the classic coherent chord; every other level is
     # the same seven tones in the same seven channels, sheared in time.
-    steps_ms: tuple[float, ...] = (0.0, 5.0, 10.0, 20.0, 30.0, 40.0, 50.0)
+    # 0 ms is not in the sweep.  A simultaneous chord would need `coherence`
+    # tones starting in one slot, and since the figure substitutes background
+    # tones rather than adding to them, that means 1400 onsets a second and
+    # no contrast left.  5 ms is the anchor instead: 30 ms from the figure's
+    # first tone to its last, well inside any integration window.
+    steps_ms: tuple[float, ...] = (5.0, 10.0, 20.0, 30.0, 40.0, 50.0)
     coherence: int = 7           # tones in the figure
     order: str = "rise"          # 'rise' | 'fall' -- the main sweep is 'rise'
 
@@ -37,11 +42,9 @@ class Design:
                                  # that octave is boosted 11 dB and takes
                                  # over the stimulus
     grid_st: float = 0.5
-    bg_sounding: int = 5         # thinner than Teki's mean of 10, and at the
-                                 # bottom of the 5 to 15 they draw from.  A
-                                 # first listener sat at chance at every
-                                 # delay except 0 ms with 8 sounding, which
-                                 # is 2.4x contrast; 5 gives 3.2x
+    bg_sounding: int = 10        # TOTAL tones sounding, figure included: the
+                                 # figure substitutes, so this is the whole
+                                 # cloud.  Teki's mean chord is 10 as well.
     dealer_slack: float = 3.0    # counts stay level, order stays unguessable
     guard_ms: float = 50.0       # rest before a channel may sound again, so
                                  # two background tones never abut into one

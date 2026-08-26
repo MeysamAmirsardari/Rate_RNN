@@ -180,8 +180,12 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
     busy = np.zeros((pl["n"], d.n_slots + d.k + d.guard), bool)
     chan, slot, elem = [], [], []
 
+    placed: list[tuple[int, int]] = []
+
     def put(c: int, s: int, e: int) -> None:
         chan.append(int(c)), slot.append(int(s)), elem.append(e)
+        if e >= 0:
+            placed.append((int(c), int(s)))
         busy[c, max(0, s - d.guard):s + d.k + d.guard] = True
         busy[pl["near"][c], s:s + d.k] = True
 
@@ -220,19 +224,28 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
                 put(c, s, i)
     fig_ch = combs[0]
 
-    # Exactly `bg_sounding` background tones sound at every instant: over any
-    # k consecutive slots the pattern below starts exactly that many, and a
-    # tone lasts exactly k slots.  It works for any count, not only multiples
-    # of the tone length.
+    # The figure SUBSTITUTES background tones rather than being added on top
+    # of them: the slot pattern below asks for the same number of starts in
+    # every slot whatever the figure does, and the background supplies only
+    # what the figure has not already put there.  That is what keeps the tone
+    # count constant without a levelling gain, and with it the per-channel
+    # energy, which is the whole of the spectral confound.  It only works
+    # because no delay in the sweep puts more than one or two figure tones in
+    # one slot; a simultaneous chord would need `coherence` starts per slot,
+    # which is 1400 a second here and leaves no contrast at all.
     #
     # The background is otherwise blind to the figure -- it keeps its own
     # counts, so its statistics are the same whether the figure recurs or
     # not.  It only avoids what is already sounding: the same channel, and
     # anything within `min_sep_erb` of it, so no two tones ever beat.
+    at_slot = np.bincount(slot_arr, minlength=d.n_slots) if (
+        slot_arr := np.array([s for _, s in placed], int)).size else \
+        np.zeros(d.n_slots, int)
     seen = np.zeros(pl["n"])
     n_bg, k = d.bg_sounding, d.k
     for s in range(d.n_slots - k):
-        for _ in range((s + 1) * n_bg // k - s * n_bg // k):
+        want = (s + 1) * n_bg // k - s * n_bg // k - int(at_slot[s])
+        for _ in range(max(0, want)):
             score = seen + rng.random(pl["n"]) * d.dealer_slack
             score[busy[:, s:s + k].any(axis=1)] = np.inf
             c = int(np.argmin(score))
