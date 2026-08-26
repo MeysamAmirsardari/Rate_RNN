@@ -85,6 +85,11 @@ class Design:
     break_every: int = 45
     break_min_s: float = 20.0
     feedback: bool = True
+    show_step: bool = False      # printing the condition on the trial line
+                                 # tells the subject how hard the trial is
+                                 # before they hear it, and they will use it.
+                                 # On only when you are testing the runner
+                                 # yourself.
     max_run: int = 3             # never more than this many trials in a row
                                  # at the same step
 

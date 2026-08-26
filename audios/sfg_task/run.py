@@ -152,16 +152,16 @@ def run(d: Design, subject: str, out: Path, *, device=None,
 
 def _one(d, r, a, fd, ask, keys, n_int, device, feedback, w, fh):
     """One trial.  Returns True/False, or None if the subject quit."""
-    print(f"\r  {DIM}trial {r['trial']:>4}  step {r['step_ms']:>3.0f} ms{OFF}"
-          f"   {DIM}listening{OFF}          ", end="", flush=True)
+    head = f"\r  {DIM}trial {r['trial']:>4}" + (
+        f"  step {r['step_ms']:>3.0f} ms" if d.show_step else "") + OFF
+    print(f"{head}   {DIM}listening{OFF}          ", end="", flush=True)
     time.sleep(d.ready_ms / 1000)
     for j in range(n_int):
         if j:
             time.sleep(d.isi_ms / 1000)
         play(a[j], d.fs, device)
 
-    print(f"\r  {DIM}trial {r['trial']:>4}  step {r['step_ms']:>3.0f} ms{OFF}"
-          f"{ask}   ", end="", flush=True)
+    print(f"{head}{ask}   ", end="", flush=True)
     c, rt = wait_key(fd, keys + "q", d.response_s)
     if c == "q":
         return None
@@ -179,9 +179,8 @@ def _one(d, r, a, fd, ask, keys, n_int, device, feedback, w, fh):
     if feedback:
         mark = f"{GREEN}correct{OFF}" if ok else (
             f"{RED}wrong{OFF}" if c else f"{RED}too slow{OFF}")
-        print(f"\r  {DIM}trial {r['trial']:>4}  step {r['step_ms']:>3.0f} ms"
-              f"{OFF}   {mark}                              ", end="",
-              flush=True)
+        print(f"{head}   {mark}                              ",
+              end="", flush=True)
         time.sleep(d.feedback_ms / 1000)
     time.sleep(d.iti_ms / 1000)
     return ok if c else ...

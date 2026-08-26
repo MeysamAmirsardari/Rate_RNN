@@ -138,6 +138,9 @@ def main(argv=None) -> int:
     q.add_argument("subject")
     q.add_argument("--controls", action="store_true")
     q.add_argument("--no-practice", action="store_true")
+    q.add_argument("--show-step", action="store_true",
+                   help="print the condition on the trial line (it is a cue; "
+                        "for testing the runner, not for subjects)")
     q.add_argument("--device")
     q.add_argument("--out")
     q.set_defaults(fn=cmd_run)
