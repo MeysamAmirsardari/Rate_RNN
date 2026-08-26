@@ -45,7 +45,7 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
     acc: dict[str, list] = {k: [[], []] for k in
                             ("tones", "snd_lo", "snd_hi", "rms", "fig", "bg",
                              "epoch", "band", "elem_cv", "repeat", "beat",
-                             "flat", "low", "fmax", "duty", "prom")}
+                             "flat", "low", "fmax", "duty", "prom", "crowd")}
     for i in range(n):
         for j, sch in enumerate(trial(d, pl, step_ms=step_ms, seed=9000 + i,
                                       variant=variant, rove=False)):
@@ -91,6 +91,7 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
             acc["elem_cv"][j].append(pw.std() / pw.mean())
             acc["repeat"][j].append(rep)
             acc["flat"][j].append(sch["flat_db"])
+            acc["crowd"][j].append(sch.get("crowded", 0))
             fs_ = np.zeros(d.n_slots + d.k)
             for x in sch["slot"][sch["is_fig"]]:
                 fs_[x:x + d.k] += 1
@@ -151,6 +152,7 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
         d_band_db=float(np.abs(band_d).max()),
         elem_gain_cv=(m["elem_cv"][0], m["elem_cv"][1]),
         beating=(m["beat"][0], m["beat"][1]),
+        crowded=(m["crowd"][0], m["crowd"][1]),
         fig_sounding=(m["fmax"][0], m["fmax"][1]),
         fig_duty=(m["duty"][0], m["duty"][1]),
         prominence=(pr[0].mean(), pr[1].mean()),
@@ -175,6 +177,7 @@ ROWS = [
     ("figure tones at once, most", "fig_sounding", "{:.1f}"),
     ("figure sounding, % of time", "fig_duty", "{:.0f}"),
     ("beating pairs (< 1 ERB)", "beating", "{:.0f}"),
+    ("slots the band rule bent, of 1200", "crowded", "{:.2f}"),
     ("levelling gain, dB range", "flat_db", "{:.2f}"),
     ("energy below 400 Hz, %", "low_pct", "{:.0f}"),
     ("channels shared by 2 elements", "shared_channels", "{:.1f}"),

@@ -178,6 +178,7 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
              coherent: bool, variant: str) -> dict:
     """Every tone in the interval: channel, slot, level, figure or not."""
     busy = np.zeros((pl["n"], d.n_slots + d.k + d.guard), bool)
+    own = np.zeros_like(busy)          # the channel itself, without its band
     chan, slot, elem = [], [], []
 
     placed: list[tuple[int, int]] = []
@@ -187,6 +188,7 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
         if e >= 0:
             placed.append((int(c), int(s)))
         busy[c, max(0, s - d.guard):s + d.k + d.guard] = True
+        own[c, max(0, s - d.guard):s + d.k + d.guard] = True
         busy[pl["near"][c], s:s + d.k] = True
 
     if variant == "scatter":
@@ -242,6 +244,7 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
         slot_arr := np.array([s for _, s in placed], int)).size else \
         np.zeros(d.n_slots, int)
     seen = np.zeros(pl["n"])
+    crowded = 0
     n_bg, k = d.bg_sounding, d.k
     for s in range(d.n_slots - k):
         want = (s + 1) * n_bg // k - s * n_bg // k - int(at_slot[s])
@@ -250,9 +253,22 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
             score[busy[:, s:s + k].any(axis=1)] = np.inf
             c = int(np.argmin(score))
             if not np.isfinite(score[c]):
-                raise ValueError(
-                    f"slot {s}: nothing free more than {d.min_sep_erb:g} ERB "
-                    f"from what is sounding; lower bg_sounding or min_sep_erb")
+                # Nothing is a whole critical band clear of everything
+                # sounding.  Take whatever is furthest from it rather than
+                # ending the session: at 79% band occupancy this happens on
+                # about one slot in a thousand at the shortest delay and
+                # never at the others, and `check` counts it.
+                free = ~own[:, s:s + k].any(axis=1)
+                if not free.any():
+                    raise ValueError(
+                        f"slot {s}: every channel is still sounding or "
+                        f"resting; bg_sounding is too high for this pool")
+                busyc = np.flatnonzero(own[:, s:s + k].any(axis=1))
+                far = np.abs(pl["erb"][:, None]
+                             - pl["erb"][busyc][None, :]).min(axis=1)
+                far[~free] = -1.0
+                c = int(np.argmax(far))
+                crowded += 1
             put(c, s, -1)
             seen[c] += 1
 
@@ -267,7 +283,7 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
         gain[elem == i] = comb_gain(pl, ch, target)
     return dict(chan=chan, slot=slot, gain=gain, is_fig=is_fig,
                 fig_ch=fig_ch, onsets=ons, lag=lag, step_ms=step_ms,
-                coherent=coherent, variant=variant,
+                coherent=coherent, variant=variant, crowded=crowded,
                 clash=locals().get("clash", 0))
 
 

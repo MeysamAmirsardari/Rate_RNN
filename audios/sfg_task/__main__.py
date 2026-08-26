@@ -111,16 +111,26 @@ def cmd_selftest(a) -> None:
     except Exception as e:                                    # noqa: BLE001
         return print(f"  design      {mark(False)}  {e}")
 
-    try:
-        from .stimulus import make_pool, trial
-        t0 = time.perf_counter()
-        pl = make_pool(d)
-        for st in d.steps_ms:
-            trial(d, pl, step_ms=st, seed=1)
-        print(f"  stimulus    {mark(True)}  every delay builds, "
-              f"{(time.perf_counter() - t0) / len(d.steps_ms) * 1000:.0f} ms each")
-    except Exception as e:                                    # noqa: BLE001
-        return print(f"  stimulus    {mark(False)}  {type(e).__name__}: {e}")
+    # a whole block, not one trial per delay: the scheduler's failures are
+    # rare and seed-dependent, so one of each proves nothing
+    from .session import trial_list
+    from .stimulus import make_pool, trial
+    pl = make_pool(d)
+    rows = trial_list(d, "selftest", 1)
+    t0, bad, bent = time.perf_counter(), [], 0
+    for r in rows:
+        try:
+            a_, b_ = trial(d, pl, step_ms=r["step_ms"], seed=r["seed"],
+                           variant=r["variant"])
+            bent += a_["crowded"] + b_["crowded"]
+        except Exception as e:                                # noqa: BLE001
+            bad.append(f"{r['step_ms']:g} ms: {e}")
+    print(f"  stimulus    {mark(not bad)}  {len(rows)} trials, "
+          f"{(time.perf_counter() - t0) / len(rows) * 1000:.0f} ms each"
+          + (f", the band rule bent on {bent} slot(s)" if bent else "")
+          + ("" if not bad else f"\n              {bad[0]}"))
+    if bad:
+        return
 
     tty = sys.stdin.isatty()
     print(f"  terminal    {mark(tty)}  " + ("keypresses can be read" if tty else

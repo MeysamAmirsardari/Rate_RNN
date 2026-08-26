@@ -109,7 +109,7 @@ these. Construction arguments are not evidence.
 | element loudness pulse | element-locked power against the window before it: -0.06 to -0.02 dB at every step, the same in both |
 | element loudness cue | present minus absent, against the same measure split within one condition. The difference (0.10 to 0.13 dB) sits below the noise floor of the measurement (0.14 to 0.17 dB) |
 | element power | equalised per draw, against the power the background actually realised. CV 0.0000 in both |
-| beating | no two tones inside one critical band at once: 0 pairs, at every step |
+| beating | no two tones inside one critical band at once: 0 pairs, at every step. Ten tones sounding, each holding a band clear either side, is 79% of the pool's 25 ERB, so once in about a thousand slots at the shortest delay there is nowhere a whole band clear; the background takes the channel furthest from what is sounding rather than ending the session, and the battery counts how often |
 | envelope at the figure rate | 0.02 dB in both intervals, at every delay: the levelling removes the 5 Hz pulse entirely |
 | accidental coherence | no two elements of a figure-absent interval share more than one channel |
 | figure position | uniform over the allowed range, redrawn every trial, so it is never in a learnable place |
