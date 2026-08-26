@@ -196,8 +196,13 @@ def run(d: Design, subject: str | None, root: Path, *, device=None,
                     hits.append(ok)
                 if len(hits) >= 10 and sum(hits[-10:]) >= d.practice_criterion:
                     break
-            print(f"  practice: {sum(hits)}/{len(hits)} correct\n")
-            log(f"practice done  {sum(hits)}/{len(hits)}")
+            met = len(hits) >= 10 and sum(hits[-10:]) >= d.practice_criterion
+            print(f"  practice: {sum(hits)}/{len(hits)} correct"
+                  + ("" if met else
+                     f"  {RED}(never reached {d.practice_criterion}/10; "
+                     f"the main block will be hard){OFF}") + "\n")
+            log(f"practice done  {sum(hits)}/{len(hits)}  "
+                f"criterion {'met' if met else 'NOT met'}")
 
         done = []
         for i, (r, a) in enumerate(zip(rows, audio)):

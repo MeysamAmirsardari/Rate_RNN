@@ -16,9 +16,8 @@ thing?
 ## The stimulus
 
 A cloud of 50 ms tones with 10 ms raised-cosine ramps, drawn from 117 channels spanning
-250 to 7246 Hz on a 1/24 octave grid, all at the same level. Exactly eight tones sound
-at every instant, by a start pattern that puts `bg_sounding` starts in every tone
-length. That works for any count, not only for multiples of it.
+250 to 7246 Hz on a 1/24 octave grid, all at the same level. Exactly five tones sound at
+every instant, by a start pattern that puts `bg_sounding` starts in every tone length. That works for any count, not only for multiples of it.
 
 No two tones ever sound at once inside one critical band. A 1/24 octave pool puts four
 to eight channels inside every ERB, and without this rule two thirds of the tones
@@ -99,7 +98,7 @@ these. Construction arguments are not evidence.
 
 | control | how |
 |---|---|
-| tone count | identical by construction; measured, 1029 in both |
+| tone count | identical by construction; measured, 672 in both |
 | tones sounding | identical range at every step |
 | long-term level | RMS-normalised, 0.000 dB apart |
 | long-term spectrum | within 0.4 dB in any third-octave band |

@@ -37,7 +37,11 @@ class Design:
                                  # that octave is boosted 11 dB and takes
                                  # over the stimulus
     grid_st: float = 0.5
-    bg_sounding: int = 8
+    bg_sounding: int = 5         # thinner than Teki's mean of 10, and at the
+                                 # bottom of the 5 to 15 they draw from.  A
+                                 # first listener sat at chance at every
+                                 # delay except 0 ms with 8 sounding, which
+                                 # is 2.4x contrast; 5 gives 3.2x
     dealer_slack: float = 3.0    # counts stay level, order stays unguessable
     guard_ms: float = 50.0       # rest before a channel may sound again, so
                                  # two background tones never abut into one
