@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import math
+
+import numpy as np
 from dataclasses import dataclass, field, replace
 
 
@@ -229,6 +231,20 @@ class Design:
                 f"{self.min_gap * self.hop_ms:.0f} ms and there is only "
                 f"{self.span * self.hop_ms:.0f} ms of room: slow the rate, "
                 f"shorten the tones, or lengthen the interval")
+        # The figure substitutes background tones, so a slot can only hold
+        # as many figure tones as it holds tones.  A delay smaller than one
+        # slot puts the whole element in one slot.
+        # Above one slot the element's tones land in different slots, and
+        # the rare collision between two overlapping elements is absorbed as
+        # a fraction of a decibel.
+        need = self.coherence if min(self.steps_ms) < self.hop_ms else 1
+        if self.density < need:
+            raise ValueError(
+                f"a {min(self.steps_ms):g} ms delay puts {need} figure tones "
+                f"in one slot and only {self.density:g} tones start per slot. "
+                f"Raise bg_sounding to {int(np.ceil(need * self.k))} (which "
+                f"costs contrast), raise hop_ms, or drop that delay from "
+                f"steps_ms")
         if self.task not in ("2ifc", "yesno"):
             raise ValueError("task must be '2ifc' or 'yesno'")
 

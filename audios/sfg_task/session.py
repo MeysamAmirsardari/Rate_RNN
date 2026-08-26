@@ -136,9 +136,9 @@ def trial_list(d: Design, subject: str, session: int = 1, *, steps=None,
 
     rows = []
     for v in variants:
-        # scatter never groups the tones into elements, so the step has
-        # nothing to act on: one cell, not one per step.
-        for step in ([0.0] if v == "scatter" else steps):
+        # scatter never groups the tones into elements, so the delay has
+        # nothing to act on: one cell, not one per delay
+        for step in ([min(steps)] if v == "scatter" else steps):
             # half the trials with the figure in the first interval (2ifc)
             # or present (yesno), balanced exactly rather than in expectation
             targets = np.repeat([1, 2] if d.task == "2ifc" else [1, 0],

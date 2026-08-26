@@ -183,10 +183,12 @@ def run(d: Design, subject: str | None, root: Path, *, device=None,
         wait_key(fd, ANY, 600)
 
         if practice:
-            print(f"\n{BOLD}  Practice{OFF}: the easiest version, with feedback.")
+            print(f"\n{BOLD}  Practice{OFF}: the easiest version "
+                  f"({min(d.steps_ms):g} ms), with feedback.")
             log("practice start")
-            prow = trial_list(d, sid, n, steps=[0.0], n_per=d.practice_trials,
-                              tag="practice")
+            easiest = min(d.steps_ms)
+            prow = trial_list(d, sid, n, steps=[easiest],
+                              n_per=d.practice_trials, tag="practice")
             hits = []
             for r, a in zip(prow, prerender(d, prow)):
                 ok = _one(ctx, r, a, feedback=True)
