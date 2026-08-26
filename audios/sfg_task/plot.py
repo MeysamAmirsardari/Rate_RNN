@@ -76,6 +76,24 @@ def _bare(a):
         a.spines[s].set_visible(False)
 
 
+def ci(ax, x, lo, hi, horizontal=False, color="k", lw=1.4, cap=.012):
+    """An interval drawn from lo to hi, and nothing implied about where the
+    point sits inside it.  Not errorbar(): a Wilson interval need not
+    contain the observed proportion at 0 or 100 per cent, and errorbar
+    refuses the negative offset that produces."""
+    x, lo, hi = np.atleast_1d(x), np.atleast_1d(lo), np.atleast_1d(hi)
+    a, b = (ax.get_xlim() if horizontal else ax.get_ylim())
+    c = cap * abs(b - a) if b != a else cap
+    if horizontal:
+        ax.hlines(x, lo, hi, color=color, lw=lw, zorder=2)
+        for e in (lo, hi):
+            ax.vlines(e, x - c, x + c, color=color, lw=lw, zorder=2)
+    else:
+        ax.vlines(x, lo, hi, color=color, lw=lw, zorder=2)
+        for e in (lo, hi):
+            ax.hlines(e, x - c, x + c, color=color, lw=lw, zorder=2)
+
+
 def colours(steps):
     u = sorted(set(steps))
     return dict(zip(u, plt.cm.viridis(np.linspace(0, .88, len(u)))))
@@ -115,9 +133,7 @@ def accuracy(summary, fit, path: Path, marks=None, chance: float = .5,
     else:
         ax.plot(x, g.pc, "-", color="0.62", lw=1.3, zorder=2)
 
-    ax.errorbar(x, g.pc, yerr=[g.pc - g.lo, g.hi - g.pc], fmt="none",
-                ecolor="0.15", elinewidth=1.4, capsize=4, capthick=1.4,
-                zorder=3)
+    ci(ax, x, g.lo.values, g.hi.values, color="0.15", lw=1.5)
     ax.scatter(x, g.pc, s=95, c=[col[s] for s in x], edgecolors="k",
                linewidths=1.0, zorder=4)
     for x_, y_, m in (marks or []):
@@ -150,9 +166,8 @@ def psychometric(summary, fit, path: Path, chance: float = .5,
     col = colours(summary.step_ms)
     for v, g in summary.groupby("variant"):
         main = v == "rise"
-        err = [(g.pc - g.lo).values, (g.hi - g.pc).values]
-        ax[0].errorbar(g.step_ms, g.pc, yerr=err, fmt="none", capsize=3,
-                       lw=1.2, ecolor="k" if main else "0.6")
+        ci(ax[0], g.step_ms.values, g.lo.values, g.hi.values,
+           color="k" if main else "0.6")
         ax[0].scatter(g.step_ms, g.pc, s=48, zorder=3, label=v,
                       c=[col[s] for s in g.step_ms] if main else "0.6",
                       edgecolors="k", linewidths=.8,
@@ -234,8 +249,7 @@ def timecourse(tc: dict, summary, path: Path, sessions=None,
 
     g = summary[summary.variant == "rise"].sort_values("step_ms")
     ax[1].plot(g.step_ms, g.pc, "-", color="0.6", lw=1.0, zorder=1)
-    ax[1].errorbar(g.step_ms, g.pc, yerr=[g.pc - g.lo, g.hi - g.pc],
-                   fmt="none", ecolor="k", lw=1.2, capsize=3, zorder=2)
+    ci(ax[1], g.step_ms.values, g.lo.values, g.hi.values)
     ax[1].scatter(g.step_ms, g.pc, s=52, c=[col[s] for s in g.step_ms],
                   edgecolors="k", linewidths=.8, zorder=3)
     ax[1].axhline(chance, color="0.55", lw=.9)
@@ -264,8 +278,8 @@ def diagnostics(ck, cmp, d, path: Path) -> Path:
     for n, (i, j) in enumerate(pairs):
         ax[0].axhspan(y[j] - .5, y[i] + .5, color="0.93" if n % 2 else "0.97",
                       lw=0, zorder=0)
-    ax[0].errorbar(ck.value, y, xerr=[ck.value - ck.lo, ck.hi - ck.value],
-                   fmt="o", ms=5, color="k", capsize=3, lw=1.2, zorder=3)
+    ci(ax[0], y, ck.lo.values, ck.hi.values, horizontal=True, cap=.02)
+    ax[0].plot(ck.value, y, "o", ms=5, color="k", zorder=3)
     ax[0].plot([.5, .5], [y[bias.values].min() - .5, y[0] + .5],
                color=RED, lw=1.2, ls="--", zorder=2)
     ax[0].annotate("chance", (.5, y[0] + .55), color=RED, fontsize=8,
