@@ -15,9 +15,18 @@ from scipy.optimize import minimize
 from scipy.stats import norm
 
 
-def load(out: Path, block: str = "main") -> pd.DataFrame:
-    f = out / f"responses_{block}.csv"
-    d = pd.read_csv(f).dropna(subset=["response"])
+def load(root: Path, sid: str, task: str = "sfg", session: int | None = None,
+         block: str = "main") -> pd.DataFrame:
+    """Every answered trial of one task, pooled over sessions by default."""
+    pat = f"sub-{sid}/ses-*/sub-{sid}_ses-*_task-{task}_beh.tsv"
+    files = sorted(root.glob(pat))
+    if session is not None:
+        files = [f for f in files if f"ses-{session:02d}" in f.name]
+    if not files:
+        return pd.DataFrame()
+    d = pd.concat([pd.read_csv(f, sep="\t") for f in files],
+                  ignore_index=True)
+    d = d[d.block == block].dropna(subset=["response"])
     return d[d.response >= 0]
 
 

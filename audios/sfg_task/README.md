@@ -103,11 +103,52 @@ no criterion; proportion correct maps straight to d'. Yes/no is available
 step.
 
 Practice runs at 0 ms with feedback until 8 of the last 10 are right. Then 20 trials at
-each of 7 steps, 140 trials, about 35 minutes with three self-paced breaks. Responses
-are appended to CSV as they arrive, and `run` picks up where it stopped.
+each of 7 steps, 140 trials, about 35 minutes with three self-paced breaks.
+
+The trial line does not show the step. A subject who can see the condition will use it.
+`--show-step` puts it back for when you are testing the runner yourself, and the data
+records the step either way.
 
 Calibrate once. `calibrate` plays 1 kHz at the stimulus level; set the system so a meter
 at the headphone reads 65 dB SPL, then leave it.
+
+## Sessions and data on disk
+
+`run` opens a panel first: participant id, age, sex, handedness, self-reported hearing,
+years of musical training, headphone model, experimenter initials, and a line confirming
+that consent was obtained under your own protocol. A returning subject is shown what is
+already on file and confirms it rather than typing it again.
+
+Every run is a new session. The randomisation is seeded on the subject and the session
+number together, so the same person run twice gets two different trial orders and two
+different sets of stimuli. Nothing is ever appended to an earlier session by accident.
+
+The layout follows the way BIDS lays out behaviour, so it is readable by someone who has
+never seen this code:
+
+```
+data/
+  participants.tsv                                 one row per subject
+  sub-S01/
+    sub-S01_participant.json                       the panel, as entered
+    ses-01/
+      sub-S01_ses-01_task-sfg_beh.tsv              one row per trial
+      sub-S01_ses-01_task-sfg_beh.json             design, participant, provenance
+      sub-S01_ses-01_task-sfg_events.log           start, breaks, quits, finish
+```
+
+The `_beh.json` holds every field of `Design`, the participant record as it stood that
+day, and the provenance: git commit and whether the tree was dirty, host, platform,
+Python, numpy and scipy versions, and the start time. Any stimulus in the session can be
+rebuilt from the seed in the TSV plus that file.
+
+Trials are appended as they are answered, so an interrupted session costs nothing.
+`run <subject> --resume` reopens the newest unfinished session of that task and skips
+the trials already answered. It refuses if the design has changed since the session was
+started, because the trial list would no longer be the one that was interrupted.
+
+`subjects` prints what has been recorded. `analyse` pools every session of a subject by
+default, or takes `--session N`.
 
 ## The control session
 
@@ -140,6 +181,10 @@ already 35 minutes, so split it over two sittings rather than cutting trials.
 * Contrast is 2.5x, against roughly 10x for chord-grid figure-ground. A 350 ms element
   cannot repeat at 20 Hz, and a slow figure has a low contrast. Detection at 0 ms should
   be good rather than perfect, which is what you want, or the sweep starts at ceiling.
+* PsychoPy is not used. On this Python it resolves to 2023.1.3 and builds from source,
+  which is not a thing to hand a booth machine, and its value here would be a dialog
+  box. All the timing that matters is baked into the pre-rendered stimuli, and playback
+  goes through sounddevice.
 * Levelling the power jitters the tones. The compensating gain wanders over about 7 dB,
   1.6 dB SD, so each tone sits within a decibel or two of its equal-loudness level
   rather than exactly on it. That is the price of a flat envelope, it is matched between
@@ -151,15 +196,20 @@ already 35 minutes, so split it over two sittings rather than cutting trials.
 ```
 python -m audios.sfg_task check                    # the battery, plus figures
 python -m audios.sfg_task demo --step-ms 20 --play # listen to one trial
-python -m audios.sfg_task calibrate
-python -m audios.sfg_task run S01                  # resumes if interrupted
-python -m audios.sfg_task run S01 --controls
+python -m audios.sfg_task calibrate                # set the level once
+python -m audios.sfg_task run                      # asks who is sitting down
+python -m audios.sfg_task run S01 --resume         # finish an interrupted one
+python -m audios.sfg_task run S01 --controls       # the control session
+python -m audios.sfg_task subjects                 # what has been recorded
 python -m audios.sfg_task analyse S01
 ```
 
 Everything is set in `config.py` and nothing is decided anywhere else. `check` and
-`demo` write to `out/`, sessions to `data/<subject>/`, both relative to this directory
-rather than to where you ran the command.
+`demo` write to `out/`, sessions to `data/`, both relative to this directory rather than
+to where you ran the command. `--root` puts the data somewhere else.
+
+The runner needs a real terminal for the keypresses, and says so rather than failing
+half way through if it does not have one.
 
 `SFG_playground.ipynb` is the Colab notebook behind the badge above. It imports this
 package rather than reimplementing anything, so what it plays is what a subject hears.
