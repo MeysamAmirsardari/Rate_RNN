@@ -45,7 +45,7 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
     acc: dict[str, list] = {k: [[], []] for k in
                             ("tones", "snd_lo", "snd_hi", "rms", "fig", "bg",
                              "epoch", "band", "elem_cv", "repeat", "beat",
-                             "flat", "low", "fmax", "duty")}
+                             "flat", "low", "fmax", "duty", "prom")}
     for i in range(n):
         for j, sch in enumerate(trial(d, pl, step_ms=step_ms, seed=9000 + i,
                                       variant=variant, rove=False)):
@@ -64,6 +64,13 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
                     ep.append(e[c0 + a0:c0 + a1])
 
             f, p = welch(y, fs, nperseg=8192)
+            # how far the loudest channels stand above their neighbours: the
+            # statistic an observer who ignores time entirely would use
+            lv = np.array([10 * np.log10(p[(f > c * .985) & (f < c * 1.015)].sum()
+                                         + 1e-30) for c in pl["f"]])
+            acc["prom"][j].append(np.sort(
+                [lv[i] - np.median(lv[np.abs(pl["erb"] - pl["erb"][i]) < 3])
+                 for i in range(pl["n"])])[-d.coherence:].mean())
             ch = sch["chan"][sch["is_fig"]]
             el = ch.reshape(-1, d.coherence) if variant != "scatter" else None
             rep = 0 if el is None else max(
@@ -120,6 +127,10 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
     # Half of the figure-present epochs against the other half: what the
     # same measurement returns when there is nothing to find.  The
     # between-condition difference means nothing on its own.
+    pr = [np.asarray(acc["prom"][0]), np.asarray(acc["prom"][1])]
+    spec_d = float((pr[0].mean() - pr[1].mean())
+                   / np.sqrt((pr[0].var(ddof=1) + pr[1].var(ddof=1)) / 2 + 1e-12))
+
     h = len(acc["epoch"][0]) // 2
     floor = np.abs(20 * np.log10(np.mean(acc["epoch"][0][:h], axis=0))
                    - 20 * np.log10(np.mean(acc["epoch"][0][h:], axis=0))).max()
@@ -142,6 +153,8 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
         beating=(m["beat"][0], m["beat"][1]),
         fig_sounding=(m["fmax"][0], m["fmax"][1]),
         fig_duty=(m["duty"][0], m["duty"][1]),
+        prominence=(pr[0].mean(), pr[1].mean()),
+        spectrum_only_d=spec_d,
         flat_db=(m["flat"][0], m["flat"][1]),
         low_pct=(m["low"][0], m["low"][1]),
         shared_channels=(m["repeat"][0], m["repeat"][1]),
@@ -158,6 +171,7 @@ ROWS = [
     ("contrast", "contrast", "{:.2f}"),
     ("element loudness peak, dB", "elem_peak_db", "{:.2f}"),
     ("element power spread, CV", "elem_gain_cv", "{:.4f}"),
+    ("spectral prominence, dB", "prominence", "{:.2f}"),
     ("figure tones at once, most", "fig_sounding", "{:.1f}"),
     ("figure sounding, % of time", "fig_duty", "{:.0f}"),
     ("beating pairs (< 1 ERB)", "beating", "{:.0f}"),
@@ -170,6 +184,7 @@ DIFFS = [
     ("|present - absent| envelope, dB", "d_elem_peak_db"),
     ("|present - absent| 1/3-oct, dB", "d_band_db"),
     ("  same measure, present only", "noise_floor_db"),
+    ("SPECTRUM-ONLY d', ignoring time", "spectrum_only_d"),
 ]
 
 

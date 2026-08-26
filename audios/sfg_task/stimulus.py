@@ -172,12 +172,17 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
         busy[pl["near"][c], s:s + d.k] = True
 
     if variant == "scatter":
-        # The same channels at the same rate, never grouped into elements.
-        # Long-term spectrum identical to the figure's; no temporal
-        # coherence at all.
+        # The figure's channels at the figure's rate, never grouped into
+        # elements: the long-term spectrum of the figure with none of its
+        # temporal coherence.  The absent side spreads the same number of
+        # tones over channels drawn afresh, so the two differ in whether
+        # seven channels recur at all -- which is what makes this the
+        # control for how much of the task is spectral.
         combs = [comb(d, pl, rng)]
-        for c, ts in zip(combs[0], scatter_onsets(d, rng)):
+        for i, ts in enumerate(scatter_onsets(d, rng)):
             for s in ts:
+                c = int(combs[0][i]) if coherent else \
+                    int(comb(d, pl, rng)[int(rng.integers(d.coherence))])
                 put(c, s, 0)
     else:
         # Overlapping elements can collide: two of them can want the same

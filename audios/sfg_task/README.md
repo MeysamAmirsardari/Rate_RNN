@@ -292,12 +292,29 @@ sessions halve that. Decide which you need before running twenty people once.
   alternative is to cap the sweep at 25 ms, which is what a non-overlapping 5 Hz figure
   allows. `perm` and `scatter` are what bound the alternative explanations, and this is
   the first limitation a referee will find.
-* **The long-term spectrum carries more of the answer than it used to.** At 6.3x
-  contrast the seven figure channels stand up to 0.8 dB above the figure-absent interval
-  in a third-octave band, against a measurement noise floor of 0.2 dB. A listener could
-  in principle use that rather than temporal coherence. `scatter`, which has the
-  identical long-term spectrum and no temporal coherence at all, is the control that
-  separates them, and it matters more at this contrast than it did at 2.4x.
+* **An observer who ignores time entirely can do this task perfectly.** This is the
+  most serious thing on the page. Take the long-term spectrum of each interval, measure
+  how far its loudest channels stand above their neighbours, and pick the interval with
+  the taller peaks: measured over many trials, that gives **d' between 12 and 18**,
+  which is 100% correct in 2IFC, at every delay. The figure's channels carry 5.3 tones
+  a second against the background's 0.85, and six seconds is long enough to read that
+  off the spectrum without ever hearing a figure.
+
+  It is not new here. The same measurement on the earlier 2 Hz, eight-tone-cloud
+  version gives d' 9.4, also 100%. A figure defined by channel recurrence always has a
+  spectral signature as well as a temporal one, and they cannot be pulled apart inside
+  a single interval.
+
+  What it means in practice: **the task does not by itself prove that anyone used
+  temporal coherence.** Two things bound it. The first is empirical: the only human who
+  has run it sat at chance while this cue was fully available, so people do not
+  spontaneously read it off. The second is the `scatter` control, which puts the
+  figure's channels in the present interval at the figure's rate but never groups them,
+  so it has the spectral cue and no temporal coherence at all. Performance on `scatter`
+  is the direct measure of how much of the sweep is spectral, and it has to be run.
+
+  Trial-by-trial feedback interacts with this: it does not bias 2IFC, but it does teach
+  whatever cue works. Consider turning it off after practice.
 * Contrast is 2.5x, against roughly 10x for chord-grid figure-ground. A 350 ms element
   cannot repeat at 20 Hz, and a slow figure has a low contrast. Detection at 0 ms should
   be good rather than perfect, which is what you want, or the sweep starts at ceiling.
