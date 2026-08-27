@@ -19,7 +19,7 @@ class Design:
     # tones rather than adding to them, that means 1400 onsets a second and
     # no contrast left.  5 ms is the anchor instead: 30 ms from the figure's
     # first tone to its last, well inside any integration window.
-    steps_ms: tuple[float, ...] = (5.0, 10.0, 20.0, 30.0, 40.0, 50.0)
+    steps_ms: tuple[float, ...] = (5.0, 15.0, 25.0, 35.0, 45.0)
     coherence: int = 7           # tones in the figure
     order: str = "rise"          # 'rise' | 'fall' -- the main sweep is 'rise'
 
@@ -43,7 +43,14 @@ class Design:
     f_hi: float = 7246.0         # not weight for equal loudness; at 60 phon
                                  # that octave is boosted 11 dB and takes
                                  # over the stimulus
-    grid_st: float = 0.5
+    grid_st: float = 0.25        # 1/48 octave, finer than the published 1/24.
+                                 # The background's rate per channel is what
+                                 # the figure has to stand out from, and a
+                                 # finer grid thins it without touching the
+                                 # figure: contrast 2.7x at 0.5 st, 4.5x at
+                                 # 0.25.  Nothing beats, because no two tones
+                                 # sound at once inside one critical band
+                                 # whatever the grid is.
     bg_sounding: int = 6         # TOTAL tones sounding, figure included: the
                                  # figure substitutes, so this is the whole
                                  # cloud.  It has to be tone_ms/hop_ms, which
@@ -94,9 +101,15 @@ class Design:
     # conditions differ in more than asynchrony.  Chosen deliberately, to
     # keep the figure at a speech rate.
     interval_s: float = 6.0
-    rate_hz: float = 5.0
-    jitter_ms: float = 40.0      # +- on each interval between elements, so
+    rate_hz: float = 3.0         # elements NEVER overlap: at 5 Hz a 300 ms
+                                 # element ran into the next one and tones
+                                 # from successive repetitions landed on top
+                                 # of each other, which put accidental
+                                 # synchrony back into exactly the delays
+                                 # meant to have none
+    jitter_ms: float = 20.0      # +- on each interval between elements, so
                                  # the rhythm is not isochronous
+    element_gap_ms: float = 20.0  # silence between one element and the next
     lead_ms: float = 300.0
     tail_ms: float = 200.0
 
@@ -114,7 +127,7 @@ class Design:
     absent: str = "scattered"    # 'scattered' | 'cloud'
 
     task: str = "2ifc"           # '2ifc' (criterion-free) | 'yesno'
-    trials_per_step: int = 20    # doubled automatically for yes/no, which
+    trials_per_step: int = 24    # doubled automatically for yes/no, which
                                  # needs figure-absent trials of its own
     practice_trials: int = 16
     practice_criterion: int = 8  # correct out of the last 10 to move on
@@ -198,16 +211,29 @@ class Design:
         return self.n_slots - self.tail - self.max_extent - self.lead
 
     @property
-    def events(self) -> int:
-        """Elements per interval, from the rate and the room available."""
-        return max(2, int(round(self.rate_hz * self.span * self.hop_ms / 1000)) + 1)
+    def min_gap(self) -> int:
+        """The shortest allowed interval between two element onsets.
+
+        Long enough that the longest element in the experiment finishes
+        first.  Elements that overlap put tones from successive repetitions
+        on top of each other, and because the delays divide into the period
+        that restores synchrony at the widest delays: the manipulation stops
+        being monotonic.  Also at least one tone plus its rest, since every
+        element uses the same channels."""
+        return max(self.max_extent + int(round(self.element_gap_ms / self.hop_ms)),
+                   int(round((self.tone_ms + self.guard_ms) / self.hop_ms)))
 
     @property
-    def min_gap(self) -> int:
-        """Two elements may overlap, but a channel may not sound twice at
-        once: every element uses the same channels, so the interval between
-        elements has to clear one tone plus its rest."""
-        return int(round((self.tone_ms + self.guard_ms) / self.hop_ms))
+    def events(self) -> int:
+        """Elements per interval: the rate, or as many as leave room for the
+        jitter, whichever is fewer."""
+        by_rate = int(round(self.rate_hz * self.span * self.hop_ms / 1000)) + 1
+        room = self.min_gap + int(round(self.jitter_ms / self.hop_ms))
+        return max(2, min(by_rate, self.span // room + 1))
+
+    @property
+    def realised_rate(self) -> float:
+        return (self.events - 1) / (self.span * self.hop_ms / 1000)
 
     @property
     def n_per_step(self) -> int:
@@ -263,8 +289,7 @@ class Design:
         span = 12 * math.log2(self.f_hi / self.f_lo)
         n_ch = int(span / self.grid_st) + 1
         bg = self.density * 1000.0 / self.hop_ms
-        rate = self.rate_hz
-        ov = self.extent_ms(max(self.steps_ms)) * rate / 1000.0
+        rate = self.realised_rate
         lines = [
             f"{self.task}  {len(self.steps_ms)} steps "
             f"{', '.join(f'{s:g}' for s in self.steps_ms)} ms  x "
@@ -276,12 +301,13 @@ class Design:
             f"  cloud     {self.bg_sounding} tones sounding, "
             f"{bg:.0f} onsets/s, {bg / n_ch:.2f}/s per channel",
             f"  figure    {self.coherence} tones over {self.fig_span_st:g} st, "
-            f"{self.events} elements per interval at {rate:g} Hz "
+            f"{self.events} elements per interval at {rate:.2f} Hz "
             f"+-{self.jitter_ms:g} ms -> contrast "
             f"{1 + self.events / self.interval_s / (bg / n_ch):.1f}x",
             f"  element   {self.extent_ms(min(self.steps_ms)):.0f}-"
-            f"{self.extent_ms(max(self.steps_ms)):.0f} ms long against a "
-            f"{1000 / rate:.0f} ms period, so up to {ov:.1f} sound at once",
+            f"{self.extent_ms(max(self.steps_ms)):.0f} ms long, gaps never "
+            f"under {self.min_gap * self.hop_ms:.0f} ms, so they never "
+            f"overlap",
             f"  session   {self.n_trials * self.trial_s / 60:.0f} min "
             f"+ practice + {self.n_trials // self.break_every} breaks",
         ]

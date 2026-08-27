@@ -45,7 +45,8 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
     acc: dict[str, list] = {k: [[], []] for k in
                             ("tones", "snd_lo", "snd_hi", "rms", "fig", "bg",
                              "epoch", "band", "elem_cv", "repeat", "beat",
-                             "flat", "low", "fmax", "duty", "prom", "crowd")}
+                             "flat", "low", "fmax", "duty", "prom", "crowd",
+                             "coin")}
     for i in range(n):
         for j, sch in enumerate(trial(d, pl, step_ms=step_ms, seed=9000 + i,
                                       variant=variant, rove=False)):
@@ -92,6 +93,19 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
             acc["repeat"][j].append(rep)
             acc["flat"][j].append(sch["flat_db"])
             acc["crowd"][j].append(sch.get("crowded", 0))
+            # two figure tones in different channels starting together: the
+            # accidental synchrony that overlapping elements used to put back
+            # into exactly the delays meant to have none
+            fo = np.argsort(sch["slot"][sch["is_fig"]])
+            fch = sch["chan"][sch["is_fig"]][fo]
+            fsl = sch["slot"][sch["is_fig"]][fo]
+            co = 0
+            for u in range(fch.size):
+                v = u + 1
+                while v < fch.size and fsl[v] <= fsl[u] + 1:
+                    co += fch[v] != fch[u]
+                    v += 1
+            acc["coin"][j].append(co)
             fs_ = np.zeros(d.n_slots + d.k)
             for x in sch["slot"][sch["is_fig"]]:
                 fs_[x:x + d.k] += 1
@@ -153,6 +167,7 @@ def verify(d: Design, step_ms: float, n: int = 12, variant: str = "rise",
         elem_gain_cv=(m["elem_cv"][0], m["elem_cv"][1]),
         beating=(m["beat"][0], m["beat"][1]),
         crowded=(m["crowd"][0], m["crowd"][1]),
+        coincident=(m["coin"][0], m["coin"][1]),
         fig_sounding=(m["fmax"][0], m["fmax"][1]),
         fig_duty=(m["duty"][0], m["duty"][1]),
         prominence=(pr[0].mean(), pr[1].mean()),
@@ -174,6 +189,7 @@ ROWS = [
     ("element loudness peak, dB", "elem_peak_db", "{:.2f}"),
     ("element power spread, CV", "elem_gain_cv", "{:.4f}"),
     ("spectral prominence, dB", "prominence", "{:.2f}"),
+    ("figure tones starting together", "coincident", "{:.1f}"),
     ("figure tones at once, most", "fig_sounding", "{:.1f}"),
     ("figure sounding, % of time", "fig_duty", "{:.0f}"),
     ("beating pairs (< 1 ERB)", "beating", "{:.0f}"),

@@ -282,16 +282,14 @@ sessions halve that. Decide which you need before running twenty people once.
 
 ## What is not controlled, and cannot be
 
-* **The figure changes character across the sweep, not just its asynchrony.** A 0 ms
-  element is 50 ms long and puts seven tones on at once; a 50 ms element is 350 ms long,
-  overlaps its neighbour, and never has more than three tones sounding together.
-  Measured, a figure tone is sounding 23% of the time at 0 ms and 93% at 50 ms, and the
-  most that ever sound together falls from 7 to 3. Same total tone count, same rate,
-  same contrast, very different object. This is inherent to running a 350 ms element at
-  a 200 ms period and was chosen deliberately to keep the figure at a speech rate; the
-  alternative is to cap the sweep at 25 ms, which is what a non-overlapping 5 Hz figure
-  allows. `perm` and `scatter` are what bound the alternative explanations, and this is
-  the first limitation a referee will find.
+* **The figure changes character across the sweep, not just its asynchrony.** A 5 ms
+  element is 60 ms long and puts six tones on at once; a 45 ms element is 300 ms long
+  and never has more than one. Measured, a figure tone is sounding 16% of the time at
+  5 ms and 57% at 45 ms. Same tone count, same rate, same contrast, different object.
+  This is inherent to spreading tones in time. `perm` holds the extent and removes the
+  order; `scatter` is the limit where the asynchrony is unbounded. Those two bound the
+  alternative explanations, and this is the first limitation a referee will find.
+
 * **The other interval is not a plain cloud, and it cannot be.** Take the long-term
   spectrum of each interval, measure how far its loudest channels stand above their
   neighbours, and pick the interval with the taller peaks. Against a plain cloud that

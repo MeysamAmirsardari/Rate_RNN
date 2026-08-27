@@ -169,16 +169,26 @@ def scatter_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
                 break
         else:
             raise ValueError("scatter control does not fit in the interval")
-        # Two of these channels landing in the same slot would be a chord,
-        # and a momentary chord is the thing this control exists to be
-        # without.  It also makes the tone count jump, which the coherent
-        # side does not do.  Nudge each onset to the nearest free slot.
+        # Two of these channels starting together would be a momentary
+        # chord, and a momentary chord is the thing this control exists to
+        # be without.  Pushing a collision into the next slot is not enough
+        # -- that is still 5 ms apart, and it leaves the control with more
+        # near-simultaneous onsets than the coherent side has.  Move to the
+        # nearest slot that clears every other figure onset by `apart`.
+        apart = max(2, int(round(min(d.steps_ms) / d.hop_ms)) + 1)
         ts = d.lead + np.concatenate(([0], np.cumsum(g)))
         for i, t in enumerate(ts):
-            while int(t) in taken:
-                t += 1
+            t = int(t)
+            for off in range(0, 200):
+                for cand in ((t + off, t - off) if off else (t,)):
+                    if all(abs(cand - u) >= apart for u in taken):
+                        t = cand
+                        break
+                else:
+                    continue
+                break
             ts[i] = t
-            taken.add(int(t))
+            taken.add(t)
         out.append(ts)
     return np.array(out)
 
