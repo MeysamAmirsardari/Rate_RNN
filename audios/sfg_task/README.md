@@ -292,78 +292,36 @@ sessions halve that. Decide which you need before running twenty people once.
   alternative is to cap the sweep at 25 ms, which is what a non-overlapping 5 Hz figure
   allows. `perm` and `scatter` are what bound the alternative explanations, and this is
   the first limitation a referee will find.
-* **An observer who ignores time entirely can do this task perfectly.** This is the
-  most serious thing on the page. Take the long-term spectrum of each interval, measure
-  how far its loudest channels stand above their neighbours, and pick the interval with
-  the taller peaks: measured over many trials, that gives **d' between 12 and 18**,
-  which is 100% correct in 2IFC, at every delay. The figure's channels carry 5.3 tones
-  a second against the background's 0.85, and six seconds is long enough to read that
-  off the spectrum without ever hearing a figure.
+* **The other interval is not a plain cloud, and it cannot be.** Take the long-term
+  spectrum of each interval, measure how far its loudest channels stand above their
+  neighbours, and pick the interval with the taller peaks. Against a plain cloud that
+  gives **d' 8 to 11, which is 100% correct in 2IFC at every delay**, without ever
+  hearing a figure. Six seconds is long enough to read seven elevated channels off the
+  spectrum, and no scheduling removes it: one interval has seven elevated channels and
+  the other does not, and that is what "figure" means.
 
-  It is not new here. The same measurement on the earlier 2 Hz, eight-tone-cloud
-  version gives d' 9.4, also 100%. A figure defined by channel recurrence always has a
-  spectral signature as well as a temporal one, and they cannot be pulled apart inside
-  a single interval.
+  So the other interval carries **the same seven channels**, coming back at the same
+  rate and with the same regularity, each on its own schedule. Both intervals then have
+  the same channels, the same tone count, the same six tones sounding at every instant,
+  the same level, the same long-term spectrum and the same contrast, and differ in
+  whether the seven fire *together*. Measured, the observer who ignores time falls to
+  **d' 0.01 to 0.08, which is 50 to 52% correct**: chance.
 
-  What it means in practice: **the task does not by itself prove that anyone used
-  temporal coherence.** Two things bound it. The first is empirical: the only human who
-  has run it sat at chance while this cue was fully available, so people do not
-  spontaneously read it off. The second is the `scatter` control, which puts the
-  figure's channels in the present interval at the figure's rate but never groups them,
-  so it has the spectral cue and no temporal coherence at all. Performance on `scatter`
-  is the direct measure of how much of the sweep is spectral, and it has to be run.
+  Three things had to be right for that. The figure substitutes background tones rather
+  than adding to them, so the tone count does not move. The scattered channels are
+  nudged off each other's slots, so the control never forms a momentary chord and never
+  needs a levelling gain the coherent side does not. And a coherent element that would
+  collide with its overlapping neighbour slides whole, pattern intact, rather than
+  doubling a slot. With all three the levelling gain is **0.00 dB in both intervals at
+  every delay**, and the leveller is inert.
 
-  Trial-by-trial feedback interacts with this: it does not bias 2IFC, but it does teach
-  whatever cue works. Consider turning it off after practice.
+  Trial-by-trial feedback matters here: it does not bias 2IFC, but it teaches whatever
+  cue works, so it is only safe once the only cue that works is the intended one.
 
-  **What the repair does and does not reach.** The figure now *substitutes*
-  background tones rather than being added on top of them: the same number of tones
-  starts in every slot whatever the figure does, so the count is constant, no levelling
-  gain is needed, and the levelling excursion falls from 5.0 dB to between 0.00 and
-  0.54 dB. That removes the interaction between levelling and grouping entirely. The
-  price is the 0 ms chord: seven simultaneous tones would need seven starts in one slot,
-  1400 a second, and no contrast left. The sweep runs from 5 ms, which is 30 ms from the
-  figure's first tone to its last.
-
-  It does not touch the present-against-absent cue, which stays at d' 8-9 (it was 17-19 at 50 ms tones). Nothing
-  will: one interval has seven elevated channels and the other does not, and that is
-  what "figure" means.
-
-  For coherent against scattered it helps a great deal, from a d' that reversed sign
-  across the sweep (-6.3 at 0 ms, +2.2 at 50) to a small monotone one:
-
-  | delay | 5 | 10 | 20 | 30 | 40 | 50 |
-  |---|---|---|---|---|---|---|
-  | spectrum-only d' | 0.45 | 0.68 | 0.60 | 0.61 | 0.55 | 0.56 |
-  | spectrum-only 2IFC | 63% | 69% | 66% | 67% | 65% | 65% |
-
-  Read that row as a floor under the psychometric function. At 30 ms tones it is flat
-  across the sweep, which matters: a floor that trended with delay would mimic the
-  effect being looked for, and at 50 ms tones it did (0.45 to 0.25). A behavioural curve
-  is evidence of temporal coherence to the extent that it drops below and away from this
-  one. Plot them together.
-
-  The older repair does not work either. Making the figure-absent interval carry the same
-  seven recurring channels, ungrouped, takes the ideal observer from d' 12-18 down to
-  about 2, but not to zero, and the residue is instructive: **levelling the power and
-  equating per-channel energy are incompatible.** The compensating gain is lowest
-  exactly when the figure's tones are bunched, so at 0 ms the coherent interval delivers
-  2.2 dB *less* energy in the figure's channels than the scattered one, and at 50 ms
-  slightly more. Flatten the envelope and the per-channel spectrum moves with the
-  manipulation; equate the spectrum and the envelope pulses. There appears to be no
-  setting of this stimulus in which an ideal observer is at chance.
-* Contrast is 2.5x, against roughly 10x for chord-grid figure-ground. A 350 ms element
-  cannot repeat at 20 Hz, and a slow figure has a low contrast. Detection at 0 ms should
-  be good rather than perfect, which is what you want, or the sweep starts at ceiling.
-* PsychoPy is not used. On this Python it resolves to 2023.1.3 and builds from source,
-  which is not a thing to hand a booth machine, and its value here would be a dialog
-  box. All the timing that matters is baked into the pre-rendered stimuli, and playback
-  goes through sounddevice.
-* Levelling the power jitters the tones. The compensating gain wanders over about 7 dB,
-  1.6 dB SD, so each tone sits within a decibel or two of its equal-loudness level
-  rather than exactly on it. That is the price of a flat envelope, it is matched between
-  the intervals, and the equal-loudness shape survives it: measured by octave, the
-  realised levels still trace the ISO 226 curve.
+  `--absent cloud` restores the classic comparison, for continuity with the published
+  task. Run it once as a control precisely because it is the confounded one: if a
+  listener is much better on it than on the matched version, that difference is what
+  the spectral cue is worth to a human.
 
 ## Usage
 

@@ -279,6 +279,8 @@ def main(argv=None) -> int:
 
     def common(q):
         q.add_argument("--task", choices=("2ifc", "yesno"))
+        q.add_argument("--absent", choices=("scattered", "cloud"),
+                       help="what the figure is compared against")
         q.add_argument("--steps-ms", type=float, nargs="+")
         q.add_argument("--coherence", type=int)
         q.add_argument("--bg-sounding", type=int)

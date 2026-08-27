@@ -107,6 +107,12 @@ class Design:
     edge_ms: float = 50.0        # on/off ramp of the whole interval
 
     # --- the task -----------------------------------------------------
+    # What the listener is comparing the figure against.  'scattered' is the
+    # same seven channels ungrouped, which is the only version in which an
+    # observer who ignores time cannot do the task; 'cloud' is the classic
+    # figure-absent interval, which such an observer solves at 100%.
+    absent: str = "scattered"    # 'scattered' | 'cloud'
+
     task: str = "2ifc"           # '2ifc' (criterion-free) | 'yesno'
     trials_per_step: int = 20    # doubled automatically for yes/no, which
                                  # needs figure-absent trials of its own
@@ -248,6 +254,8 @@ class Design:
                 f"Raise bg_sounding to {int(np.ceil(need * self.k))} (which "
                 f"costs contrast), raise hop_ms, or drop that delay from "
                 f"steps_ms")
+        if self.absent not in ("scattered", "cloud"):
+            raise ValueError("absent must be 'scattered' or 'cloud'")
         if self.task not in ("2ifc", "yesno"):
             raise ValueError("task must be '2ifc' or 'yesno'")
 

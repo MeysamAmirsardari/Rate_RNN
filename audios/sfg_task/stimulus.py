@@ -158,7 +158,7 @@ def scatter_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
     mean = room / (n - 1)
     j = d.jitter_ms / d.hop_ms
     sep = d.k + d.guard
-    out = []
+    out, taken = [], set()
     for _ in range(d.coherence):
         for _ in range(200):
             gaps = mean + rng.uniform(-j, j, n - 1)
@@ -169,13 +169,24 @@ def scatter_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
                 break
         else:
             raise ValueError("scatter control does not fit in the interval")
-        out.append(d.lead + np.concatenate(([0], np.cumsum(g))))
+        # Two of these channels landing in the same slot would be a chord,
+        # and a momentary chord is the thing this control exists to be
+        # without.  It also makes the tone count jump, which the coherent
+        # side does not do.  Nudge each onset to the nearest free slot.
+        ts = d.lead + np.concatenate(([0], np.cumsum(g)))
+        for i, t in enumerate(ts):
+            while int(t) in taken:
+                t += 1
+            ts[i] = t
+            taken.add(int(t))
+        out.append(ts)
     return np.array(out)
 
 
 def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
              step_ms: float, ons: np.ndarray, lag: np.ndarray,
-             coherent: bool, variant: str) -> dict:
+             coherent: bool, variant: str,
+             fig_ch: np.ndarray | None = None) -> dict:
     """Every tone in the interval: channel, slot, level, figure or not."""
     busy = np.zeros((pl["n"], d.n_slots + d.k + d.guard), bool)
     own = np.zeros_like(busy)          # the channel itself, without its band
@@ -198,7 +209,7 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
         # tones over channels drawn afresh, so the two differ in whether
         # seven channels recur at all -- which is what makes this the
         # control for how much of the task is spectral.
-        combs = [comb(d, pl, rng)]
+        combs = [comb(d, pl, rng) if fig_ch is None else np.asarray(fig_ch)]
         for i, ts in enumerate(scatter_onsets(d, rng)):
             for s in ts:
                 c = int(combs[0][i]) if coherent else \
@@ -208,21 +219,31 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
         # Overlapping elements can collide: two of them can want the same
         # channel at the same moment, or two channels inside one critical
         # band.  Where there is something to redraw, redraw it.
-        combs, clash = [], 0
+        combs, clash, used = [], 0, set()
         for i, s0 in enumerate(ons):
             fixed = coherent and variant != "redraw"
             for attempt in range(120):
                 ch = (combs[0] if coherent and combs
+                      else np.asarray(fig_ch) if coherent and fig_ch is not None
                       else comb(d, pl, rng, avoid=None if coherent else combs))
                 lg = redrawn(d, step_ms, rng) if variant == "redraw" else lag
-                cand = [(int(c), int(s0 + l)) for c, l in zip(ch, lg)
-                        if 0 <= s0 + l < d.n_slots]
+                # Overlapping elements can want the same slot.  Slide the
+                # whole element, which leaves its pattern intact, rather than
+                # letting two tones start together: that would put an extra
+                # tone in the interval and cost a decibel of levelling, and
+                # only on the coherent side.
+                off = 0
+                while off < 40 and any(int(s0 + l + off) in used for l in lg):
+                    off += 1
+                cand = [(int(c), int(s0 + l + off)) for c, l in zip(ch, lg)
+                        if 0 <= s0 + l + off < d.n_slots]
                 if fixed or not any(busy[c, s:s + d.k].any() for c, s in cand):
                     break
             else:
                 clash += 1
             combs.append(ch)
             for c, s in cand:
+                used.add(s)
                 put(c, s, i)
     fig_ch = combs[0]
 
@@ -356,11 +377,11 @@ def render(d: Design, pl: dict, sch: dict, rng: np.random.Generator,
 
 
 def interval(d: Design, pl: dict, *, step_ms: float, ons: np.ndarray,
-             lag: np.ndarray, coherent: bool, variant: str,
-             seed: int, rove: bool = True) -> dict:
+             lag: np.ndarray, coherent: bool, variant: str, seed: int,
+             rove: bool = True, fig_ch: np.ndarray | None = None) -> dict:
     rng = np.random.default_rng(seed)
     sch = schedule(d, pl, rng, step_ms=step_ms, ons=ons, lag=lag,
-                   coherent=coherent, variant=variant)
+                   coherent=coherent, variant=variant, fig_ch=fig_ch)
     sch["y"], sch["y_fig"] = render(d, pl, sch, rng,
                                     d.rove_db if rove else 0.0)
     return sch
@@ -368,15 +389,29 @@ def interval(d: Design, pl: dict, *, step_ms: float, ons: np.ndarray,
 
 def trial(d: Design, pl: dict, *, step_ms: float, seed: int,
           variant: str = "rise", rove: bool = True) -> tuple[dict, dict]:
-    """The figure-present and figure-absent intervals of one trial.
+    """The two intervals of one trial.  Both are built from the same element
+    onsets and the same delays, drawn once here.
 
-    Both are built from the same element onsets and the same delays, drawn
-    once here, so the only difference between them is coherence.
+    What the second interval is depends on `absent`:
+
+    'scattered'  the SAME seven channels, coming back at the same rate and
+                 with the same regularity, but each on its own schedule.
+                 Identical in long-term spectrum, tone count, level and
+                 envelope; the two differ in whether the seven channels fire
+                 *together*, and in nothing else that has been found.
+    'cloud'      the classic figure-absent interval, whose seven channels are
+                 redrawn for every element.  Comparable with the published
+                 task, and solvable at 100% by an observer who ignores time.
     """
     rng = np.random.default_rng(seed)
     ons = element_onsets(d, rng)
     lag = delays(d, step_ms, rng, variant)
-    kw = dict(step_ms=step_ms, ons=ons, lag=lag, variant=variant, rove=rove)
-    s1, s2 = rng.integers(0, 2 ** 31, 2)
-    return (interval(d, pl, coherent=True, seed=int(s1), **kw),
-            interval(d, pl, coherent=False, seed=int(s2), **kw))
+    kw = dict(step_ms=step_ms, ons=ons, lag=lag, rove=rove)
+    s1, s2 = (int(x) for x in rng.integers(0, 2 ** 31, 2))
+    a = interval(d, pl, coherent=True, variant=variant, seed=s1, **kw)
+    if d.absent == "scattered":
+        b = interval(d, pl, coherent=True, variant="scatter", seed=s2,
+                     fig_ch=a["fig_ch"], **kw)
+    else:
+        b = interval(d, pl, coherent=False, variant=variant, seed=s2, **kw)
+    return a, b

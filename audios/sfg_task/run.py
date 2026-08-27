@@ -79,13 +79,35 @@ def calibrate(d: Design, seconds: float = 5.0, device=None) -> None:
     play(y.astype(np.float32), d.fs, device)
 
 
-PROMPT = {"2ifc": ("  which interval had the repeating figure?   "
-                   f"{BOLD}1{OFF} or {BOLD}2{OFF}", "12"),
-          "yesno": ("  was a repeating figure there?   "
-                    f"{BOLD}y{OFF} or {BOLD}n{OFF}", "yn")}
+def prompt_for(d) -> tuple[str, str]:
+    if d.task == "yesno":
+        return ("  was a group of tones moving together?   "
+                f"{BOLD}y{OFF} or {BOLD}n{OFF}", "yn")
+    if d.absent == "scattered":
+        return ("  which interval had them moving together?   "
+                f"{BOLD}1{OFF} or {BOLD}2{OFF}", "12")
+    return ("  which interval had the repeating figure?   "
+            f"{BOLD}1{OFF} or {BOLD}2{OFF}", "12")
 
-BRIEF = """
-{b}  A cloud of short tones.{o}  Sometimes a small group of them keeps
+
+BRIEF = {
+    "scattered": """
+{b}  A cloud of short tones.{o}  In {b}both{o} intervals a few of the same
+  pitches keep coming back. The difference is when.
+
+  In one interval they come back {b}together{o}, so they stand out as one
+  thing you can follow. In the other the same pitches come back just as
+  often, but each on its own, and they stay part of the cloud.
+
+  They may arrive all at once, or one pitch after another like a run up a
+  keyboard. Either way, listen for {b}tones that move together{o}.
+
+{ask}.   Guess if you are not sure. You are meant to be unsure.
+  Press {b}q{o} to stop. Everything answered so far is saved.
+
+  Headphones on, both ears. Press any key to start.""",
+    "cloud": """
+{b}  A cloud of short tones.{o}  In one interval a small group of them keeps
   coming back at the same pitches, over and over. That is the figure.
   It may arrive all at once, or one pitch after another like a run up
   a keyboard. Either way, listen for {b}the pitches that repeat{o}.
@@ -93,7 +115,7 @@ BRIEF = """
 {ask}.   Guess if you are not sure. You are meant to be unsure.
   Press {b}q{o} to stop. Everything answered so far is saved.
 
-  Headphones on, both ears. Press any key to start."""
+  Headphones on, both ears. Press any key to start."""}
 
 
 class Log:
@@ -172,11 +194,11 @@ def run(d: Design, subject: str | None, root: Path, *, device=None,
     if new:
         w.writeheader()
 
-    ask, keys = PROMPT[d.task]
+    ask, keys = prompt_for(d)
     ctx = dict(d=d, ask=ask, keys=keys, n_int=2 if d.task == "2ifc" else 1,
                device=device, w=w, fh=fh, log=log, session=n, task=task,
                t0=time.perf_counter())
-    print(BRIEF.format(b=BOLD, o=OFF, ask=ask.strip()))
+    print(BRIEF[d.absent].format(b=BOLD, o=OFF, ask=ask.strip()))
 
     with keyboard() as fd:
         ctx["fd"] = fd
