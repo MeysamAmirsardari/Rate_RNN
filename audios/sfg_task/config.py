@@ -32,7 +32,7 @@ class Design:
     # the grid is -- so it is set by the finest step to be tested.
     fs: int = 48_000
     hop_ms: float = 5.0
-    tone_ms: float = 50.0        # as in Teki 2013 / O'Sullivan 2015
+    tone_ms: float = 30.0        # 25-50 ms in the literature
     ramp_ms: float = 10.0        # raised cosine, independent of the grid
 
     # --- the cloud ----------------------------------------------------
@@ -44,9 +44,12 @@ class Design:
                                  # that octave is boosted 11 dB and takes
                                  # over the stimulus
     grid_st: float = 0.5
-    bg_sounding: int = 10        # TOTAL tones sounding, figure included: the
+    bg_sounding: int = 6         # TOTAL tones sounding, figure included: the
                                  # figure substitutes, so this is the whole
-                                 # cloud.  Teki's mean chord is 10 as well.
+                                 # cloud.  It has to be tone_ms/hop_ms, which
+                                 # is one start per slot: fewer cannot cover
+                                 # every slot, more raises the onset rate and
+                                 # costs contrast for nothing.
     dealer_slack: float = 3.0    # counts stay level, order stays unguessable
     guard_ms: float = 50.0       # rest before a channel may sound again, so
                                  # two background tones never abut into one
