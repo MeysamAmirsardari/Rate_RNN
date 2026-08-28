@@ -127,9 +127,10 @@ def element_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
     """Element onsets, in slots: `rate_hz` with `jitter_ms` either way.
 
     The intervals are rescaled to fill the same span in every condition, so
-    the rate and the element count do not move with the delay.  Elements may
-    overlap; what may not happen is a channel sounding twice at once, which
-    is what `min_gap` protects."""
+    the rate and the element count do not move with the delay.  The draw is
+    accepted down to `floor_gap`, which lets a negative jitter graze the next
+    element rather than be thrown away; a channel sounding twice at once is
+    what may never happen, and that is `rest_gap`."""
     n = d.events
     mean = d.span / (n - 1)
     j = d.jitter_ms / d.hop_ms
@@ -138,7 +139,7 @@ def element_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
         gaps = gaps * (d.span / gaps.sum())
         g = np.round(gaps).astype(int)
         g[-1] += d.span - g.sum()
-        if g.min() >= d.min_gap:
+        if g.min() >= d.floor_gap:
             return d.lead + np.concatenate(([0], np.cumsum(g)))
     raise ValueError("jitter_ms is too wide for this rate")
 

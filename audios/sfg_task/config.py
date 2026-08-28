@@ -118,8 +118,28 @@ class Design:
                                  # synchrony back into exactly the delays
                                  # meant to have none
     jitter_ms: float = 20.0      # +- on each interval between elements, so
-                                 # the rhythm is not isochronous
-    element_gap_ms: float = 20.0  # silence between one element and the next
+                                 # the rhythm is not isochronous and the
+                                 # figure cannot be followed by predicting
+                                 # when it is due.  +-6 % of the 326 ms
+                                 # period, and it arrives unclipped: sd 11.3
+                                 # against the 11.5 of the ideal uniform.
+                                 #
+                                 # Not wider, and the reason is the control.
+                                 # Both intervals draw their onsets from this
+                                 # distribution, and how much of the time the
+                                 # seven channels sound at all depends on how
+                                 # often their trains coincide -- which falls
+                                 # as the jitter decorrelates them.  The
+                                 # figure's own duty is fixed by the delay, so
+                                 # widening the jitter pulls the control away
+                                 # from it at the narrow delays.  Measured, at
+                                 # the 10 ms step: 0.6 points apart at +-10 ms
+                                 # of jitter, 2.9 at +-20, 7.1 at +-30, 11.1
+                                 # at +-40.  20 is the most jitter that keeps
+                                 # every sweep point inside 3 points.
+    element_gap_ms: float = 20.0  # silence between one element and the next,
+                                 # on the mean gap.  A negative jitter is
+                                 # allowed to eat into it -- see `floor_gap`
     lead_ms: float = 300.0
     tail_ms: float = 200.0
 
@@ -231,14 +251,42 @@ class Design:
         being monotonic.  Also at least one tone plus its rest, since every
         element uses the same channels."""
         return max(self.max_extent + int(round(self.element_gap_ms / self.hop_ms)),
-                   int(round((self.tone_ms + self.guard_ms) / self.hop_ms)))
+                   self.rest_gap)
+
+    @property
+    def rest_gap(self) -> int:
+        """The gap no draw may ever cross, whatever the jitter.
+
+        One tone plus its rest.  Every element uses the same seven channels,
+        so a shorter gap than this would have a channel sounding twice at
+        once, which is not an overlap between elements but a single longer
+        tone in one channel."""
+        return int(round((self.tone_ms + self.guard_ms) / self.hop_ms))
+
+    @property
+    def jit(self) -> int:
+        return int(round(self.jitter_ms / self.hop_ms))
+
+    @property
+    def floor_gap(self) -> int:
+        """What `element_onsets` actually enforces.
+
+        `min_gap` is where the elements stop touching, and rejecting every
+        draw that crosses it would cut the bottom off the jitter: with the
+        mean gap only 26 ms above `min_gap` and the jitter reaching -20 ms,
+        the constraint decides the low tail rather than the draw does.  The
+        jitter is the more important of the two -- it is what stops the
+        figure being a predictable rhythm the listener can follow without
+        hearing it -- so a negative jitter is allowed to eat into the gap and
+        let two elements graze.  Nothing may cross `rest_gap`."""
+        return max(self.rest_gap, self.min_gap - self.jit)
 
     @property
     def events(self) -> int:
         """Elements per interval: the rate, or as many as leave room for the
         jitter, whichever is fewer."""
         by_rate = int(round(self.rate_hz * self.span * self.hop_ms / 1000)) + 1
-        room = self.min_gap + int(round(self.jitter_ms / self.hop_ms))
+        room = self.min_gap
         return max(2, min(by_rate, self.span // room + 1))
 
     @property
@@ -315,9 +363,9 @@ class Design:
             f"+-{self.jitter_ms:g} ms -> contrast "
             f"{1 + self.events / self.interval_s / (bg / n_ch):.1f}x",
             f"  element   {self.extent_ms(min(self.steps_ms)):.0f}-"
-            f"{self.extent_ms(max(self.steps_ms)):.0f} ms long, gaps never "
-            f"under {self.min_gap * self.hop_ms:.0f} ms, so they never "
-            f"overlap",
+            f"{self.extent_ms(max(self.steps_ms)):.0f} ms long, gaps "
+            f"{self.floor_gap * self.hop_ms:.0f} ms at the shortest about a "
+            f"{self.span / (self.events - 1) * self.hop_ms:.0f} ms mean",
             f"  session   {self.n_trials * self.trial_s / 60:.0f} min "
             f"+ practice + {self.n_trials // self.break_every} breaks",
         ]
