@@ -19,7 +19,7 @@ class Design:
     # tones rather than adding to them, that means 1400 onsets a second and
     # no contrast left.  5 ms is the anchor instead: 30 ms from the figure's
     # first tone to its last, well inside any integration window.
-    steps_ms: tuple[float, ...] = (5.0, 10.0, 15.0, 20.0, 30.0)
+    steps_ms: tuple[float, ...] = (5.0, 10.0, 20.0, 30.0, 40.0)
     coherence: int = 7           # tones in the figure
     order: str = "rise"          # 'rise' | 'fall' -- the main sweep is 'rise'
 
@@ -32,13 +32,17 @@ class Design:
     # the grid is -- so it is set by the finest step to be tested.
     fs: int = 48_000
     hop_ms: float = 5.0
-    tone_ms: float = 50.0        # Teki's and O'Sullivan's chord length,
-                                 # and the shear range follows from it: seven
-                                 # tones stay partly simultaneous only while
-                                 # 6*step is within a few tone lengths, so a
-                                 # 30 ms tone put the whole psychometric
-                                 # function inside 0-15 ms and everything wider
-                                 # was one tone at a time
+    tone_ms: float = 40.0        # inside the 25-50 ms the literature uses,
+                                 # and it is what sets the sweep: two tones
+                                 # `step` apart share (tone_ms - step)/tone_ms
+                                 # of their length, so a 40 ms tone turns
+                                 # 5, 10, 20, 30, 40 ms into an even ladder of
+                                 # 87.5, 75, 50, 25, 0 % overlap and 40 ms is
+                                 # exactly where the figure stops being
+                                 # simultaneous with itself at all.  30 ms put
+                                 # that whole ladder inside 0-15 ms, which is
+                                 # why sub-Meysam-3 read 92 % then chance,
+                                 # chance, chance, chance
     ramp_ms: float = 10.0        # raised cosine, independent of the grid
 
     # --- the cloud ----------------------------------------------------
@@ -57,7 +61,7 @@ class Design:
                                  # 0.25.  Nothing beats, because no two tones
                                  # sound at once inside one critical band
                                  # whatever the grid is.
-    bg_sounding: int = 10        # TOTAL tones sounding, figure included: the
+    bg_sounding: int = 8         # TOTAL tones sounding, figure included: the
                                  # figure substitutes, so this is the whole
                                  # cloud.  It has to be tone_ms/hop_ms, which
                                  # is one start per slot: fewer cannot cover
@@ -166,7 +170,7 @@ class Design:
     # 'rise' is in the list because the controls are only meaningful next
     # to the sweep measured in the same session, by the same ears.
     control_variants: tuple[str, ...] = ("rise", "perm", "redraw", "scatter")
-    control_steps_ms: tuple[float, ...] = (10.0, 25.0)   # 0 ms has no
+    control_steps_ms: tuple[float, ...] = (10.0, 30.0)   # 0 ms has no
                                                          # pattern to scramble
     control_trials: int = 20
 

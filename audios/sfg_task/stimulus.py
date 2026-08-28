@@ -143,7 +143,8 @@ def element_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
     raise ValueError("jitter_ms is too wide for this rate")
 
 
-def scatter_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
+def scatter_onsets(d: Design, rng: np.random.Generator,
+                   step_ms: float) -> np.ndarray:
     """`events` onsets per figure channel, ungrouped.
 
     Drawn from the *same* interval distribution the elements use -- the rate
@@ -175,7 +176,19 @@ def scatter_onsets(d: Design, rng: np.random.Generator) -> np.ndarray:
         # -- that is still 5 ms apart, and it leaves the control with more
         # near-simultaneous onsets than the coherent side has.  Move to the
         # nearest slot that clears every other figure onset by `apart`.
-        apart = max(2, int(round(min(d.steps_ms) / d.hop_ms)) + 1)
+        # The separation has to be the figure's own `step`, not a constant.
+        # Seven tones `step` apart cover (6*step + tone_ms) of every period,
+        # so how much of the time these seven channels are sounding at all
+        # climbs with the delay -- 20 % of the interval at 5 ms and 80 % at
+        # 40 ms.  A control whose onsets are always a fixed 10 ms apart sits
+        # at 31 % whatever the condition, so the two intervals differ in how
+        # busy the seven channels are, by more and more as the delay widens,
+        # and the widest delay becomes the easiest trial for a listener who
+        # never binds anything.  Spreading the control by the same `step`
+        # matches it to within a few per cent at every delay and costs the
+        # control nothing: the onsets are still independent per channel and
+        # still never form an element.
+        apart = max(2, int(round(step_ms / d.hop_ms)))
         ts = d.lead + np.concatenate(([0], np.cumsum(g)))
         for i, t in enumerate(ts):
             t = int(t)
@@ -220,7 +233,7 @@ def schedule(d: Design, pl: dict, rng: np.random.Generator, *,
         # seven channels recur at all -- which is what makes this the
         # control for how much of the task is spectral.
         combs = [comb(d, pl, rng) if fig_ch is None else np.asarray(fig_ch)]
-        for i, ts in enumerate(scatter_onsets(d, rng)):
+        for i, ts in enumerate(scatter_onsets(d, rng, step_ms)):
             for s in ts:
                 c = int(combs[0][i]) if coherent else \
                     int(comb(d, pl, rng)[int(rng.integers(d.coherence))])
