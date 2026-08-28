@@ -101,22 +101,16 @@ class Design:
     # Long, because the figure has to be found by accumulating evidence over
     # elements rather than caught in one.
     #
-    # Elements repeat at `rate_hz` and ARE ALLOWED TO OVERLAP.  At 5 Hz the
-    # period is 200 ms and a 50 ms-per-step element is 350 ms long, so at
-    # the wide delays nearly two elements sound at once and the figure is a
-    # continuous ascending stream rather than a discrete object.  The number
-    # of coherent components sounding therefore varies with delay, which the
-    # non-overlapping version was built to avoid.  It is matched between the
-    # two intervals of a trial, so it cannot be a cue, but it does mean the
-    # conditions differ in more than asynchrony.  Chosen deliberately, to
-    # keep the figure at a speech rate.
+    # Elements repeat at `rate_hz` and do not run into one another: the mean
+    # gap is 326 ms and the widest element 280 ms, so they graze on 0.2 % of
+    # gaps and by at most 5 ms.  An earlier version let them overlap, and
+    # because the delays divided into the period that put tones from
+    # successive repetitions on top of each other -- accidental synchrony in
+    # exactly the conditions meant to have none, and the sweep stopped being
+    # monotonic.
     interval_s: float = 6.0
-    rate_hz: float = 3.0         # elements NEVER overlap: at 5 Hz a 300 ms
-                                 # element ran into the next one and tones
-                                 # from successive repetitions landed on top
-                                 # of each other, which put accidental
-                                 # synchrony back into exactly the delays
-                                 # meant to have none
+    rate_hz: float = 3.0         # the fastest rate a 280 ms element can keep
+                                 # without running into the next one
     jitter_ms: float = 20.0      # +- on each interval between elements, so
                                  # the rhythm is not isochronous and the
                                  # figure cannot be followed by predicting

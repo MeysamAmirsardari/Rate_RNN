@@ -5,9 +5,10 @@
 sweep. No install, no account.
 
 A two-interval figure-ground detection experiment whose only variable is the onset
-asynchrony between successive tones of the figure. At 0 ms the seven tones are a
-coherent chord, the classic stochastic figure-ground stimulus. At 50 ms they are a
-350 ms staircase. Everything else is held identical, and measured to be identical.
+asynchrony between successive tones of the figure. At 5 ms the seven tones start
+inside 30 ms of each other and are effectively the coherent chord of the classic
+stochastic figure-ground stimulus. At 40 ms they are a 280 ms staircase with no overlap
+left at all. Everything else is held identical, and measured to be identical.
 
 The question: temporal coherence theory says common onset is what binds components into
 one object. How far can the onsets be pulled apart before the figure stops being one
@@ -15,14 +16,18 @@ thing?
 
 ## The stimulus
 
-A cloud of 50 ms tones with 10 ms raised-cosine ramps, drawn from 117 channels spanning
-250 to 7246 Hz on a 1/24 octave grid, all at the same level. Exactly five tones sound at
-every instant, by a start pattern that puts `bg_sounding` starts in every tone length. That works for any count, not only for multiples of it.
+A cloud of 40 ms tones with 10 ms raised-cosine ramps, drawn from 234 channels spanning
+250 to 7246 Hz on a 1/48 octave grid, all at the same level. Exactly eight tones sound at
+every instant, by a start pattern that puts `bg_sounding` starts in every tone length.
+That works for any count, not only for multiples of it.
 
-No two tones ever sound at once inside one critical band. A 1/24 octave pool puts four
-to eight channels inside every ERB, and without this rule two thirds of the tones
-acquire a beating partner, which at the bottom of the pool is a 5 Hz throb. A listener
-hears that as a repeated beep rather than as a cloud.
+The grid is finer than the published 1/24 octave because what the figure has to stand
+out from is the background's rate *per channel*, and a finer grid thins that without
+touching the figure: contrast 2.7x at 1/24 octave, 4.7x at 1/48.
+
+No two tones ever sound at once inside one critical band. Without this rule two thirds
+of the tones acquire a beating partner, which at the bottom of the pool is a slow throb.
+A listener hears that as a repeated beep rather than as a cloud.
 
 ### Why the levels are flat and not equal-loudness weighted
 
@@ -46,18 +51,35 @@ Flat, as in Teki 2013: long-term power now varies 1.4 dB across channels, the wo
 prominence is 1.0 dB, and the tones of an element are identical in level. The residual
 1.0 dB sits at the bottom edge of the pool, which has nothing below it to mask it.
 
-Onsets fall on a 5 ms grid. A finer grid costs nothing, since the cloud starts
-`bg_sounding / tone_ms` tones a second whatever the grid is, so the grid is set by the
-finest step to be tested and then held fixed for the whole experiment. If it moved with
-the step, so would the background, and every condition would face a different cloud.
+Onsets fall on a 5 ms grid, held fixed for the whole experiment. If it moved with the
+step, so would the background, and every condition would face a different cloud.
+
+**5 ms is the floor of the paradigm, and it is worth knowing why.** The figure
+substitutes background tones rather than adding to them, so a figure tone can only take
+a slot a background tone would have started in, which forces `bg_sounding = tone_ms /
+hop_ms`. Halving the grid to 2.5 ms therefore doubles the tones sounding at once to 16,
+and at 16 the critical-band rule runs out of pool: measured, the dealer is forced off
+its first choice 1301 times in 60 trials, against 0 at the present setting. So the
+finest asynchrony this design can present is one slot, and the psychometric function
+cannot be sampled below 5 ms.
 
 The figure is a discrete element: seven channels drawn at random inside a band 30
-semitones wide, each delayed `step_ms` behind the one below it. Eleven elements per 6 s
-interval, at irregular spacing. The interval is long because the figure has to be found
-by accumulating evidence across elements rather than caught in one. The minimum gap is
-set by the longest element in the experiment (350 ms), not by the current condition, so
-element timing comes from one distribution in every condition. Elements never overlap,
-so the number of coherent components sounding at once is the same at every step.
+semitones wide, each delayed `step_ms` behind the one below it. Seventeen elements per
+6 s interval at 3.07 Hz, spaced 326 ms apart on average with +-20 ms of jitter, so the
+rhythm is not isochronous and the figure cannot be followed by predicting when it is
+due. The interval is long because the figure has to be found by accumulating evidence
+across elements rather than caught in one.
+
+Element timing comes from one distribution in every condition: the gap is set by the
+longest element in the experiment (280 ms), not by the current one. Two floors, and they
+are different things. `rest_gap` is one tone plus its rest and may never be crossed,
+because every element uses the same seven channels and a shorter gap is one channel
+sounding twice at once. `min_gap` is only where the widest element stops touching the
+next, and a negative jitter is allowed to eat into it, because rejecting those draws let
+the floor and not the jitter decide the bottom of the distribution. Gaps come out
+290-360 ms, sd 11.34 against the 11.55 of the ideal uniform. Measured, elements graze at
+all on 0.2% of gaps and by at most 5 ms, and no two figure tones ever start in the same
+slot above the 5 ms anchor.
 
 ### Flat loudness, not a flat tone count
 
@@ -79,9 +101,12 @@ pool for as long as an element lasts, and leaves 0.9 dB behind.
 Both intervals of a trial are built from the same element onsets and the same delays,
 drawn once for the trial. They differ in one respect:
 
-* figure present: the same seven channels on every element
-* figure absent: seven channels drawn afresh for each element, at the same spacing and
-  the same spectral width, never sharing more than one channel with any other element
+* figure present: the same seven channels on every element, arriving together
+* figure absent (the default, `--absent scattered`): **the same seven channels**, coming
+  back at the same rate and with the same regularity, each on its own schedule and never
+  grouped into an element
+* `--absent cloud` is the classic alternative: seven channels drawn afresh for each
+  element. It is confounded, and the reason is in *What is not controlled* below
 
 So the listener hears the same rhythm, the same number of tones, the same element shape
 and the same loudness in both intervals, and has to judge which one kept coming back at
@@ -98,9 +123,9 @@ these. Construction arguments are not evidence.
 
 | control | how |
 |---|---|
-| tone count | identical by construction; measured, 784 in both |
+| tone count | identical by construction; measured, 1192 in both |
 | figure tones at once | identical in both intervals at every delay |
-| figure duty cycle | identical in both intervals at every delay |
+| figure duty cycle | how much of the interval the seven channels sound at all. It is set by the delay (20% at 5 ms, 80% at 40 ms), so the control is spread by the figure's own step to follow it: 46/47, 63/64, 80/80. The residue is 12 points at the 5 ms anchor, where the figure is a chord and the control must not be, and it does not grow with the delay |
 | tones sounding | identical range at every step |
 | long-term level | RMS-normalised, 0.000 dB apart |
 | long-term spectrum | within 0.4 dB in any third-octave band |
@@ -109,8 +134,8 @@ these. Construction arguments are not evidence.
 | element loudness pulse | element-locked power against the window before it: -0.06 to -0.02 dB at every step, the same in both |
 | element loudness cue | present minus absent, against the same measure split within one condition. The difference (0.10 to 0.13 dB) sits below the noise floor of the measurement (0.14 to 0.17 dB) |
 | element power | equalised per draw, against the power the background actually realised. CV 0.0000 in both |
-| beating | no two tones inside one critical band at once: 0 pairs, at every step. Six tones sounding, each holding a band clear either side, is 47% of the pool's 25 ERB, and over 1500 trials the rule never once had to bend. At 50 ms tones it was 79% and bent on one slot in a thousand at the shortest delay; the background takes the channel furthest from what is sounding rather than ending the session, and the battery counts how often |
-| envelope at the figure rate | 0.02 dB in both intervals, at every delay: the levelling removes the 5 Hz pulse entirely |
+| beating | no two tones inside one critical band at once: 0 pairs, at every step. Eight tones sounding, each holding a band clear either side, is about half of the pool's 25 ERB, and over 1120 trials across both absent modes and all four variants the rule never once had to bend. If it ever runs out the background takes the channel furthest from what is sounding rather than ending the session, and the battery counts how often |
+| envelope at the figure rate | 0.07 to 0.16 dB between the intervals, at every delay: the levelling removes the element pulse entirely |
 | accidental coherence | no two elements of a figure-absent interval share more than one channel |
 | figure position | uniform over the allowed range, redrawn every trial, so it is never in a learnable place |
 | overall level | roved 3 dB either way per interval |
@@ -124,9 +149,9 @@ no criterion; proportion correct maps straight to d'. Yes/no is available
 (`--task yesno`), which doubles the trials per step so false alarms can be estimated per
 step.
 
-Practice runs at 0 ms with feedback until 8 of the last 10 are right, and says so if it
-ends below criterion rather than sliding into the main block. Then 20 trials at each of
-7 steps, 140 trials, about 35 minutes with three self-paced breaks.
+Practice runs at the smallest delay with feedback until 8 of the last 10 are right, and
+says so if it ends below criterion rather than sliding into the main block. Then 24
+trials at each of 5 steps, 120 trials, about 30 minutes with two self-paced breaks.
 
 The trial line does not show the step. A subject who can see the condition will use it.
 `--show-step` puts it back for when you are testing the runner yourself, and the data
@@ -175,7 +200,7 @@ default, or takes `--session N`.
 
 ## The control session
 
-`run <subject> --controls`, 20 trials per cell at 20 and 40 ms:
+`run <subject> --controls`, 20 trials per cell at 10 and 30 ms:
 
 * rise: the sweep itself, measured by the same ears in the same session
 * perm: the same set of delays, frozen, but not a monotonic sweep. Separates asynchrony
@@ -203,7 +228,7 @@ condition.
 ### The number the experiment is for
 
 Accuracy is turned into d' (for 2IFC, `d' = sqrt(2) z(pc)`, which needs no criterion),
-a descending logistic is fitted to the seven points by maximum likelihood, and the
+a descending logistic is fitted to the five points by maximum likelihood, and the
 threshold reported is **the delay at which d' falls to 1**. That level is chosen because
 the task can resolve it; a half-way point often sits off the end of the range that was
 tested. Its 95% CI comes from a parametric bootstrap over the per-cell binomials.
@@ -214,14 +239,14 @@ tested. Its 95% CI comes from a parametric bootstrap over the per-cell binomials
   normal approximation does not.
 * d' carries a standard error by the delta method, from the binomial on pc.
 * Stars above each point are a one-sided binomial test **against chance**, corrected
-  across the seven delays with Benjamini-Hochberg.
-* `vs best` in the table is a Fisher exact test of each delay **against the 0 ms
-  chord**, also FDR corrected. This is the column that says where performance first
+  across the five delays with Benjamini-Hochberg.
+* `vs best` in the table is a Fisher exact test of each delay **against the smallest
+  delay**, also FDR corrected. This is the column that says where performance first
   falls away.
 * `step effect` is a single-trial logistic of correct on delay, with guessing built into
   the link, tested by likelihood ratio against the same model with the slope removed.
   That is the one test of whether delay matters at all, and it uses every trial rather
-  than seven summary points.
+  than five summary points.
 
 ### The figures
 
@@ -241,7 +266,7 @@ trial index instead, and the error band uses the effective N from the sum of the
 
 This is where a session goes wrong visibly: a subject who is still learning shows every
 curve climbing early, one who is tiring shows the black curve sagging late, and one who
-has stopped trying shows the 0 ms anchor coming down to meet the rest.
+has stopped trying shows the 5 ms anchor coming down to meet the rest.
 
 **`_checks.png`** The checks as a forest plot, and response time against delay.
 
@@ -264,7 +289,7 @@ two halves agree.
 | figure in 1 vs in 2 | the two intervals are not equally good, which should not happen if the stimulus is matched |
 | first vs second half | practice or fatigue. Also tested on single trials as `drift over the session` |
 | after a correct vs after an error | sequential effects, usually post-error slowing |
-| anchor, first vs second half | whether the subject is still trying. The 0 ms condition should stay easy all the way through |
+| anchor, first vs second half | whether the subject is still trying. The smallest delay should stay easy all the way through |
 
 Response time should rise with delay. If it is flat, the subject may be answering on a
 fixed schedule rather than on the evidence.
@@ -277,18 +302,32 @@ pooling raw trials, because subjects differ and the claim is about listeners. On
 simulated data with true thresholds of 17 to 33 ms, five subjects recovered 13 to 37 ms
 and a group mean within 1 ms of the truth.
 
-At 20 trials per step, one subject's threshold carries a CI about 14 ms wide. Two
+At 24 trials per step, one subject's threshold carries a CI about 13 ms wide. Two
 sessions halve that. Decide which you need before running twenty people once.
 
 ## What is not controlled, and cannot be
 
 * **The figure changes character across the sweep, not just its asynchrony.** A 5 ms
-  element is 60 ms long and puts six tones on at once; a 45 ms element is 300 ms long
-  and never has more than one. Measured, a figure tone is sounding 16% of the time at
-  5 ms and 57% at 45 ms. Same tone count, same rate, same contrast, different object.
-  This is inherent to spreading tones in time. `perm` holds the extent and removes the
-  order; `scatter` is the limit where the asynchrony is unbounded. Those two bound the
-  alternative explanations, and this is the first limitation a referee will find.
+  element is 70 ms long and puts seven tones on at once; a 40 ms element is 280 ms long
+  and never has more than one. Same tone count, same rate, same contrast, same duty,
+  different object. This is inherent to spreading tones in time, and it is the first
+  limitation a referee will find: *stopped binding* and *became a longer, slower object*
+  are the same manipulation.
+
+  The control that settles it is not in the sweep and should be run: hold the element
+  extent fixed and trade tones against delay. Seven tones 25 ms apart, four 50 ms apart
+  and three 75 ms apart are all about 190 ms long with very different asynchrony, and
+  `coherence` is already a field in `Design`. If performance tracks the asynchrony and
+  not the extent, the objection is dead. It is also the classic Teki coherence
+  manipulation, so it connects to the published work for free.
+
+* **The sweep has to be placed where the function falls, and one pilot says that is
+  narrow.** With 30 ms tones a subject scored 92% at 5 ms and chance at 15, 25, 35 and
+  45: the whole psychometric function lived between two adjacent points, because seven
+  tones stop overlapping at all past `6 * step = tone_ms`. 40 ms tones spread that
+  ladder over 87.5, 75, 50, 25 and 0% overlap, which is what the present sweep samples.
+  Pilot four points before committing 30 minutes an ear, and if the fall is still inside
+  10 ms, report a bound rather than a threshold: the grid cannot resolve below 5 ms.
 
 * **The other interval is not a plain cloud, and it cannot be.** Take the long-term
   spectrum of each interval, measure how far its loudest channels stand above their
@@ -300,18 +339,26 @@ sessions halve that. Decide which you need before running twenty people once.
 
   So the other interval carries **the same seven channels**, coming back at the same
   rate and with the same regularity, each on its own schedule. Both intervals then have
-  the same channels, the same tone count, the same six tones sounding at every instant,
-  the same level, the same long-term spectrum and the same contrast, and differ in
-  whether the seven fire *together*. Measured, the observer who ignores time falls to
-  **d' 0.01 to 0.08, which is 50 to 52% correct**: chance.
+  the same channels, the same tone count, the same eight tones sounding at every instant,
+  the same level, the same long-term spectrum, the same contrast and the same duty, and
+  differ in whether the seven fire *together*. Measured, the observer who ignores time
+  falls to **d' 0.005 to 0.54, which is 50 to 60% correct**: chance.
 
-  Three things had to be right for that. The figure substitutes background tones rather
+  Four things had to be right for that. The figure substitutes background tones rather
   than adding to them, so the tone count does not move. The scattered channels are
   nudged off each other's slots, so the control never forms a momentary chord and never
-  needs a levelling gain the coherent side does not. And a coherent element that would
-  collide with its overlapping neighbour slides whole, pattern intact, rather than
-  doubling a slot. With all three the levelling gain is **0.00 dB in both intervals at
-  every delay**, and the leveller is inert.
+  needs a levelling gain the coherent side does not. A coherent element that would
+  collide with a neighbour slides whole, pattern intact, rather than doubling a slot.
+  And the control is spread by the figure's own step, so the two intervals match on how
+  busy the seven channels are. With all four the levelling gain is **0.00 dB in both
+  intervals at every delay**, and the leveller is inert.
+
+  That last one sets the jitter. Both intervals draw their onsets from the same
+  distribution, and how often the seven trains coincide falls as the jitter decorrelates
+  them, so a wider jitter pulls the control's duty off the figure's at the narrow
+  delays. At the 10 ms step the two are 0.6 points apart at +-10 ms of jitter, 2.9 at
+  +-20, 7.1 at +-30 and 11.1 at +-40. +-20 ms is the most jitter that keeps every sweep
+  point inside 3 points.
 
   Trial-by-trial feedback matters here: it does not bias 2IFC, but it teaches whatever
   cue works, so it is only safe once the only cue that works is the intended one.
