@@ -1,5 +1,10 @@
 # How far can two tone streams be pulled apart before they stop being one thing?
 
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/MeysamAmirsardari/Rate_RNN/blob/main/audios/streaming/Streaming_playground.ipynb)
+&nbsp;The notebook builds every stimulus in the browser, plays the whole sweep,
+and runs the adaptive rule and the analysis on a listener whose answer is known.
+No install, no account.
+
 A direct replication of the human psychophysics in
 
 > Elhilali M, Ma L, Micheyl C, Oxenham AJ, Shamma SA (2009). Temporal coherence

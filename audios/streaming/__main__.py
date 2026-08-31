@@ -153,8 +153,7 @@ def cmd_simulate(a):
     import csv
     import math
     from .analyse import PAPER
-    from .session import cell_name, paths, run_list, write_meta
-    from .run import RUNS
+    from .session import RUNS, cell_name, paths, run_list, write_meta
     from .track import simulate
 
     d = design(a)

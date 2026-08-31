@@ -28,6 +28,17 @@ from .stimulus import trial
 
 TASK = "streaming"
 
+# The columns of the two tables a session writes.  They live here rather than
+# in `run`, so that anything which only reads or simulates data -- the
+# analysis, a notebook -- can get at them without importing a module that
+# needs a sound card and a terminal.
+TRIALS = ["session", "task", "block", "run", "cell", "trial", "dt_ms",
+          "target", "response", "correct", "rt", "onset", "seed"]
+RUNS = ["session", "task", "block", "run", "repeat", "cell", "kind", "df_st",
+        "gap_a_ms", "lag_ms", "pct", "b_only", "threshold_ms", "n_trials",
+        "pc", "n_reversals", "clamped", "at_floor", "at_ceiling", "why",
+        "reversals", "seed"]
+
 
 def trial_seed(d: Design, subject: str, i: int) -> int:
     ss = np.random.SeedSequence([d.seed, zlib.crc32(subject.encode()), i])

@@ -30,20 +30,14 @@ import sounddevice as sd
 
 from . import participant
 from .config import Design
-from .session import (TASK, audio, cell_name, next_session, paths, resumable,
-                      run_list, trial_seed, write_meta)
+from .session import (RUNS, TASK, TRIALS, audio, cell_name, next_session,
+                      paths, resumable, run_list, trial_seed, write_meta)
 from .stimulus import Balance
 from .track import Track
 
 BOLD, DIM, GREEN, RED, OFF = ("\033[1m", "\033[2m", "\033[32m", "\033[31m",
                               "\033[0m")
 ANY = "".join(chr(c) for c in range(32, 127)) + "\r\n "
-TRIALS = ["session", "task", "block", "run", "cell", "trial", "dt_ms",
-          "target", "response", "correct", "rt", "onset", "seed"]
-RUNS = ["session", "task", "block", "run", "repeat", "cell", "kind", "df_st",
-        "gap_a_ms", "lag_ms", "pct", "b_only", "threshold_ms", "n_trials",
-        "pc", "n_reversals", "clamped", "at_floor", "at_ceiling", "why",
-        "reversals", "seed"]
 
 
 # ------------------------------------------------------------------ input
