@@ -81,6 +81,20 @@ says why we also do it a second way.
 python -m audios.streaming check          # -> out/stimulus_replicate.png
 ```
 
+`demo` writes one trial as a pair of wavs, and `--seconds` stretches it for
+listening. A trial is about a second, which is right for a measurement and
+wrong for a demonstration: the one-thing or two-things percept takes several
+seconds to build. `--seconds` is refused for the 30 and 70 ms A gaps, because
+those are made asynchronous by a tempo difference and the drift accumulates, so
+a longer version sweeps through every phase relationship instead of holding
+one. For a long asynchronous sequence use `--mode sweep --pct 100`, which holds
+the lag constant.
+
+```
+python -m audios.streaming demo --mode sweep --pct 0   --seconds 8   # together
+python -m audios.streaming demo --mode sweep --pct 100 --seconds 8   # taking turns
+```
+
 ### Three places the paper is silent, and what we did
 
 **The rule contradicts itself.** The methods say "three-down one-up ... tracked

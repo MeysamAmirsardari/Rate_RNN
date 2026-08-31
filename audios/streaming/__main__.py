@@ -61,6 +61,22 @@ def cmd_demo(a):
     import soundfile as sf
     from .stimulus import to_ear, trial
     d = design(a)
+    if a.seconds:
+        # a demo is for listening, and one second is not enough time for the
+        # one-thing or two-things percept to form.  The experiment stays at
+        # the published five precursors; this only stretches a wav.  It is
+        # refused for the tempo-difference conditions, where the drift
+        # accumulates and a longer sequence is a different stimulus rather
+        # than more of the same one.
+        if d.mode == "replicate" and a.gap_a_ms != d.gap_b_ms:
+            raise SystemExit(
+                f"  --seconds cannot stretch a {a.gap_a_ms:g} ms A gap: the "
+                f"two streams drift {abs(a.gap_a_ms - d.gap_b_ms):g} ms per "
+                f"tone, so a longer sequence sweeps through every phase "
+                f"instead of holding one. Use --mode sweep --pct for a long "
+                f"asynchronous sequence.")
+        soa = d.tone + (d.sweep_gap_ms if d.mode == "sweep" else d.gap_b_ms)
+        d = d.replace(n_precursor=max(1, int(round(a.seconds * 1000 / soa)) - 1))
     OUT.mkdir(exist_ok=True)
     lag = d.lag_ms(a.pct) if a.pct is not None else 0.0
     gap = d.sweep_gap_ms if d.mode == "sweep" else a.gap_a_ms
@@ -70,13 +86,15 @@ def cmd_demo(a):
     tag = (f"{d.mode}_{a.df_st:.0f}st_"
            + (f"lag{a.pct:.0f}pct" if a.pct is not None
               else f"gap{gap:.0f}")
-           + ("_Bonly" if a.b_only else ""))
+           + ("_Bonly" if a.b_only else "")
+           + (f"_{a.seconds:.0f}s" if a.seconds else ""))
     for name, iv in (("signal", ivs[0]), ("standard", ivs[1])):
         p = OUT / f"{tag}_{name}.wav"
         sf.write(p, to_ear(d, iv["y"]), d.fs, subtype="PCM_16")
         print(f"  -> {p.name}")
     print(f"  {a.dt_ms:g} ms shift, {d.tone:.0f} ms tones, "
-          f"A {d.f_a:.0f} Hz, B {d.f_b(a.df_st):.0f} Hz, lag {lag:.0f} ms")
+          f"A {d.f_a:.0f} Hz, B {d.f_b(a.df_st):.0f} Hz, lag {lag:.0f} ms, "
+          f"{d.n_tones} tones per stream")
     if a.play:
         from .run import play
         for name, iv in (("standard", ivs[1]), ("signal", ivs[0])):
@@ -296,6 +314,8 @@ def main(argv=None):
     q.add_argument("--dt-ms", type=float, default=20.0)
     q.add_argument("--b-only", action="store_true")
     q.add_argument("--seed", type=int, default=7)
+    q.add_argument("--seconds", type=float,
+                   help="stretch the demo to about this long, for listening")
     q.add_argument("--play", action="store_true")
     q.set_defaults(f=cmd_demo)
 
